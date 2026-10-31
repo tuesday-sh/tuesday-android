@@ -3,6 +3,12 @@ package sh.tuesday.app.models
 import kotlinx.serialization.Serializable
 
 @Serializable
+enum class AiProviderType(val displayName: String, val badgeLabel: String) {
+    ELASTIX("Elastix.ai FPGA", "LIVE ELASTIX FPGA"),
+    GEMINI("GCP Gemini 3.8", "LIVE GCP GEMINI")
+}
+
+@Serializable
 data class HacsConfig(
     val instanceName: String = "Home Assistant (HACS)",
     val baseUrl: String = "http://homeassistant.local:8123",
@@ -13,6 +19,9 @@ data class HacsConfig(
     val trustedSsid: String = "SureThing-Home-5G",
     val isConnected: Boolean = true,
     val lastSyncedEpochMs: Long = System.currentTimeMillis(),
+    val aiProvider: AiProviderType = AiProviderType.ELASTIX,
+    val elastixApiKey: String = "",
+    val elastixModel: String = "qwen3.8-27b",
     val geminiApiKey: String = "",
     val geminiModel: String = "gemini-3.8-flash"
 )
@@ -75,5 +84,6 @@ data class GeminiDiscoveryTurnResult(
     val recommendedClueTypes: List<String>,
     val extractedIdentifiers: ExtractedDeviceIdentifiers,
     val candidates: List<DeviceCandidateMatch>,
-    val usedLiveGeminiApi: Boolean = true
+    val usedLiveGeminiApi: Boolean = true,
+    val providerUsed: String = "Elastix.ai FPGA (qwen3.8-27b)"
 )

@@ -1,5 +1,7 @@
 package sh.tuesday.app.ui.wizard
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -7,6 +9,9 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -73,50 +78,85 @@ fun AddDeviceScreen(
     var manualToken by remember { mutableStateOf("") }
     var manualError by remember { mutableStateOf<String?>(null) }
 
-    // Gallery Picker
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
-                } else {
-                    MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    fun decodeUriToSoftwareBitmap(uri: Uri): Bitmap? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val source = ImageDecoder.createSource(context.contentResolver, uri)
+                ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    decoder.isMutableRequired = true
                 }
-                capturedBitmaps = capturedBitmaps + bmp
-                scope.launch {
-                    isAnalyzing = true
-                    val res = discoveryService.analyzeDeviceProgressive(
-                        bitmaps = capturedBitmaps,
-                        accumulatedIdentifiers = accumulatedIdentifiers,
-                        userClueNotes = userClueNotes,
-                        apiKeyOverride = hacsConfig.geminiApiKey,
-                        modelName = hacsConfig.geminiModel
-                    )
-                    accumulatedIdentifiers.merge(res.extractedIdentifiers)
-                    discoveryResult = res
-                    isAnalyzing = false
-                }
-            } catch (_: Exception) {}
+            } else {
+                @Suppress("DEPRECATION")
+                MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
-    // Camera Capture (Thumbnail preview from TakePicturePreview)
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bmp: Bitmap? ->
-        if (bmp != null) {
-            capturedBitmaps = capturedBitmaps + bmp
-            scope.launch {
-                isAnalyzing = true
-                val res = discoveryService.analyzeDeviceProgressive(
-                    bitmaps = capturedBitmaps,
-                    accumulatedIdentifiers = accumulatedIdentifiers,
-                    userClueNotes = userClueNotes,
-                    apiKeyOverride = hacsConfig.geminiApiKey,
-                    modelName = hacsConfig.geminiModel
-                )
-                accumulatedIdentifiers.merge(res.extractedIdentifiers)
-                discoveryResult = res
-                isAnalyzing = false
+    fun triggerProgressiveAnalysis(newBmp: Bitmap) {
+        val updatedBitmaps = capturedBitmaps + newBmp
+        capturedBitmaps = updatedBitmaps
+        scope.launch {
+            isAnalyzing = true
+            val res = discoveryService.analyzeDeviceProgressive(
+                bitmaps = updatedBitmaps,
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                aiProvider = hacsConfig.aiProvider,
+                elastixApiKeyOverride = hacsConfig.elastixApiKey,
+                elastixModelName = hacsConfig.elastixModel,
+                apiKeyOverride = hacsConfig.geminiApiKey,
+                modelName = hacsConfig.geminiModel
+            )
+            accumulatedIdentifiers.merge(res.extractedIdentifiers)
+            discoveryResult = res
+            isAnalyzing = false
+        }
+    }
+
+    // Gallery Picker
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val bmp = decodeUriToSoftwareBitmap(uri)
+            if (bmp != null) {
+                triggerProgressiveAnalysis(bmp)
             }
+        }
+    }
+
+    // Full-Resolution Camera Capture via FileProvider
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success: Boolean ->
+        val uri = pendingCameraUri
+        if (success && uri != null) {
+            val bmp = decodeUriToSoftwareBitmap(uri)
+            if (bmp != null) {
+                triggerProgressiveAnalysis(bmp)
+            }
+        }
+    }
+
+    fun launchCameraWithUri() {
+        try {
+            val photoFile = File(context.cacheDir, "tuesday_scan_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                photoFile
+            )
+            pendingCameraUri = uri
+            cameraLauncher.launch(uri)
+        } catch (_: Exception) {}
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            launchCameraWithUri()
         }
     }
 
@@ -205,12 +245,36 @@ fun AddDeviceScreen(
                         )
                     }
 
-                    Text(
-                        text = "GCP Gemini 3.8 Flash",
-                        color = Color.White.copy(alpha = 0.55f),
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        AiProviderType.entries.forEach { prov ->
+                            val isActive = hacsConfig.aiProvider == prov
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isActive) TuesdayTheme.HealthyGreen.copy(alpha = 0.2f) else TuesdayTheme.CardSurface)
+                                    .border(
+                                        1.dp,
+                                        if (isActive) TuesdayTheme.HealthyGreen else Color.White.copy(alpha = 0.15f),
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .clickable {
+                                        repository.updateHacsConfig(hacsConfig.copy(aiProvider = prov))
+                                    }
+                                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = prov.displayName,
+                                    color = if (isActive) TuesdayTheme.HealthyGreen else Color.White.copy(alpha = 0.55f),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Text(
@@ -254,7 +318,17 @@ fun AddDeviceScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            onClick = { cameraLauncher.launch(null) },
+                            onClick = {
+                                val hasPerm = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasPerm) {
+                                    launchCameraWithUri()
+                                } else {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = TuesdayTheme.HealthyGreen,
                                 contentColor = Color.Black
@@ -304,6 +378,9 @@ fun AddDeviceScreen(
                                             bitmaps = capturedBitmaps,
                                             accumulatedIdentifiers = accumulatedIdentifiers,
                                             userClueNotes = userClueNotes,
+                                            aiProvider = hacsConfig.aiProvider,
+                                            elastixApiKeyOverride = hacsConfig.elastixApiKey,
+                                            elastixModelName = hacsConfig.elastixModel,
                                             apiKeyOverride = hacsConfig.geminiApiKey,
                                             modelName = hacsConfig.geminiModel
                                         )
@@ -336,6 +413,9 @@ fun AddDeviceScreen(
                                             bitmaps = capturedBitmaps,
                                             accumulatedIdentifiers = accumulatedIdentifiers,
                                             userClueNotes = userClueNotes,
+                                            aiProvider = hacsConfig.aiProvider,
+                                            elastixApiKeyOverride = hacsConfig.elastixApiKey,
+                                            elastixModelName = hacsConfig.elastixModel,
                                             apiKeyOverride = hacsConfig.geminiApiKey,
                                             modelName = hacsConfig.geminiModel
                                         )
@@ -377,7 +457,12 @@ fun AddDeviceScreen(
                             strokeWidth = 2.dp
                         )
                         Column {
-                            Text("Analyzing image with GCP Gemini AI...", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Analyzing device with ${hacsConfig.aiProvider.displayName}...",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                             Text("Inspecting chassis profile, ports, OUI prefix, and printed labels", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
                         }
                     }
@@ -398,9 +483,9 @@ fun AddDeviceScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("GEMINI AI VISUAL ANALYSIS", color = TuesdayTheme.HacsCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text("AI HARDWARE DISCOVERY", color = TuesdayTheme.HacsCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             Text(
-                                if (result.usedLiveGeminiApi) "LIVE GCP AI" else "PILOT HEURISTIC",
+                                result.providerUsed.uppercase(),
                                 color = TuesdayTheme.HealthyGreen,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
@@ -494,6 +579,9 @@ fun AddDeviceScreen(
                                                     bitmaps = capturedBitmaps,
                                                     accumulatedIdentifiers = accumulatedIdentifiers,
                                                     userClueNotes = userClueNotes,
+                                                    aiProvider = hacsConfig.aiProvider,
+                                                    elastixApiKeyOverride = hacsConfig.elastixApiKey,
+                                                    elastixModelName = hacsConfig.elastixModel,
                                                     apiKeyOverride = hacsConfig.geminiApiKey,
                                                     modelName = hacsConfig.geminiModel
                                                 )

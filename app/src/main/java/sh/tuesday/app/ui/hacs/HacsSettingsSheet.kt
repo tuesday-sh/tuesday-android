@@ -34,6 +34,8 @@ fun HacsSettingsSheet(
     var instanceName by remember { mutableStateOf(config.instanceName) }
     var baseUrl by remember { mutableStateOf(config.baseUrl) }
     var apiToken by remember { mutableStateOf(config.apiToken) }
+    var elastixApiKey by remember { mutableStateOf(config.elastixApiKey) }
+    var elastixModel by remember { mutableStateOf(config.elastixModel) }
     var geminiApiKey by remember { mutableStateOf(config.geminiApiKey) }
     var requireLocalWifi by remember { mutableStateOf(config.requireLocalWifi) }
     var isSimulatingWifi by remember { mutableStateOf(simulateWifiDisconnected) }
@@ -115,6 +117,28 @@ fun HacsSettingsSheet(
                 value = apiToken,
                 onValueChange = { apiToken = it },
                 label = { Text("HACS API TOKEN", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = TuesdayTheme.HacsCyan,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
+                )
+            )
+
+            OutlinedTextField(
+                value = elastixApiKey,
+                onValueChange = { elastixApiKey = it },
+                label = { Text("ELASTIX.AI API KEY (DEFAULT IN pilot_secrets.json)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = TuesdayTheme.HacsCyan,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
+                )
+            )
+
+            OutlinedTextField(
+                value = elastixModel,
+                onValueChange = { elastixModel = it },
+                label = { Text("ELASTIX.AI MODEL (qwen3.8-27b [Vision] | gpt-oss-120b)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = TuesdayTheme.HacsCyan,
@@ -205,6 +229,8 @@ fun HacsSettingsSheet(
                         instanceName = instanceName.trim(),
                         baseUrl = baseUrl.trim(),
                         apiToken = apiToken.trim(),
+                        elastixApiKey = elastixApiKey.trim(),
+                        elastixModel = elastixModel.trim().ifBlank { "qwen3.8-27b" },
                         geminiApiKey = geminiApiKey.trim(),
                         requireLocalWifi = requireLocalWifi,
                         lastSyncedEpochMs = System.currentTimeMillis()

@@ -2,8 +2,8 @@ package sh.tuesday.app.services
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Base64
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -14,37 +14,77 @@ import org.json.JSONArray
 import org.json.JSONObject
 import sh.tuesday.app.models.*
 import java.io.ByteArrayOutputStream
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 class GeminiDiscoveryService(private val context: Context) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
         .build()
+
+    private val sessionStickinessId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
 
     suspend fun analyzeDeviceProgressive(
         bitmaps: List<Bitmap>,
         accumulatedIdentifiers: ExtractedDeviceIdentifiers,
         userClueNotes: List<String>,
+        aiProvider: AiProviderType = AiProviderType.ELASTIX,
+        elastixApiKeyOverride: String = "",
+        elastixModelName: String = "qwen3.8-27b",
         apiKeyOverride: String = "",
         modelName: String = "gemini-3.8-flash"
     ): GeminiDiscoveryTurnResult = withContext(Dispatchers.IO) {
-        val apiKey = resolveApiKey(apiKeyOverride)
-        if (apiKey.isBlank()) {
-            return@withContext fallbackHeuristic(accumulatedIdentifiers, userClueNotes, bitmaps.size, usedLiveApi = false)
+        if (aiProvider == AiProviderType.ELASTIX) {
+            val elastixKey = resolveElastixKey(elastixApiKeyOverride)
+            if (elastixKey.isNotBlank()) {
+                try {
+                    return@withContext callElastixChatCompletionsApi(
+                        bitmaps = bitmaps,
+                        accumulatedIdentifiers = accumulatedIdentifiers,
+                        userClueNotes = userClueNotes,
+                        apiKey = elastixKey,
+                        modelName = elastixModelName.ifBlank { "qwen3.8-27b" }
+                    )
+                } catch (e: Exception) {
+                    Log.e("ElastixBeta", "Elastix inference failed: ${e.message}", e)
+                    // Fall through to Gemini or heuristic if network fails
+                }
+            }
+        }
+
+        val geminiKey = resolveGeminiKey(apiKeyOverride)
+        if (geminiKey.isBlank()) {
+            return@withContext fallbackHeuristic(
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                imageCount = bitmaps.size,
+                usedLiveApi = false
+            )
         }
 
         try {
-            callGeminiInteractionsApi(bitmaps, accumulatedIdentifiers, userClueNotes, apiKey, modelName)
+            callGeminiInteractionsApi(bitmaps, accumulatedIdentifiers, userClueNotes, geminiKey, modelName)
         } catch (_: Exception) {
             fallbackHeuristic(accumulatedIdentifiers, userClueNotes, bitmaps.size, usedLiveApi = false)
         }
     }
 
-    private fun resolveApiKey(overrideKey: String): String {
+    private fun resolveElastixKey(overrideKey: String): String {
         if (overrideKey.isNotBlank()) return overrideKey.trim()
+        try {
+            val assetStream = context.assets.open("pilot_secrets.json")
+            val content = assetStream.bufferedReader().use { it.readText() }
+            val obj = JSONObject(content)
+            val key = obj.optString("ELASTIX_API_KEY", "")
+            if (key.isNotBlank()) return key
+        } catch (_: Exception) {}
+        return ""
+    }
 
+    private fun resolveGeminiKey(overrideKey: String): String {
+        if (overrideKey.isNotBlank()) return overrideKey.trim()
         try {
             val assetStream = context.assets.open("pilot_secrets.json")
             val content = assetStream.bufferedReader().use { it.readText() }
@@ -52,8 +92,121 @@ class GeminiDiscoveryService(private val context: Context) {
             val key = obj.optString("GEMINI_API_KEY", "")
             if (key.isNotBlank()) return key
         } catch (_: Exception) {}
-
         return ""
+    }
+
+    private fun callElastixChatCompletionsApi(
+        bitmaps: List<Bitmap>,
+        accumulatedIdentifiers: ExtractedDeviceIdentifiers,
+        userClueNotes: List<String>,
+        apiKey: String,
+        modelName: String
+    ): GeminiDiscoveryTurnResult {
+        val clueLines = mutableListOf<String>()
+        for ((type, value) in accumulatedIdentifiers.nonEmptyPairs()) {
+            clueLines.add("- ${type.rawValue}: $value")
+        }
+        for (note in userClueNotes) {
+            if (note.isNotBlank()) clueLines.add("- User Clue: $note")
+        }
+        val clueContext = if (clueLines.isEmpty()) "None provided yet." else clueLines.joinToString("\n")
+
+        val systemPrompt = """
+            /no_think
+            You are a hardware device inventory discovery assistant for Tuesday.sh running on Elastix.ai.
+            LATENCY CRITICAL: Keep internal thinking/reasoning under 25 words. Do NOT over-deliberate. Output the JSON object immediately with concise 1-sentence fields.
+            Return ONLY a valid JSON object with the exact following keys:
+            - "visualSummary": concise 1-sentence summary of hardware and clues
+            - "nextNarrowingQuestion": concise question asking for Barcode, Serial Number, QR Code, Model, or MAC Address
+            - "recommendedClueTypes": array of strings from ["Model", "MAC Address", "Serial Number", "Barcode", "QR Code"]
+            - "extractedIdentifiers": object with string or null fields {"barcode", "serialNumber", "qrCode", "modelNumber", "macAddress"}
+            - "candidates": array of 2 objects, each with exact keys:
+              - "manufacturer": string
+              - "modelNumber": string
+              - "displayName": string
+              - "deviceCategory": string
+              - "confidencePercent": integer (1 to 99)
+              - "reasoning": concise 1-sentence reason
+              - "suggestedHostname": string
+              - "suggestedOsDetails": plain string (e.g. "UniFi OS 4.0.20 (Debian 12 apt)")
+              - "suggestedPackageManager": string from ["apt", "apk", "brew", "yum", "docker", "hacs", "firmware"]
+        """.trimIndent()
+
+        val userPrompt = """
+            <accumulated_clues>
+            $clueContext
+            </accumulated_clues>
+            Analyze the attached hardware photo(s) and clues and return the JSON object immediately. /no_think
+        """.trimIndent()
+
+        val userContentParts = JSONArray().apply {
+            put(JSONObject().apply {
+                put("type", "text")
+                put("text", userPrompt)
+            })
+            if (modelName.startsWith("qwen")) {
+                for (bmp in bitmaps.takeLast(2)) {
+                    val b64 = downscaleAndEncode(bmp, 640)
+                    if (b64 != null) {
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
+                        })
+                    }
+                }
+            }
+        }
+
+        val messagesArr = JSONArray().apply {
+            put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+            put(JSONObject().apply {
+                put("role", "user")
+                put("content", if (modelName.startsWith("qwen") && bitmaps.isNotEmpty()) userContentParts else userPrompt)
+            })
+        }
+
+        val requestPayload = JSONObject().apply {
+            put("model", modelName)
+            put("messages", messagesArr)
+            put("temperature", 0.2)
+            put("max_tokens", 700)
+            if (modelName.startsWith("gpt-oss")) {
+                put("reasoning_effort", "low")
+            }
+            put("response_format", JSONObject().put("type", "json_object"))
+            put("metadata", JSONObject().put("session_id", sessionStickinessId))
+        }
+
+        val t0 = System.currentTimeMillis()
+        val request = Request.Builder()
+            .url("https://api.elastix.ai/v1/chat/completions")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .post(requestPayload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val response = client.newCall(request).execute()
+        val elapsedMs = System.currentTimeMillis() - t0
+        if (!response.isSuccessful) {
+            throw RuntimeException("Elastix HTTP ${response.code} after ${elapsedMs}ms")
+        }
+
+        val respBody = response.body?.string() ?: throw RuntimeException("Empty Elastix response body")
+        val root = JSONObject(respBody)
+        Log.i("ElastixBeta", "Elastix ($modelName) completed in ${elapsedMs}ms | usage=${root.optJSONObject("usage")}")
+        val choices = root.optJSONArray("choices") ?: throw RuntimeException("No choices in Elastix response")
+        if (choices.length() == 0) throw RuntimeException("Empty choices in Elastix response")
+
+        val contentStr = choices.getJSONObject(0)
+            .optJSONObject("message")
+            ?.optString("content", "")
+            ?.trim() ?: throw RuntimeException("Missing message.content")
+
+        val parsed = JSONObject(contentStr)
+        return parseTurnResultFromJson(parsed, accumulatedIdentifiers, "Elastix.ai ($modelName • ${elapsedMs / 1000.0}s)")
     }
 
     private fun callGeminiInteractionsApi(
@@ -157,8 +310,9 @@ class GeminiDiscoveryService(private val context: Context) {
             })
         }
 
+        val usedModel = if (modelName.isBlank()) "gemini-3.8-flash" else modelName
         val requestPayload = JSONObject().apply {
-            put("model", if (modelName.isBlank()) "gemini-3.8-flash" else modelName)
+            put("model", usedModel)
             put("input", inputArr)
             put("response_format", JSONObject().apply {
                 put("type", "text")
@@ -208,13 +362,21 @@ class GeminiDiscoveryService(private val context: Context) {
 
         val jsonStr = jsonText ?: throw RuntimeException("Could not extract JSON model output")
         val parsed = JSONObject(jsonStr)
+        return parseTurnResultFromJson(parsed, accumulatedIdentifiers, "GCP Gemini ($usedModel)")
+    }
 
+    private fun parseTurnResultFromJson(
+        parsed: JSONObject,
+        accumulatedIdentifiers: ExtractedDeviceIdentifiers,
+        providerLabel: String
+    ): GeminiDiscoveryTurnResult {
+        val extObj = parsed.optJSONObject("extractedIdentifiers")
         val extracted = ExtractedDeviceIdentifiers(
-            barcode = parsed.optJSONObject("extractedIdentifiers")?.optString("barcode")?.takeIf { it.isNotBlank() },
-            serialNumber = parsed.optJSONObject("extractedIdentifiers")?.optString("serialNumber")?.takeIf { it.isNotBlank() },
-            qrCode = parsed.optJSONObject("extractedIdentifiers")?.optString("qrCode")?.takeIf { it.isNotBlank() },
-            modelNumber = parsed.optJSONObject("extractedIdentifiers")?.optString("modelNumber")?.takeIf { it.isNotBlank() },
-            macAddress = parsed.optJSONObject("extractedIdentifiers")?.optString("macAddress")?.takeIf { it.isNotBlank() }
+            barcode = extObj?.optString("barcode")?.takeIf { it.isNotBlank() && it != "null" },
+            serialNumber = extObj?.optString("serialNumber")?.takeIf { it.isNotBlank() && it != "null" },
+            qrCode = extObj?.optString("qrCode")?.takeIf { it.isNotBlank() && it != "null" },
+            modelNumber = extObj?.optString("modelNumber")?.takeIf { it.isNotBlank() && it != "null" },
+            macAddress = extObj?.optString("macAddress")?.takeIf { it.isNotBlank() && it != "null" }
         )
 
         val merged = ExtractedDeviceIdentifiers()
@@ -225,6 +387,17 @@ class GeminiDiscoveryService(private val context: Context) {
         val candArray = parsed.optJSONArray("candidates") ?: JSONArray()
         for (i in 0 until candArray.length()) {
             val c = candArray.getJSONObject(i)
+            val osDetailsRaw = c.opt("suggestedOsDetails")
+            val osDetailsStr = when (osDetailsRaw) {
+                is JSONObject -> {
+                    val osName = osDetailsRaw.optString("osName", "Linux")
+                    val osVer = osDetailsRaw.optString("osVersion", "")
+                    "$osName $osVer".trim()
+                }
+                is String -> osDetailsRaw
+                else -> "Linux"
+            }
+
             candidatesList.add(
                 DeviceCandidateMatch(
                     manufacturer = c.optString("manufacturer", "Generic Vendor"),
@@ -234,7 +407,7 @@ class GeminiDiscoveryService(private val context: Context) {
                     confidencePercent = c.optInt("confidencePercent", 70),
                     reasoning = c.optString("reasoning", ""),
                     suggestedHostname = c.optString("suggestedHostname", "device.local"),
-                    suggestedOsDetails = c.optString("suggestedOsDetails", "Linux"),
+                    suggestedOsDetails = osDetailsStr,
                     suggestedPackageManager = c.optString("suggestedPackageManager", "firmware")
                 )
             )
@@ -254,7 +427,8 @@ class GeminiDiscoveryService(private val context: Context) {
             recommendedClueTypes = if (recommendedClues.isEmpty()) DeviceClueType.entries.map { it.rawValue } else recommendedClues,
             extractedIdentifiers = merged,
             candidates = candidatesList,
-            usedLiveGeminiApi = true
+            usedLiveGeminiApi = true,
+            providerUsed = providerLabel
         )
     }
 
@@ -323,7 +497,8 @@ class GeminiDiscoveryService(private val context: Context) {
                             suggestedPackageManager = "hacs"
                         )
                     ),
-                    usedLiveGeminiApi = usedLiveApi
+                    usedLiveGeminiApi = usedLiveApi,
+                    providerUsed = "Pilot Heuristic"
                 )
             }
 
@@ -382,7 +557,8 @@ class GeminiDiscoveryService(private val context: Context) {
                         suggestedPackageManager = "firmware"
                     )
                 ),
-                usedLiveGeminiApi = usedLiveApi
+                usedLiveGeminiApi = usedLiveApi,
+                providerUsed = "Pilot Heuristic"
             )
         }
 
