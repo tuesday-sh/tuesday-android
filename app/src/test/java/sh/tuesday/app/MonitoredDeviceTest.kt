@@ -84,4 +84,61 @@ class MonitoredDeviceTest {
         assertTrue(topMatch.confidencePercent >= 90)
         assertEquals("UCG-Ultra", topMatch.modelNumber)
     }
+
+    @Test
+    fun test128LedMatrixAndActionFirstFiltering() {
+        val devices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        val matrix = BulletinsAndInventoryEngine.build128LedMatrix(devices, zoneFilter = null)
+
+        assertEquals(128, matrix.size)
+        assertEquals(119, matrix.count { it.state == PortLifecycleState.OK })
+        assertEquals(3, matrix.count { it.state == PortLifecycleState.CVE_KEV })
+        assertEquals(1, matrix.count { it.state == PortLifecycleState.EOL })
+        assertEquals(2, matrix.count { it.state == PortLifecycleState.GUESSED })
+        assertEquals(3, matrix.count { it.state == PortLifecycleState.UPDATE })
+
+        val actionList = BulletinsAndInventoryEngine.filterActionFirstDevices(devices, includeOk = false)
+        assertEquals(9, actionList.size)
+        assertTrue(actionList.none { it.portState == PortLifecycleState.OK })
+        assertEquals(PortLifecycleState.CVE_KEV, actionList.first().portState)
+
+        val allList = BulletinsAndInventoryEngine.filterActionFirstDevices(devices, includeOk = true)
+        assertEquals(12, allList.size)
+    }
+
+    @Test
+    fun testBulletinsAssemblyWithMuteOverrideAndBestGuessRules() {
+        val devices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        val payload = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = devices,
+            mutedFeedSlugs = setOf("lg-esphome-iot")
+        )
+
+        // 7 matched feeds (5 active confirmed, 1 muted confirmed, 1 provisional best-guess; Synology unmatched)
+        assertEquals(7, payload.matchedFeeds.size)
+        assertEquals(5, payload.activeFeedCount)
+        assertEquals(1, payload.mutedFeedCount)
+        assertEquals(1, payload.provisionalFeedCount)
+        assertEquals(1, payload.mutedHighSevOverrideCount)
+        assertEquals(1, payload.provisionalHighSevCount)
+
+        // Top-level AI summary excludes muted feeds and provisional guess feeds
+        assertEquals(4, payload.aiBullets.size)
+
+        // Inbox has 6 items: 4 unmuted confirmed + 1 muted high-sev breakthrough + 1 provisional high-sev
+        assertEquals(6, payload.inbox.size)
+        val lgBreakthrough = payload.inbox.find { it.externalId == "CVE-2026-21099" }
+        assertNotNull(lgBreakthrough)
+        assertTrue(lgBreakthrough!!.brokeThroughMute)
+
+        val ecobeeGuess = payload.inbox.find { it.externalId == "CVE-2026-88901" }
+        assertNotNull(ecobeeGuess)
+        assertTrue(ecobeeGuess!!.matchedByGuess)
+        assertTrue(ecobeeGuess.candidateModels.contains("SmartThermostat Premium"))
+
+        // Routine releases from muted or provisional feeds are suppressed
+        assertNull(payload.inbox.find { it.externalId == "REL-esphome-2026.10.2" })
+        assertNull(payload.inbox.find { it.externalId == "REL-ecobee-4.8.7.220" })
+    }
 }

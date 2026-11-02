@@ -1,7 +1,7 @@
 package sh.tuesday.app.ui.home
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,17 +20,25 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-import sh.tuesday.app.models.InventoryConfidenceState
-import sh.tuesday.app.models.MonitoredDevice
-import sh.tuesday.app.models.NodeHealthStatus
+import sh.tuesday.app.models.*
 import sh.tuesday.app.services.ConnectivityMonitor
 import sh.tuesday.app.services.TuesdayRepository
+import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.bulletins.BulletinsScreen
 import sh.tuesday.app.ui.components.CandleGraphCanvas
-import sh.tuesday.app.ui.components.PackageDiffRow
 import sh.tuesday.app.ui.components.WifiWarningOverlay
 import sh.tuesday.app.ui.hacs.HacsSettingsSheet
+import sh.tuesday.app.ui.tabs.SeasonalCheckupScreen
+import sh.tuesday.app.ui.tabs.SwimlaneTimelineScreen
+
+enum class MainNavTab(val labelPro: String, val labelStn: String) {
+    STATUS("Status", "Home"),
+    BULLETINS("Bulletins", "Bulletins"),
+    TIMELINE("Timeline", "Lifespan"),
+    CHECKUP("Q4 Tune-Up", "Checkup"),
+    PLUG_AND_TAG("Plug & Tag", "Add Device")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,17 +47,36 @@ fun HomeScreen(
     connectivity: ConnectivityMonitor,
     onNavigateToAddDevice: () -> Unit
 ) {
-    val devices by repository.devices.collectAsState()
+    val rackDevices by repository.rackDevices.collectAsState()
+    val brandFlavor by repository.brandFlavor.collectAsState()
+    val mutedFeedSlugs by repository.mutedFeedSlugs.collectAsState()
+    val includeOkDevices by repository.includeOkDevices.collectAsState()
+    val selectedZoneFilter by repository.selectedZoneFilter.collectAsState()
     val hacsConfig by repository.hacsConfig.collectAsState()
     val isWifiConnected by connectivity.isWifiConnected.collectAsState()
-    val currentSsid by connectivity.currentSsid.collectAsState()
     val isSimulatingWifi by connectivity.simulateWifiDisconnected.collectAsState()
 
+    var activeTab by remember { mutableStateOf(MainNavTab.STATUS) }
+    var inspectedDevice by remember { mutableStateOf<RackPortDevice?>(null) }
     var showHacsSheet by remember { mutableStateOf(false) }
-    var expandedDeviceIds by remember { mutableStateOf(setOf("device-ubuntu-dev")) }
-    val scope = rememberCoroutineScope()
 
+    val palette = TuesdayTheme.paletteFor(brandFlavor)
+    val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
     val shouldShowWifiOverlay = hacsConfig.requireLocalWifi && !isWifiConnected
+
+    val ledSlots = remember(rackDevices, selectedZoneFilter) {
+        BulletinsAndInventoryEngine.build128LedMatrix(rackDevices, selectedZoneFilter)
+    }
+    val actionDevices = remember(rackDevices, includeOkDevices, selectedZoneFilter) {
+        BulletinsAndInventoryEngine.filterActionFirstDevices(rackDevices, includeOkDevices, selectedZoneFilter)
+    }
+    val bulletinsPayload = remember(brandFlavor, rackDevices, mutedFeedSlugs) {
+        BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = brandFlavor,
+            devices = rackDevices,
+            mutedFeedSlugs = mutedFeedSlugs
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -57,158 +84,179 @@ fun HomeScreen(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
+                                .size(24.dp)
                                 .clip(CircleShape)
-                                .background(TuesdayTheme.HealthyGreen),
+                                .background(palette.accent),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Inventory2,
                                 contentDescription = null,
-                                tint = Color.Black,
-                                modifier = Modifier.size(15.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
                             )
                         }
                         Text(
-                            text = "Tuesday.sh",
-                            color = Color.White,
+                            text = brandFlavor.title,
+                            color = palette.textPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 16.sp
                         )
+                        Surface(
+                            onClick = { repository.toggleBrandFlavor() },
+                            shape = RoundedCornerShape(6.dp),
+                            color = palette.elevated
+                        ) {
+                            Text(
+                                text = brandFlavor.badge,
+                                color = palette.accent,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
                     }
                 },
                 actions = {
                     Surface(
                         onClick = { showHacsSheet = true },
-                        shape = RoundedCornerShape(16.dp),
-                        color = TuesdayTheme.ElevatedPill,
-                        modifier = Modifier.padding(end = 12.dp)
+                        shape = RoundedCornerShape(14.dp),
+                        color = palette.elevated,
+                        modifier = Modifier.padding(end = 10.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(7.dp)
                                     .clip(CircleShape)
-                                    .background(if (hacsConfig.isConnected) TuesdayTheme.HacsCyan else TuesdayTheme.CriticalRed)
+                                    .background(if (hacsConfig.isConnected) TuesdayTheme.LedOkGreen else TuesdayTheme.LedCveRed)
                             )
                             Text(
                                 text = "HACS",
-                                color = TuesdayTheme.HacsCyan,
-                                fontSize = 11.sp,
+                                color = palette.accent,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
-                            )
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = "HACS Settings",
-                                tint = Color.White.copy(alpha = 0.7f),
-                                modifier = Modifier.size(13.dp)
                             )
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = TuesdayTheme.AppBar)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
             )
         },
-        containerColor = TuesdayTheme.Background
+        bottomBar = {
+            NavigationBar(
+                containerColor = palette.surface,
+                tonalElevation = 0.dp
+            ) {
+                MainNavTab.entries.forEach { tab ->
+                    val selected = activeTab == tab
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = {
+                            if (tab == MainNavTab.PLUG_AND_TAG) {
+                                onNavigateToAddDevice()
+                            } else {
+                                activeTab = tab
+                            }
+                        },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (tab == MainNavTab.BULLETINS && bulletinsPayload.inbox.isNotEmpty()) {
+                                        Badge(containerColor = TuesdayTheme.LedCveRed) {
+                                            Text(
+                                                text = bulletinsPayload.inbox.size.toString(),
+                                                color = Color.White,
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = when (tab) {
+                                        MainNavTab.STATUS -> Icons.Default.GridView
+                                        MainNavTab.BULLETINS -> Icons.Default.Notifications
+                                        MainNavTab.TIMELINE -> Icons.Default.Timeline
+                                        MainNavTab.CHECKUP -> Icons.Default.Checklist
+                                        MainNavTab.PLUG_AND_TAG -> Icons.Default.CameraAlt
+                                    },
+                                    contentDescription = tab.name,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
+                        label = {
+                            Text(
+                                text = if (isStn) tab.labelStn else tab.labelPro,
+                                fontSize = 9.5.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = palette.accent,
+                            selectedTextColor = palette.accent,
+                            unselectedIconColor = palette.textMuted,
+                            unselectedTextColor = palette.textMuted,
+                            indicatorColor = palette.accent.copy(alpha = 0.14f)
+                        )
+                    )
+                }
+            }
+        },
+        containerColor = palette.bg
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
-            ) {
-                // 1. Fleet Summary Card
-                item {
-                    FleetSummaryCard(
-                        devices = devices,
-                        instanceName = hacsConfig.instanceName,
-                        currentSsid = currentSsid
-                    )
-                }
-
-                // 2. Section Header
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "DEVICES (${devices.size})",
-                            color = Color.White.copy(alpha = 0.62f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-
-                        TextButton(onClick = onNavigateToAddDevice) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = null,
-                                tint = TuesdayTheme.HealthyGreen,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Add Device",
-                                color = TuesdayTheme.HealthyGreen,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        }
+            when (activeTab) {
+                MainNavTab.STATUS -> StatusMatrixAndActionListScreen(
+                    flavor = brandFlavor,
+                    palette = palette,
+                    ledSlots = ledSlots,
+                    actionDevices = actionDevices,
+                    includeOkDevices = includeOkDevices,
+                    selectedZoneFilter = selectedZoneFilter,
+                    onSelectZone = { repository.setZoneFilter(it) },
+                    onToggleIncludeOk = { repository.toggleIncludeOkDevices() },
+                    onInspectDevice = { devId ->
+                        rackDevices.find { it.id == devId }?.let { inspectedDevice = it }
                     }
-                }
-
-                // 3. Devices List
-                if (devices.isEmpty()) {
-                    item {
-                        EmptyStateCard()
-                    }
-                } else {
-                    items(devices, key = { it.id }) { device ->
-                        val isExpanded = expandedDeviceIds.contains(device.id)
-                        DeviceCard(
-                            device = device,
-                            isExpanded = isExpanded,
-                            onToggleExpand = {
-                                expandedDeviceIds = if (isExpanded) {
-                                    expandedDeviceIds - device.id
-                                } else {
-                                    expandedDeviceIds + device.id
-                                }
-                            },
-                            onPoll = {
-                                repository.triggerDeviceCheckIn(device.id)
-                            },
-                            onPatch = {
-                                repository.markDeviceUpdatesApplied(device.id)
-                            }
-                        )
-                    }
-                }
-
-                // 4. Footer
-                item {
-                    FooterSection(baseUrl = hacsConfig.baseUrl)
-                }
+                )
+                MainNavTab.BULLETINS -> BulletinsScreen(
+                    flavor = brandFlavor,
+                    palette = palette,
+                    payload = bulletinsPayload,
+                    onToggleMuteFeed = { repository.toggleMuteFeed(it) },
+                    onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
+                    onRejectModel = { repository.rejectProvisionalDeviceModel() }
+                )
+                MainNavTab.TIMELINE -> SwimlaneTimelineScreen(
+                    flavor = brandFlavor,
+                    palette = palette,
+                    devices = rackDevices
+                )
+                MainNavTab.CHECKUP -> SeasonalCheckupScreen(
+                    flavor = brandFlavor,
+                    palette = palette,
+                    devices = rackDevices
+                )
+                MainNavTab.PLUG_AND_TAG -> {}
             }
 
-            // Wi-Fi LAN Guard Warning Overlay
             WifiWarningOverlay(
                 isVisible = shouldShowWifiOverlay,
                 hacsUrl = hacsConfig.baseUrl,
@@ -216,6 +264,23 @@ fun HomeScreen(
                     repository.updateHacsConfig(hacsConfig.copy(requireLocalWifi = false))
                     connectivity.setSimulateDisconnected(false)
                 }
+            )
+        }
+    }
+
+    inspectedDevice?.let { device ->
+        ModalBottomSheet(
+            onDismissRequest = { inspectedDevice = null },
+            containerColor = palette.surface
+        ) {
+            DeviceInspectorBottomSheet(
+                device = device,
+                palette = palette,
+                onApplyPatch = {
+                    repository.markDeviceUpdatesApplied(device.id)
+                    inspectedDevice = null
+                },
+                onClose = { inspectedDevice = null }
             )
         }
     }
@@ -236,304 +301,233 @@ fun HomeScreen(
 }
 
 @Composable
-private fun FleetSummaryCard(
-    devices: List<MonitoredDevice>,
-    instanceName: String,
-    currentSsid: String
+private fun StatusMatrixAndActionListScreen(
+    flavor: AppBrandFlavor,
+    palette: BrandPalette,
+    ledSlots: List<LedSlot>,
+    actionDevices: List<RackPortDevice>,
+    includeOkDevices: Boolean,
+    selectedZoneFilter: TrustZone?,
+    onSelectZone: (TrustZone?) -> Unit,
+    onToggleIncludeOk: () -> Unit,
+    onInspectDevice: (String) -> Unit
 ) {
-    val criticalCount = devices.count { it.status == NodeHealthStatus.CRITICAL }
-    val warningCount = devices.count { it.status == NodeHealthStatus.WARNING }
-    val totalPendingUpdates = devices.sumOf { it.pendingUpdates.size }
+    val isStn = flavor == AppBrandFlavor.SURETHING_HOME
+    val okCount = ledSlots.count { it.state == PortLifecycleState.OK }
+    val cveCount = ledSlots.count { it.state == PortLifecycleState.CVE_KEV }
+    val eolCount = ledSlots.count { it.state == PortLifecycleState.EOL }
+    val guessedCount = ledSlots.count { it.state == PortLifecycleState.GUESSED }
+    val updateCount = ledSlots.count { it.state == PortLifecycleState.UPDATE }
 
-    val stateColor = when {
-        criticalCount > 0 -> TuesdayTheme.CriticalRed
-        warningCount > 0 -> TuesdayTheme.WarningAmber
-        else -> TuesdayTheme.HealthyGreen
-    }
-
-    val stateTitle = when {
-        criticalCount > 0 -> "$criticalCount Critical Security Alert${if (criticalCount == 1) "" else "s"}"
-        warningCount > 0 -> "$warningCount Device${if (warningCount == 1) "" else "s"} With Outdated Packages"
-        else -> "All Devices Up to Date"
-    }
-
-    val stateSubtitle = when {
-        criticalCount > 0 -> "$totalPendingUpdates total package updates pending across HACS & Tuesday devices."
-        warningCount > 0 -> "$totalPendingUpdates non-critical package updates queued for Tuesday window."
-        else -> "Every monitored device passed active package update policies."
-    }
-
-    Column(
+    LazyColumn(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(TuesdayTheme.CardSurface)
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .fillMaxSize()
+            .padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = if (criticalCount == 0 && warningCount == 0) Icons.Default.CheckCircle else Icons.Default.Warning,
-                contentDescription = null,
-                tint = stateColor,
-                modifier = Modifier.size(28.dp)
-            )
+        // 1. 128-LED At-a-Glance Status Matrix Card (16 columns x 8 rows)
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isStn) "HOME DEVICE STATUS MATRIX (${ledSlots.size} NODES)" else "AT-A-GLANCE STATUS MATRIX (${ledSlots.size} LEDS • Z0→Z4)",
+                        color = palette.textPrimary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "$okCount OK • ${ledSlots.size - okCount} Action",
+                        color = palette.accent,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
 
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = stateTitle,
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stateSubtitle,
-                    color = Color.White.copy(alpha = 0.72f),
-                    fontSize = 12.sp
-                )
+                // 5-State Color Legend
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    LedLegendItem("OK ($okCount)", TuesdayTheme.LedOkGreen, palette)
+                    LedLegendItem("CVE ($cveCount)", TuesdayTheme.LedCveRed, palette)
+                    LedLegendItem("EOL ($eolCount)", TuesdayTheme.LedEolAmber, palette)
+                    LedLegendItem("Guess ($guessedCount)", TuesdayTheme.LedGuessedGrey, palette)
+                    LedLegendItem("Upd ($updateCount)", TuesdayTheme.LedUpdateBlue, palette)
+                }
+
+                // 16 columns x N rows compact LED grid (zero text inside squares)
+                val rows = ledSlots.chunked(16)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isStn) Color(0xFF0F172A) else Color(0xFF070A0F))
+                        .padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    rows.forEach { rowSlots ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            rowSlots.forEach { slot ->
+                                val ledColor = TuesdayTheme.ledColorFor(slot.state)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(ledColor.copy(alpha = if (slot.state == PortLifecycleState.OK) 0.78f else 1f))
+                                        .clickable(enabled = slot.deviceId != null) {
+                                            slot.deviceId?.let { onInspectDevice(it) }
+                                        }
+                                )
+                            }
+                            // Pad incomplete row if zone filtered
+                            repeat((16 - rowSlots.size).coerceAtLeast(0)) {
+                                Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
+                            }
+                        }
+                    }
+                }
+
+                // Zone Filter Strip
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    ZoneFilterPill(
+                        label = "All (128)",
+                        selected = selectedZoneFilter == null,
+                        palette = palette,
+                        onClick = { onSelectZone(null) }
+                    )
+                    listOf(TrustZone.Z0_CORE, TrustZone.Z1_TRUSTED, TrustZone.Z2_LAB, TrustZone.Z3_IOT).forEach { zone ->
+                        ZoneFilterPill(
+                            label = zone.shortCode,
+                            selected = selectedZoneFilter == zone,
+                            palette = palette,
+                            onClick = { onSelectZone(zone) }
+                        )
+                    }
+                }
             }
         }
 
-        HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        // 2. Action-First Device List Header + Show OK Toggle
+        item {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Home, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(13.dp))
-                Text(text = instanceName, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
-            }
+                Text(
+                    text = if (includeOkDevices) {
+                        "ALL NAMED DEVICES (${actionDevices.size})"
+                    } else {
+                        "NEEDS ATTENTION (${actionDevices.size} NON-GREEN)"
+                    },
+                    color = palette.textMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
 
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = TuesdayTheme.ElevatedPill
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(palette.elevated)
+                        .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                        .clickable { onToggleIncludeOk() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.Wifi, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(12.dp))
                     Text(
-                        text = currentSsid,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold
+                        text = if (includeOkDevices) "Hide OK Devices" else "Show OK Devices (+119)",
+                        color = palette.accent,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
                     )
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun DeviceCard(
-    device: MonitoredDevice,
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    onPoll: () -> Unit,
-    onPatch: () -> Unit
-) {
-    val statusColor = when (device.status) {
-        NodeHealthStatus.HEALTHY -> TuesdayTheme.HealthyGreen
-        NodeHealthStatus.WARNING -> TuesdayTheme.WarningAmber
-        NodeHealthStatus.CRITICAL -> TuesdayTheme.CriticalRed
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(TuesdayTheme.CardSurface)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onToggleExpand() },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+        // 3. Action-First Device Rows
+        items(actionDevices, key = { it.id }) { dev ->
+            val stateColor = TuesdayTheme.ledColorFor(dev.portState)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                    .clickable { onInspectDevice(dev.id) }
+                    .padding(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Left severity stripe + Port Badge
+                Box(
+                    modifier = Modifier
+                        .width(34.dp)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(stateColor.copy(alpha = 0.16f))
+                        .border(1.dp, stateColor, RoundedCornerShape(6.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = device.hostname,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "#%02d".format(dev.portIndex),
+                        color = stateColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
                     )
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.14f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = device.packageManager.rawValue.uppercase(),
-                            color = TuesdayTheme.HacsCyan,
+                            text = dev.name,
+                            color = palette.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${dev.trustZone.shortCode} • ${dev.version}",
+                            color = palette.textMuted,
                             fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
                     }
-
-                    if (device.inventoryState != null && device.inventoryState != InventoryConfidenceState.ENROLLED) {
-                        val invColor = if (device.inventoryState == InventoryConfidenceState.VERIFIED_MATCH) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(invColor.copy(alpha = 0.14f))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = device.inventoryState.rawValue,
-                                color = invColor,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = device.osDetails,
-                    color = Color.White.copy(alpha = 0.68f),
-                    fontSize = 12.sp
-                )
-
-                if (device.discoveredMetadata != null) {
-                    val meta = device.discoveredMetadata
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 2.dp)
-                    ) {
-                        meta.modelNumber?.takeIf { it.isNotBlank() }?.let {
-                            Text("Model: $it", color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        }
-                        meta.macAddress?.takeIf { it.isNotBlank() }?.let {
-                            Text("MAC: $it", color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(statusColor.copy(alpha = 0.14f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = device.status.displayTitle.uppercase(),
-                    color = statusColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-
-        // HACS Entity and Outdated count
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text("HACS ENTITY ID", color = Color.White.copy(alpha = 0.55f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(device.haEntityId, color = Color.White.copy(alpha = 0.82f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text("OUTDATED PACKAGES", color = Color.White.copy(alpha = 0.55f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    text = if (device.pendingUpdates.isEmpty()) "0 (Up to date)" else "${device.pendingUpdates.size} available",
-                    color = if (device.pendingUpdates.isEmpty()) TuesdayTheme.HealthyGreen else statusColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        // High-framerate hardware-accelerated Candle Canvas indicator
-        CandleGraphCanvas(score = device.healthScore)
-
-        // Expandable Diff & Actions
-        AnimatedVisibility(visible = isExpanded) {
-            Column(
-                modifier = Modifier.padding(top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-
-                if (device.pendingUpdates.isEmpty()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(14.dp))
-                        Text(
-                            text = "No pending ${device.packageManager.rawValue} updates reported.",
-                            color = Color.White.copy(alpha = 0.72f),
-                            fontSize = 12.sp
-                        )
-                    }
-                } else {
-                    device.pendingUpdates.forEach { pkg ->
-                        PackageDiffRow(update = pkg)
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(top = 6.dp)
-                ) {
-                    Button(
-                        onClick = onPoll,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = TuesdayTheme.ElevatedPill,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Poll Agent", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    if (device.pendingUpdates.isNotEmpty()) {
-                        Button(
-                            onClick = onPatch,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.HealthyGreen,
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Simulate Patch Run", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                    Text(
+                        text = if (isStn) dev.stnHeadline else dev.proHeadline,
+                        color = stateColor,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
+                    )
                 }
             }
         }
@@ -541,49 +535,150 @@ private fun DeviceCard(
 }
 
 @Composable
-private fun EmptyStateCard() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(TuesdayTheme.CardSurface)
-            .padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+private fun LedLegendItem(label: String, color: Color, palette: BrandPalette) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(Icons.Default.Dns, contentDescription = null, tint = Color.White.copy(alpha = 0.45f), modifier = Modifier.size(42.dp))
-        Text("No Monitored Devices", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color)
+        )
         Text(
-            text = "Inventory your routers, IoT devices, Linux servers, or Home Assistant HACS nodes by photo or agent enrollment.",
-            color = Color.White.copy(alpha = 0.6f),
-            fontSize = 12.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            text = label,
+            color = palette.textMuted,
+            fontSize = 8.5.sp,
+            fontFamily = FontFamily.Monospace
         )
     }
 }
 
 @Composable
-private fun FooterSection(baseUrl: String) {
+private fun ZoneFilterPill(
+    label: String,
+    selected: Boolean,
+    palette: BrandPalette,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(if (selected) palette.accent.copy(alpha = 0.18f) else palette.elevated)
+            .border(1.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(5.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 7.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) palette.accent else palette.textMuted,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+private fun DeviceInspectorBottomSheet(
+    device: RackPortDevice,
+    palette: BrandPalette,
+    onApplyPatch: () -> Unit,
+    onClose: () -> Unit
+) {
+    val stateColor = TuesdayTheme.ledColorFor(device.portState)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
-        Spacer(modifier = Modifier.height(4.dp))
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Bolt, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
-            Text("Synced with $baseUrl", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Column {
+                Text(
+                    text = "PORT #%02d • %s".format(device.portIndex, device.assetTag),
+                    color = stateColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = device.name,
+                    color = palette.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            TextButton(onClick = onClose) {
+                Text("Close", color = palette.accent)
+            }
         }
+
+        // OHLC Version Candlesticks & Telemetry Health
+        CandleGraphCanvas(
+            score = when (device.portState) {
+                PortLifecycleState.OK -> 98.0
+                PortLifecycleState.UPDATE -> 82.0
+                PortLifecycleState.GUESSED -> 64.0
+                PortLifecycleState.EOL -> 42.0
+                PortLifecycleState.CVE_KEV -> 28.0
+            }
+        )
+
+        InspectorSectionRow("S0 Identity", device.s0Identity, palette)
+        InspectorSectionRow("S1 Hardware", device.s1Hardware, palette)
+        InspectorSectionRow("S2 Software (PURL)", device.s2Software, palette)
+        InspectorSectionRow("S3 Lifecycle", device.s3Lifecycle, palette)
+        InspectorSectionRow("S4 Advisories", device.s4Advisories, palette)
+        InspectorSectionRow("S5 Topology", device.s5Topology, palette)
+        InspectorSectionRow("S6 Remediation", device.s6Remediation, palette)
+
+        if (device.portState != PortLifecycleState.OK) {
+            Button(
+                onClick = onApplyPatch,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TuesdayTheme.LedOkGreen,
+                    contentColor = Color.Black
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 14.dp)
+            ) {
+                Text("Mark Remediation Complete (Set Port OK)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        } else {
+            Spacer(modifier = Modifier.height(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun InspectorSectionRow(label: String, value: String, palette: BrandPalette) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.elevated)
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
         Text(
-            text = "Tuesday.sh • Calm Package Telemetry for Home Assistant & Linux Fleets",
-            color = Color.White.copy(alpha = 0.45f),
-            fontSize = 10.sp
+            text = label.uppercase(),
+            color = palette.accent,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = value,
+            color = palette.textPrimary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace
         )
     }
 }

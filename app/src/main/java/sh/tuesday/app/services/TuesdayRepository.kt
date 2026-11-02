@@ -16,6 +16,21 @@ class TuesdayRepository(context: Context) {
     private val _devices = MutableStateFlow<List<MonitoredDevice>>(emptyList())
     val devices: StateFlow<List<MonitoredDevice>> = _devices.asStateFlow()
 
+    private val _rackDevices = MutableStateFlow<List<RackPortDevice>>(BulletinsAndInventoryEngine.defaultRackPortDevices())
+    val rackDevices: StateFlow<List<RackPortDevice>> = _rackDevices.asStateFlow()
+
+    private val _brandFlavor = MutableStateFlow(AppBrandFlavor.TUESDAY_PRO)
+    val brandFlavor: StateFlow<AppBrandFlavor> = _brandFlavor.asStateFlow()
+
+    private val _mutedFeedSlugs = MutableStateFlow(setOf("lg-esphome-iot"))
+    val mutedFeedSlugs: StateFlow<Set<String>> = _mutedFeedSlugs.asStateFlow()
+
+    private val _includeOkDevices = MutableStateFlow(false)
+    val includeOkDevices: StateFlow<Boolean> = _includeOkDevices.asStateFlow()
+
+    private val _selectedZoneFilter = MutableStateFlow<TrustZone?>(null)
+    val selectedZoneFilter: StateFlow<TrustZone?> = _selectedZoneFilter.asStateFlow()
+
     private val _hacsConfig = MutableStateFlow(HacsConfig())
     val hacsConfig: StateFlow<HacsConfig> = _hacsConfig.asStateFlow()
 
@@ -25,6 +40,63 @@ class TuesdayRepository(context: Context) {
     init {
         loadConfig()
         loadDevices()
+    }
+
+    fun toggleBrandFlavor() {
+        _brandFlavor.value = if (_brandFlavor.value == AppBrandFlavor.TUESDAY_PRO) {
+            AppBrandFlavor.SURETHING_HOME
+        } else {
+            AppBrandFlavor.TUESDAY_PRO
+        }
+    }
+
+    fun toggleIncludeOkDevices() {
+        _includeOkDevices.value = !_includeOkDevices.value
+    }
+
+    fun setZoneFilter(zone: TrustZone?) {
+        _selectedZoneFilter.value = zone
+    }
+
+    fun toggleMuteFeed(slug: String) {
+        val current = _mutedFeedSlugs.value.toMutableSet()
+        if (current.contains(slug)) {
+            current.remove(slug)
+        } else {
+            current.add(slug)
+        }
+        _mutedFeedSlugs.value = current
+    }
+
+    fun confirmProvisionalDeviceModel(chosenModel: String) {
+        _rackDevices.value = _rackDevices.value.map { dev ->
+            if (dev.confidenceTier == DeviceConfidenceTier.PROVISIONAL_GUESS) {
+                dev.copy(
+                    confidenceTier = DeviceConfidenceTier.CONFIRMED,
+                    portState = PortLifecycleState.CVE_KEV,
+                    name = "Hallway Ecobee $chosenModel",
+                    version = "4.8.7.210",
+                    targetVersion = "4.8.7.220",
+                    lifecycleTier = "Active",
+                    purls = listOf("pkg:generic/ecobee/smart-thermostat@4.8.7.210"),
+                    proHeadline = "Confirmed ($chosenModel): CVE-2026-88901 HomeKit Pairing Fix (4.8.7.220)",
+                    stnHeadline = "Confirmed ($chosenModel): Update thermostat firmware to 4.8.7.220"
+                )
+            } else dev
+        }
+    }
+
+    fun rejectProvisionalDeviceModel() {
+        _rackDevices.value = _rackDevices.value.map { dev ->
+            if (dev.confidenceTier == DeviceConfidenceTier.PROVISIONAL_GUESS) {
+                dev.copy(
+                    confidenceTier = DeviceConfidenceTier.OPAQUE_UNKNOWN,
+                    excludedPurlPrefixes = dev.excludedPurlPrefixes + "pkg:generic/ecobee/*",
+                    proHeadline = "Ecobee Family Excluded • Use Plug & Tag Camera to Identify Exact Model",
+                    stnHeadline = "Not an Ecobee • Snap a photo of the thermostat label to identify"
+                )
+            } else dev
+        }
     }
 
     private fun loadConfig() {
@@ -125,6 +197,37 @@ class TuesdayRepository(context: Context) {
         val updated = mutableListOf(newDevice)
         updated.addAll(_devices.value)
         _devices.value = updated
+
+        // Also add to rackDevices so it reflects in the 128-LED Matrix & Action-First list
+        val nextPort = (_rackDevices.value.maxOfOrNull { it.portIndex } ?: 12) + 1
+        val isGuessed = inventoryState == InventoryConfidenceState.INCOMPLETE_OR_GUESSED
+        val newRackDev = RackPortDevice(
+            id = newDevice.id,
+            portIndex = nextPort,
+            portState = if (isGuessed) PortLifecycleState.GUESSED else PortLifecycleState.OK,
+            trustZone = TrustZone.Z3_IOT,
+            assetTag = "STN-NEW-$nextPort",
+            shortLabel = hostname.take(10),
+            name = hostname,
+            roomLocation = "Newly Enrolled",
+            version = if (isGuessed) "unverified" else "2026.10.1",
+            targetVersion = "2026.10.1",
+            lifecycleTier = if (isGuessed) "Provisional Guess" else "Active",
+            purls = listOf("pkg:generic/enrolled/${hostname.lowercase()}"),
+            confidenceTier = if (isGuessed) DeviceConfidenceTier.PROVISIONAL_GUESS else DeviceConfidenceTier.CONFIRMED,
+            candidateModels = if (isGuessed) listOf(discoveredMetadata?.modelNumber ?: "Generic IoT Node") else emptyList(),
+            proHeadline = osDetails,
+            stnHeadline = osDetails,
+            s0Identity = "STN-NEW-$nextPort • Newly Enrolled • Z3 IoT",
+            s1Hardware = discoveredMetadata?.manufacturer ?: hostname,
+            s2Software = osDetails,
+            s3Lifecycle = if (isGuessed) "Provisional Guess" else "Active Support",
+            s4Advisories = "0 Active CVEs",
+            s5Topology = "Z3 IoT",
+            s6Remediation = if (isGuessed) "Confirm exact model on Bulletins tab." else "No action required."
+        )
+        _rackDevices.value = listOf(newRackDev) + _rackDevices.value
+
         _isSyncing.value = false
         persistDevices()
     }
@@ -149,11 +252,25 @@ class TuesdayRepository(context: Context) {
                 )
             } else it
         }
+        _rackDevices.value = _rackDevices.value.map {
+            if (it.id == deviceId) {
+                it.copy(
+                    portState = PortLifecycleState.OK,
+                    version = it.targetVersion ?: it.version,
+                    proHeadline = "Patched & Verified OK • 0 Active Advisories",
+                    stnHeadline = "Everything OK • Latest software installed"
+                )
+            } else it
+        }
         persistDevices()
     }
 
     fun resetDemoData() {
         _devices.value = defaultSeedDevices()
+        _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        _mutedFeedSlugs.value = setOf("lg-esphome-iot")
+        _includeOkDevices.value = false
+        _selectedZoneFilter.value = null
         _hacsConfig.value = HacsConfig()
         persistDevices()
         persistConfig()
