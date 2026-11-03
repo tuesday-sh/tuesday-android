@@ -645,15 +645,25 @@ fun AddDeviceScreen(
                                 onClick = {
                                     scope.launch {
                                         isSaving = true
+                                        val resolvedModel = accumulatedIdentifiers.modelNumber ?: candidate.modelNumber
                                         val meta = DiscoveredDeviceMetadata(
                                             manufacturer = candidate.manufacturer,
-                                            modelNumber = accumulatedIdentifiers.modelNumber ?: candidate.modelNumber,
+                                            modelNumber = resolvedModel,
                                             deviceCategory = candidate.deviceCategory,
                                             serialNumber = accumulatedIdentifiers.serialNumber,
                                             macAddress = accumulatedIdentifiers.macAddress,
                                             barcodeOrQr = accumulatedIdentifiers.barcode ?: accumulatedIdentifiers.qrCode,
                                             confidenceScore = candidate.confidencePercent,
-                                            discoveryNotes = "Verified via GCP Gemini AI Photo Wizard (${candidate.confidencePercent}% confidence)"
+                                            discoveryNotes = "Verified via Tuesday Hosted AI Proxy (${candidate.confidencePercent}% confidence)"
+                                        )
+                                        discoveryService.confirmDeviceDiscovery(
+                                            inferredVendor = candidate.manufacturer,
+                                            inferredModel = candidate.modelNumber,
+                                            confirmedVendor = candidate.manufacturer,
+                                            confirmedModel = resolvedModel,
+                                            wasEdited = (resolvedModel != candidate.modelNumber) || (index > 0),
+                                            accumulatedIdentifiers = accumulatedIdentifiers,
+                                            serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
                                         )
                                         repository.enrollDevice(
                                             hostname = candidate.suggestedHostname,

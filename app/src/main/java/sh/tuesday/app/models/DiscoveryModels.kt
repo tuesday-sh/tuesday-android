@@ -20,6 +20,7 @@ data class HacsConfig(
     val isConnected: Boolean = true,
     val lastSyncedEpochMs: Long = System.currentTimeMillis(),
     val aiProvider: AiProviderType = AiProviderType.ELASTIX,
+    val tuesdayApiBaseUrl: String = "https://api.tuesday.sh",
     val elastixApiKey: String = "",
     val elastixModel: String = "qwen3.8-27b",
     val geminiApiKey: String = "",

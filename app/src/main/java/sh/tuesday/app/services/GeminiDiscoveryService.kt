@@ -18,13 +18,24 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
+/**
+ * Hardware Vision Discovery Client for Tuesday.sh Android.
+ *
+ * SECURITY & PRIVACY ARCHITECTURE:
+ * - Zero LLM API keys are bundled or stored in the mobile binary.
+ * - All hardware vision inference is proxied through Tuesday Server (`POST /api/v1/discovery/analyze`),
+ *   which performs $0.00 Gold Catalog short-circuiting, routes across Elastix (qwen3.8-27b) and
+ *   GCP Gemini (gemini-3.8-flash), emits unified telemetry to CloudWatch Omni (`hosted-ai-v1`),
+ *   and enforces ephemeral RAM-only photo processing (zero photo storage on our servers).
+ */
 class GeminiDiscoveryService(private val context: Context) {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(35, TimeUnit.SECONDS)
         .build()
 
     private val sessionStickinessId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
+    private var turnCounter = 0
 
     suspend fun analyzeDeviceProgressive(
         bitmaps: List<Bitmap>,
@@ -34,28 +45,20 @@ class GeminiDiscoveryService(private val context: Context) {
         elastixApiKeyOverride: String = "",
         elastixModelName: String = "qwen3.8-27b",
         apiKeyOverride: String = "",
-        modelName: String = "gemini-3.8-flash"
+        modelName: String = "gemini-3.8-flash",
+        serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
     ): GeminiDiscoveryTurnResult = withContext(Dispatchers.IO) {
-        if (aiProvider == AiProviderType.ELASTIX) {
-            val elastixKey = resolveElastixKey(elastixApiKeyOverride)
-            if (elastixKey.isNotBlank()) {
-                try {
-                    return@withContext callElastixChatCompletionsApi(
-                        bitmaps = bitmaps,
-                        accumulatedIdentifiers = accumulatedIdentifiers,
-                        userClueNotes = userClueNotes,
-                        apiKey = elastixKey,
-                        modelName = elastixModelName.ifBlank { "qwen3.8-27b" }
-                    )
-                } catch (e: Exception) {
-                    Log.e("ElastixBeta", "Elastix inference failed: ${e.message}", e)
-                    // Fall through to Gemini or heuristic if network fails
-                }
-            }
-        }
-
-        val geminiKey = resolveGeminiKey(apiKeyOverride)
-        if (geminiKey.isBlank()) {
+        turnCounter += 1
+        try {
+            return@withContext callTuesdayServerAnalyzeApi(
+                bitmaps = bitmaps,
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                aiProvider = aiProvider,
+                serverBaseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL }
+            )
+        } catch (e: Exception) {
+            Log.w("TuesdayVisionProxy", "Hosted proxy unreachable (${e.message}); falling back to local heuristic")
             return@withContext fallbackHeuristic(
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = userClueNotes,
@@ -63,306 +66,121 @@ class GeminiDiscoveryService(private val context: Context) {
                 usedLiveApi = false
             )
         }
+    }
 
+    suspend fun confirmDeviceDiscovery(
+        inferredVendor: String?,
+        inferredModel: String?,
+        confirmedVendor: String,
+        confirmedModel: String,
+        wasEdited: Boolean,
+        accumulatedIdentifiers: ExtractedDeviceIdentifiers,
+        serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
-            callGeminiInteractionsApi(bitmaps, accumulatedIdentifiers, userClueNotes, geminiKey, modelName)
-        } catch (_: Exception) {
-            fallbackHeuristic(accumulatedIdentifiers, userClueNotes, bitmaps.size, usedLiveApi = false)
+            val baseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+            val idsArray = JSONArray()
+            for ((type, value) in accumulatedIdentifiers.nonEmptyPairs()) {
+                idsArray.put("${type.rawValue}: $value")
+            }
+
+            val payload = JSONObject().apply {
+                put("session_id", sessionStickinessId)
+                put("client_platform", "android")
+                put("device_id", sessionStickinessId)
+                put("inferred_vendor", inferredVendor ?: "")
+                put("inferred_model", inferredModel ?: "")
+                put("confirmed_vendor", confirmedVendor)
+                put("confirmed_model", confirmedModel)
+                put("was_edited", wasEdited)
+                put("extracted_identifiers", idsArray)
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/v1/discovery/confirm")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-Tuesday-Device-ID", sessionStickinessId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { resp ->
+                return@withContext resp.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w("TuesdayVisionProxy", "Confirm telemetry skipped: ${e.message}")
+            return@withContext false
         }
     }
 
-    private fun resolveElastixKey(overrideKey: String): String {
-        if (overrideKey.isNotBlank()) return overrideKey.trim()
-        try {
-            val assetStream = context.assets.open("pilot_secrets.json")
-            val content = assetStream.bufferedReader().use { it.readText() }
-            val obj = JSONObject(content)
-            val key = obj.optString("ELASTIX_API_KEY", "")
-            if (key.isNotBlank()) return key
-        } catch (_: Exception) {}
-        return ""
-    }
-
-    private fun resolveGeminiKey(overrideKey: String): String {
-        if (overrideKey.isNotBlank()) return overrideKey.trim()
-        try {
-            val assetStream = context.assets.open("pilot_secrets.json")
-            val content = assetStream.bufferedReader().use { it.readText() }
-            val obj = JSONObject(content)
-            val key = obj.optString("GEMINI_API_KEY", "")
-            if (key.isNotBlank()) return key
-        } catch (_: Exception) {}
-        return ""
-    }
-
-    private fun callElastixChatCompletionsApi(
+    private fun callTuesdayServerAnalyzeApi(
         bitmaps: List<Bitmap>,
         accumulatedIdentifiers: ExtractedDeviceIdentifiers,
         userClueNotes: List<String>,
-        apiKey: String,
-        modelName: String
+        aiProvider: AiProviderType,
+        serverBaseUrl: String
     ): GeminiDiscoveryTurnResult {
-        val clueLines = mutableListOf<String>()
-        for ((type, value) in accumulatedIdentifiers.nonEmptyPairs()) {
-            clueLines.add("- ${type.rawValue}: $value")
+        val baseUrl = serverBaseUrl.trimEnd('/')
+        val providerOverride = when (aiProvider) {
+            AiProviderType.ELASTIX -> "auto"
+            AiProviderType.GEMINI -> "gemini"
         }
+
+        val extractedObj = JSONObject().apply {
+            accumulatedIdentifiers.barcode?.takeIf { it.isNotBlank() }?.let { put("barcode", it) }
+            accumulatedIdentifiers.serialNumber?.takeIf { it.isNotBlank() }?.let { put("serialNumber", it) }
+            accumulatedIdentifiers.qrCode?.takeIf { it.isNotBlank() }?.let { put("qrCode", it) }
+            accumulatedIdentifiers.modelNumber?.takeIf { it.isNotBlank() }?.let { put("modelNumber", it) }
+            accumulatedIdentifiers.macAddress?.takeIf { it.isNotBlank() }?.let { put("macAddress", it) }
+        }
+
+        val cluesArr = JSONArray()
         for (note in userClueNotes) {
-            if (note.isNotBlank()) clueLines.add("- User Clue: $note")
-        }
-        val clueContext = if (clueLines.isEmpty()) "None provided yet." else clueLines.joinToString("\n")
-
-        val systemPrompt = """
-            /no_think
-            You are a hardware device inventory discovery assistant for Tuesday.sh running on Elastix.ai.
-            LATENCY CRITICAL: Keep internal thinking/reasoning under 25 words. Do NOT over-deliberate. Output the JSON object immediately with concise 1-sentence fields.
-            Return ONLY a valid JSON object with the exact following keys:
-            - "visualSummary": concise 1-sentence summary of hardware and clues
-            - "nextNarrowingQuestion": concise question asking for Barcode, Serial Number, QR Code, Model, or MAC Address
-            - "recommendedClueTypes": array of strings from ["Model", "MAC Address", "Serial Number", "Barcode", "QR Code"]
-            - "extractedIdentifiers": object with string or null fields {"barcode", "serialNumber", "qrCode", "modelNumber", "macAddress"}
-            - "candidates": array of 2 objects, each with exact keys:
-              - "manufacturer": string
-              - "modelNumber": string
-              - "displayName": string
-              - "deviceCategory": string
-              - "confidencePercent": integer (1 to 99)
-              - "reasoning": concise 1-sentence reason
-              - "suggestedHostname": string
-              - "suggestedOsDetails": plain string (e.g. "UniFi OS 4.0.20 (Debian 12 apt)")
-              - "suggestedPackageManager": string from ["apt", "apk", "brew", "yum", "docker", "hacs", "firmware"]
-        """.trimIndent()
-
-        val userPrompt = """
-            <accumulated_clues>
-            $clueContext
-            </accumulated_clues>
-            Analyze the attached hardware photo(s) and clues and return the JSON object immediately. /no_think
-        """.trimIndent()
-
-        val userContentParts = JSONArray().apply {
-            put(JSONObject().apply {
-                put("type", "text")
-                put("text", userPrompt)
-            })
-            if (modelName.startsWith("qwen")) {
-                for (bmp in bitmaps.takeLast(2)) {
-                    val b64 = downscaleAndEncode(bmp, 640)
-                    if (b64 != null) {
-                        put(JSONObject().apply {
-                            put("type", "image_url")
-                            put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
-                        })
-                    }
-                }
-            }
+            if (note.isNotBlank()) cluesArr.put(note)
         }
 
-        val messagesArr = JSONArray().apply {
-            put(JSONObject().apply {
-                put("role", "system")
-                put("content", systemPrompt)
-            })
-            put(JSONObject().apply {
-                put("role", "user")
-                put("content", if (modelName.startsWith("qwen") && bitmaps.isNotEmpty()) userContentParts else userPrompt)
-            })
-        }
-
-        val requestPayload = JSONObject().apply {
-            put("model", modelName)
-            put("messages", messagesArr)
-            put("temperature", 0.2)
-            put("max_tokens", 700)
-            if (modelName.startsWith("gpt-oss")) {
-                put("reasoning_effort", "low")
-            }
-            put("response_format", JSONObject().put("type", "json_object"))
-            put("metadata", JSONObject().put("session_id", sessionStickinessId))
-        }
-
-        val t0 = System.currentTimeMillis()
-        val request = Request.Builder()
-            .url("https://api.elastix.ai/v1/chat/completions")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("Content-Type", "application/json")
-            .post(requestPayload.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-
-        val response = client.newCall(request).execute()
-        val elapsedMs = System.currentTimeMillis() - t0
-        if (!response.isSuccessful) {
-            throw RuntimeException("Elastix HTTP ${response.code} after ${elapsedMs}ms")
-        }
-
-        val respBody = response.body?.string() ?: throw RuntimeException("Empty Elastix response body")
-        val root = JSONObject(respBody)
-        Log.i("ElastixBeta", "Elastix ($modelName) completed in ${elapsedMs}ms | usage=${root.optJSONObject("usage")}")
-        val choices = root.optJSONArray("choices") ?: throw RuntimeException("No choices in Elastix response")
-        if (choices.length() == 0) throw RuntimeException("Empty choices in Elastix response")
-
-        val contentStr = choices.getJSONObject(0)
-            .optJSONObject("message")
-            ?.optString("content", "")
-            ?.trim() ?: throw RuntimeException("Missing message.content")
-
-        val parsed = JSONObject(contentStr)
-        return parseTurnResultFromJson(parsed, accumulatedIdentifiers, "Elastix.ai ($modelName • ${elapsedMs / 1000.0}s)")
-    }
-
-    private fun callGeminiInteractionsApi(
-        bitmaps: List<Bitmap>,
-        accumulatedIdentifiers: ExtractedDeviceIdentifiers,
-        userClueNotes: List<String>,
-        apiKey: String,
-        modelName: String
-    ): GeminiDiscoveryTurnResult {
-        val clueLines = mutableListOf<String>()
-        for ((type, value) in accumulatedIdentifiers.nonEmptyPairs()) {
-            clueLines.add("- ${type.rawValue}: $value")
-        }
-        for (note in userClueNotes) {
-            if (note.isNotBlank()) clueLines.add("- User Clue: $note")
-        }
-        val clueContext = if (clueLines.isEmpty()) "None provided yet." else clueLines.joinToString("\n")
-
-        val promptText = """
-            <instructions>
-            You are a hardware device inventory discovery assistant for Tuesday.sh (a home lab, router, switch, NAS, and IoT package/firmware telemetry platform).
-            Analyze the attached hardware device photo(s) along with any user-supplied identifiers (barcode, serial number, QR code, model number, or MAC address).
-            1. Extract any visible Barcode, Serial Number, QR Code payload, Model Number, or MAC Address from the photo(s) or user clues.
-            2. Rank 2 to 3 candidate hardware devices (manufacturer, modelNumber, displayName, deviceCategory, confidencePercent 1-99, reasoning, suggestedHostname, suggestedOsDetails, suggestedPackageManager from [apt, apk, brew, yum, docker, hacs, firmware]).
-            3. Formulate a concise `nextNarrowingQuestion` asking the user if there is a Barcode, Serial Number, QR Code, Model, or MAC Address on the device/sticker that can disambiguate the top candidates.
-            </instructions>
-            <accumulated_clues>
-            $clueContext
-            </accumulated_clues>
-        """.trimIndent()
-
-        val inputArr = JSONArray()
-        val textObj = JSONObject().apply {
-            put("type", "text")
-            put("text", promptText)
-        }
-        inputArr.put(textObj)
-
+        val imagesArr = JSONArray()
         for (bmp in bitmaps.takeLast(2)) {
-            val b64 = downscaleAndEncode(bmp, 960)
+            val b64 = downscaleAndEncode(bmp, 640)
             if (b64 != null) {
-                val imgObj = JSONObject().apply {
-                    put("type", "image")
-                    put("data", b64)
-                    put("mime_type", "image/jpeg")
-                }
-                inputArr.put(imgObj)
+                imagesArr.put(b64)
             }
         }
 
-        val schema = JSONObject().apply {
-            put("type", "object")
-            val props = JSONObject()
-            props.put("visualSummary", JSONObject().put("type", "string"))
-            props.put("nextNarrowingQuestion", JSONObject().put("type", "string"))
-            props.put("recommendedClueTypes", JSONObject().apply {
-                put("type", "array")
-                put("items", JSONObject().put("type", "string"))
-            })
-
-            val idProps = JSONObject().apply {
-                put("barcode", JSONObject().put("type", "string"))
-                put("serialNumber", JSONObject().put("type", "string"))
-                put("qrCode", JSONObject().put("type", "string"))
-                put("modelNumber", JSONObject().put("type", "string"))
-                put("macAddress", JSONObject().put("type", "string"))
-            }
-            props.put("extractedIdentifiers", JSONObject().apply {
-                put("type", "object")
-                put("properties", idProps)
-            })
-
-            val candidateItemProps = JSONObject().apply {
-                put("manufacturer", JSONObject().put("type", "string"))
-                put("modelNumber", JSONObject().put("type", "string"))
-                put("displayName", JSONObject().put("type", "string"))
-                put("deviceCategory", JSONObject().put("type", "string"))
-                put("confidencePercent", JSONObject().put("type", "integer"))
-                put("reasoning", JSONObject().put("type", "string"))
-                put("suggestedHostname", JSONObject().put("type", "string"))
-                put("suggestedOsDetails", JSONObject().put("type", "string"))
-                put("suggestedPackageManager", JSONObject().put("type", "string"))
-            }
-            val candidateItem = JSONObject().apply {
-                put("type", "object")
-                put("properties", candidateItemProps)
-                put("required", JSONArray().apply {
-                    put("manufacturer"); put("modelNumber"); put("displayName")
-                    put("deviceCategory"); put("confidencePercent"); put("reasoning")
-                    put("suggestedHostname"); put("suggestedOsDetails"); put("suggestedPackageManager")
-                })
-            }
-            props.put("candidates", JSONObject().apply {
-                put("type", "array")
-                put("items", candidateItem)
-            })
-            put("properties", props)
-            put("required", JSONArray().apply {
-                put("visualSummary"); put("nextNarrowingQuestion")
-                put("recommendedClueTypes"); put("extractedIdentifiers"); put("candidates")
-            })
-        }
-
-        val usedModel = if (modelName.isBlank()) "gemini-3.8-flash" else modelName
         val requestPayload = JSONObject().apply {
-            put("model", usedModel)
-            put("input", inputArr)
-            put("response_format", JSONObject().apply {
-                put("type", "text")
-                put("mime_type", "application/json")
-                put("schema", schema)
-            })
+            put("session_id", sessionStickinessId)
+            put("turn_index", turnCounter)
+            put("client_platform", "android")
+            put("device_id", sessionStickinessId)
+            put("provider_override", providerOverride)
+            put("extracted_identifiers", extractedObj)
+            put("user_clue_notes", cluesArr)
+            put("images_base64", imagesArr)
         }
 
         val request = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/interactions")
-            .addHeader("x-goog-api-key", apiKey)
+            .url("$baseUrl/api/v1/discovery/analyze")
             .addHeader("Content-Type", "application/json")
+            .addHeader("Accept", "application/json")
+            .addHeader("X-Tuesday-Device-ID", sessionStickinessId)
+            .addHeader("X-Tuesday-Client-Platform", "android")
+            .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
             .post(requestPayload.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw RuntimeException("Gemini HTTP ${response.code}")
-        }
-
-        val respBody = response.body?.string() ?: throw RuntimeException("Empty response body")
-        val root = JSONObject(respBody)
-
-        var jsonText: String? = root.optString("output_text", null)
-        if (jsonText.isNullOrBlank()) {
-            val steps = root.optJSONArray("steps")
-            if (steps != null) {
-                for (i in (steps.length() - 1) downTo 0) {
-                    val step = steps.getJSONObject(i)
-                    if (step.optString("type") == "model_output") {
-                        val contents = step.optJSONArray("content")
-                        if (contents != null) {
-                            for (j in 0 until contents.length()) {
-                                val item = contents.getJSONObject(j)
-                                val t = item.optString("text", "")
-                                if (t.isNotBlank()) {
-                                    jsonText = t
-                                    break
-                                }
-                            }
-                        }
-                    }
-                    if (!jsonText.isNullOrBlank()) break
-                }
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw RuntimeException("Tuesday Server HTTP ${response.code}")
             }
+            val respBody = response.body?.string() ?: throw RuntimeException("Empty response body from Tuesday Server")
+            val parsed = JSONObject(respBody)
+            val providerLabel = parsed.optString(
+                "providerLabel",
+                "Tuesday Server → ${parsed.optString("providerUsed", "Elastix")}"
+            )
+            return parseTurnResultFromJson(parsed, accumulatedIdentifiers, providerLabel)
         }
-
-        val jsonStr = jsonText ?: throw RuntimeException("Could not extract JSON model output")
-        val parsed = JSONObject(jsonStr)
-        return parseTurnResultFromJson(parsed, accumulatedIdentifiers, "GCP Gemini ($usedModel)")
     }
 
     private fun parseTurnResultFromJson(
@@ -370,7 +188,7 @@ class GeminiDiscoveryService(private val context: Context) {
         accumulatedIdentifiers: ExtractedDeviceIdentifiers,
         providerLabel: String
     ): GeminiDiscoveryTurnResult {
-        val extObj = parsed.optJSONObject("extractedIdentifiers")
+        val extObj = parsed.optJSONObject("extractedIdentifiersObject") ?: parsed.optJSONObject("extractedIdentifiers")
         val extracted = ExtractedDeviceIdentifiers(
             barcode = extObj?.optString("barcode")?.takeIf { it.isNotBlank() && it != "null" },
             serialNumber = extObj?.optString("serialNumber")?.takeIf { it.isNotBlank() && it != "null" },
@@ -451,6 +269,9 @@ class GeminiDiscoveryService(private val context: Context) {
     }
 
     companion object {
+        const val DEFAULT_SERVER_BASE_URL = "https://api.tuesday.sh"
+        private const val PILOT_CLIENT_TOKEN = "tuesday-pilot-v1-public-client-token"
+
         fun fallbackHeuristic(
             accumulatedIdentifiers: ExtractedDeviceIdentifiers,
             userClueNotes: List<String>,
