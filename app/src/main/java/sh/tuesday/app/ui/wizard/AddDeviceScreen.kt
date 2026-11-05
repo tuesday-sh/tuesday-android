@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.GeminiDiscoveryService
+import sh.tuesday.app.services.GoldenCorpusRecorder
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.TuesdayTheme
 
@@ -62,6 +63,7 @@ fun AddDeviceScreen(
     val scope = rememberCoroutineScope()
 
     // Wizard State
+    var currentSessionId by remember { mutableStateOf(System.currentTimeMillis().toString()) }
     var capturedBitmaps by remember { mutableStateOf(listOf<Bitmap>()) }
     var isAnalyzing by remember { mutableStateOf(false) }
     var discoveryResult by remember { mutableStateOf<GeminiDiscoveryTurnResult?>(null) }
@@ -70,6 +72,8 @@ fun AddDeviceScreen(
     var selectedClueType by remember { mutableStateOf(DeviceClueType.MODEL_NUMBER) }
     var clueInputText by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+    var savedCorpusCount by remember { mutableStateOf(GoldenCorpusRecorder.getSavedSessionCount(context)) }
+    var lastSavedCorpusFolder by remember { mutableStateOf<String?>(null) }
 
     // Manual State
     var manualHostname by remember { mutableStateOf("") }
@@ -114,6 +118,17 @@ fun AddDeviceScreen(
             )
             accumulatedIdentifiers.merge(res.extractedIdentifiers)
             discoveryResult = res
+            val savedDir = GoldenCorpusRecorder.saveCaptureSession(
+                context = context,
+                sessionId = currentSessionId,
+                bitmaps = updatedBitmaps,
+                result = res,
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                status = "auto_tagged"
+            )
+            lastSavedCorpusFolder = savedDir.name
+            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
             isAnalyzing = false
         }
     }
@@ -245,35 +260,34 @@ fun AddDeviceScreen(
                         )
                     }
 
+                    val isElastix = hacsConfig.aiProvider == AiProviderType.ELASTIX
+                    val activeAiColor = if (isElastix) TuesdayTheme.HealthyGreen else TuesdayTheme.LedUpdateBlue
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        AiProviderType.entries.forEach { prov ->
-                            val isActive = hacsConfig.aiProvider == prov
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isActive) TuesdayTheme.HealthyGreen.copy(alpha = 0.2f) else TuesdayTheme.CardSurface)
-                                    .border(
-                                        1.dp,
-                                        if (isActive) TuesdayTheme.HealthyGreen else Color.White.copy(alpha = 0.15f),
-                                        RoundedCornerShape(6.dp)
-                                    )
-                                    .clickable {
-                                        repository.updateHacsConfig(hacsConfig.copy(aiProvider = prov))
-                                    }
-                                    .padding(horizontal = 7.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = prov.displayName,
-                                    color = if (isActive) TuesdayTheme.HealthyGreen else Color.White.copy(alpha = 0.55f),
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(activeAiColor.copy(alpha = 0.14f))
+                            .border(1.dp, activeAiColor.copy(alpha = 0.55f), CircleShape)
+                            .clickable {
+                                val nextProvider = if (isElastix) AiProviderType.GEMINI else AiProviderType.ELASTIX
+                                repository.updateHacsConfig(hacsConfig.copy(aiProvider = nextProvider))
                             }
-                        }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(activeAiColor)
+                        )
+                        Text(
+                            text = if (isElastix) "AI: Elastix ⇄" else "AI: Gemini ⇄",
+                            color = activeAiColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
 
@@ -495,6 +509,92 @@ fun AddDeviceScreen(
 
                         Text(result.visualSummary, color = Color.White.copy(alpha = 0.82f), fontSize = 12.sp)
 
+                        // Golden Corpus Auto-Save Status & Quick Next-Device Loop Button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.12f))
+                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "📦 GOLDEN CORPUS AUTO-SAVED ($savedCorpusCount TOTAL)",
+                                    color = TuesdayTheme.HealthyGreen,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = lastSavedCorpusFolder ?: "Saved to /sdcard/.../golden_corpus/",
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    onClick = {
+                                        val sid = currentSessionId
+                                        scope.launch {
+                                            GoldenCorpusRecorder.deleteCaptureSession(context, sid)
+                                            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                            lastSavedCorpusFolder = null
+                                            currentSessionId = System.currentTimeMillis().toString()
+                                            capturedBitmaps = emptyList()
+                                            discoveryResult = null
+                                            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+                                            userClueNotes = emptyList()
+                                            clueInputText = ""
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.2f),
+                                    modifier = Modifier.border(
+                                        1.dp,
+                                        TuesdayTheme.CriticalRed.copy(alpha = 0.6f),
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                ) {
+                                    Text(
+                                        text = "✕ Discard",
+                                        color = TuesdayTheme.CriticalRed,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    )
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        // Reset wizard state to immediately scan the next piece of hardware
+                                        currentSessionId = System.currentTimeMillis().toString()
+                                        capturedBitmaps = emptyList()
+                                        discoveryResult = null
+                                        accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+                                        userClueNotes = emptyList()
+                                        clueInputText = ""
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = TuesdayTheme.HealthyGreen
+                                ) {
+                                    Text(
+                                        text = "Scan Next →",
+                                        color = Color.Black,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
                         Text(result.nextNarrowingQuestion, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -587,6 +687,19 @@ fun AddDeviceScreen(
                                                 )
                                                 accumulatedIdentifiers.merge(res.extractedIdentifiers)
                                                 discoveryResult = res
+                                                if (capturedBitmaps.isNotEmpty()) {
+                                                    val savedDir = GoldenCorpusRecorder.saveCaptureSession(
+                                                        context = context,
+                                                        sessionId = currentSessionId,
+                                                        bitmaps = capturedBitmaps,
+                                                        result = res,
+                                                        accumulatedIdentifiers = accumulatedIdentifiers,
+                                                        userClueNotes = userClueNotes,
+                                                        status = "refined_clues"
+                                                    )
+                                                    lastSavedCorpusFolder = savedDir.name
+                                                    savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                                }
                                                 isAnalyzing = false
                                             }
                                         }
@@ -646,6 +759,20 @@ fun AddDeviceScreen(
                                     scope.launch {
                                         isSaving = true
                                         val resolvedModel = accumulatedIdentifiers.modelNumber ?: candidate.modelNumber
+                                        if (capturedBitmaps.isNotEmpty()) {
+                                            GoldenCorpusRecorder.saveCaptureSession(
+                                                context = context,
+                                                sessionId = currentSessionId,
+                                                bitmaps = capturedBitmaps,
+                                                result = result,
+                                                accumulatedIdentifiers = accumulatedIdentifiers,
+                                                userClueNotes = userClueNotes,
+                                                status = "user_confirmed",
+                                                confirmedCandidate = candidate,
+                                                confirmedModelOverride = resolvedModel
+                                            )
+                                            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                        }
                                         val meta = DiscoveredDeviceMetadata(
                                             manufacturer = candidate.manufacturer,
                                             modelNumber = resolvedModel,

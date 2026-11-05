@@ -15,56 +15,59 @@ data class BrandPalette(
 )
 
 object TuesdayTheme {
-    // Preset A: Anodized Rack (Tuesday.sh STN-Pro)
-    val Background = Color(0xFF0B0F17)
-    val AppBar = Color(0xFF121824)
-    val CardSurface = Color(0xFF121824)
-    val ElevatedPill = Color(0xFF192231)
+    // Preset A: UniFi 9.5 Carbon (Tuesday.sh STN-Pro)
+    val Background = Color(0xFF111215)
+    val AppBar = Color(0xFF181A1F)
+    val CardSurface = Color(0xFF181A1F)
+    val ElevatedPill = Color(0xFF20232A)
 
-    // Preset A: Anodized Rack (SureThingNet STN-Home Daylight)
+    // Preset A: Daylight Home (SureThingNet STN-Home)
     val StnBackground = Color(0xFFF1F5F9)
     val StnSurface = Color(0xFFFFFFFF)
-    val StnElevated = Color(0xFFE2E8F0)
+    val StnElevated = Color(0xFFF8FAFC)
 
-    // Canonical 5-State LED Colors
-    val LedOkGreen = Color(0xFF10B981)
-    val LedCveRed = Color(0xFFF43F5E)
+    // Canonical 6-State LED Colors (5 Active States + 1 Unassigned Dark Slot)
+    val LedOkGreen = Color(0xFF2EBD6B)
+    val LedCveRed = Color(0xFFEF4444)
     val LedEolAmber = Color(0xFFF59E0B)
-    val LedGuessedGrey = Color(0xFF64748B)
-    val LedUpdateBlue = Color(0xFF38BDF8)
+    val LedGuessedGrey = Color(0xFF8E95A2)
+    val LedUpdateBlue = Color(0xFF3B82F6)
+    val LedUnassignedPro = Color(0xFF1B1E26)
+    val LedUnassignedStn = Color(0xFFE2E8F0)
 
     // Legacy compatibility aliases
     val HealthyGreen = LedOkGreen
     val WarningAmber = LedEolAmber
     val CriticalRed = LedCveRed
-    val HacsCyan = Color(0xFF06B6D4)
+    val HacsCyan = Color(0xFF3B82F6)
 
     fun paletteFor(flavor: AppBrandFlavor): BrandPalette = when (flavor) {
         AppBrandFlavor.TUESDAY_PRO -> BrandPalette(
             bg = Background,
             surface = CardSurface,
             elevated = ElevatedPill,
-            textPrimary = Color(0xFFF8FAFC),
-            textMuted = Color(0xFF94A3B8),
-            border = Color(0xFF26334A),
-            accent = Color(0xFF06B6D4)
+            textPrimary = Color(0xFFF3F4F6),
+            textMuted = Color(0xFF8E95A2),
+            border = Color(0xFF242730),
+            accent = Color(0xFF3B82F6)
         )
         AppBrandFlavor.SURETHING_HOME -> BrandPalette(
             bg = StnBackground,
             surface = StnSurface,
             elevated = StnElevated,
             textPrimary = Color(0xFF0F172A),
-            textMuted = Color(0xFF334155),
+            textMuted = Color(0xFF475569),
             border = Color(0xFFCBD5E1),
             accent = Color(0xFF0284C7)
         )
     }
 
-    fun ledColorFor(state: PortLifecycleState): Color = when (state) {
-        PortLifecycleState.OK -> LedOkGreen
-        PortLifecycleState.CVE_KEV -> LedCveRed
-        PortLifecycleState.EOL -> LedEolAmber
-        PortLifecycleState.GUESSED -> LedGuessedGrey
-        PortLifecycleState.UPDATE -> LedUpdateBlue
+    fun ledColorFor(state: PortLifecycleState, isStn: Boolean = false): Color = when (state) {
+        PortLifecycleState.OK -> if (isStn) Color(0xFF059669) else LedOkGreen
+        PortLifecycleState.CVE_KEV -> if (isStn) Color(0xFFDC2626) else LedCveRed
+        PortLifecycleState.EOL -> if (isStn) Color(0xFFD97706) else LedEolAmber
+        PortLifecycleState.GUESSED -> if (isStn) Color(0xFF64748B) else LedGuessedGrey
+        PortLifecycleState.UPDATE -> if (isStn) Color(0xFF0284C7) else LedUpdateBlue
+        PortLifecycleState.UNASSIGNED -> if (isStn) LedUnassignedStn else LedUnassignedPro
     }
 }

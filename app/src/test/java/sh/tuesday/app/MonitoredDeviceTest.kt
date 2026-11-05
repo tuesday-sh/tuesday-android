@@ -91,7 +91,8 @@ class MonitoredDeviceTest {
         val matrix = BulletinsAndInventoryEngine.build128LedMatrix(devices, zoneFilter = null)
 
         assertEquals(128, matrix.size)
-        assertEquals(119, matrix.count { it.state == PortLifecycleState.OK })
+        assertEquals(3, matrix.count { it.state == PortLifecycleState.OK })
+        assertEquals(116, matrix.count { it.state == PortLifecycleState.UNASSIGNED })
         assertEquals(3, matrix.count { it.state == PortLifecycleState.CVE_KEV })
         assertEquals(1, matrix.count { it.state == PortLifecycleState.EOL })
         assertEquals(2, matrix.count { it.state == PortLifecycleState.GUESSED })
@@ -104,6 +105,31 @@ class MonitoredDeviceTest {
 
         val allList = BulletinsAndInventoryEngine.filterActionFirstDevices(devices, includeOk = true)
         assertEquals(12, allList.size)
+
+        val cveOnly = BulletinsAndInventoryEngine.filterActionFirstDevices(
+            devices,
+            includeOk = false,
+            portStateFilter = PortLifecycleState.CVE_KEV
+        )
+        assertEquals(3, cveOnly.size)
+    }
+
+    @Test
+    fun testAdaptiveInventoryScaleTiersAndStnCategories() {
+        assertEquals(InventoryScaleTier.DAY_ZERO, InventoryScaleTier.forCount(0))
+        assertEquals(InventoryScaleTier.SEED, InventoryScaleTier.forCount(1))
+        assertEquals(InventoryScaleTier.SMALL_NETWORK, InventoryScaleTier.forCount(3))
+        assertEquals(InventoryScaleTier.SMALL_NETWORK, InventoryScaleTier.forCount(7))
+        assertEquals(InventoryScaleTier.FLEET_RACK, InventoryScaleTier.forCount(8))
+        assertEquals(InventoryScaleTier.FLEET_RACK, InventoryScaleTier.forCount(12))
+
+        val devices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        val totalAcrossC1ToC8 = StnHardwareCategory.entries.sumOf { cat ->
+            BulletinsAndInventoryEngine.getCategoryDeviceCount(cat, devices)
+        }
+        assertEquals(12, totalAcrossC1ToC8)
+        assertTrue(BulletinsAndInventoryEngine.getCategoryDeviceCount(StnHardwareCategory.C1_GATEWAY, devices) >= 1)
+        assertTrue(BulletinsAndInventoryEngine.getCategoryDeviceCount(StnHardwareCategory.C4_SERVER, devices) >= 1)
     }
 
     @Test

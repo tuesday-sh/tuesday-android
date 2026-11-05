@@ -73,6 +73,7 @@ fun SwimlaneTimelineScreen(
                 PortLifecycleState.GUESSED -> 0.50f
                 PortLifecycleState.UPDATE -> 0.35f
                 PortLifecycleState.OK -> 0.25f
+                PortLifecycleState.UNASSIGNED -> 0.0f
             }
             val barColor = TuesdayTheme.ledColorFor(dev.portState)
 
