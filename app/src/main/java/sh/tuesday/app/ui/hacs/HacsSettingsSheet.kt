@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.tuesday.app.models.HacsConfig
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiAction
+import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +50,7 @@ fun HacsSettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .uiComponent("HacsSettingsSheet")
                 .padding(20.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -57,6 +61,7 @@ fun HacsSettingsSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("hacs-bridge-header")
                     .clip(RoundedCornerShape(12.dp))
                     .background(TuesdayTheme.CardSurface)
                     .padding(16.dp)
@@ -243,7 +248,9 @@ fun HacsSettingsSheet(
                     contentColor = Color.Black
                 ),
                 shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiAction("saveHacsConfig")
             ) {
                 Text("Save HACS Settings", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
@@ -253,7 +260,9 @@ fun HacsSettingsSheet(
                     onResetDemoData()
                     onDismiss()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiAction("resetDemoData")
             ) {
                 Text("Reset Demo Fleet Data", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
             }

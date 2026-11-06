@@ -31,6 +31,21 @@ class TuesdayRepository(context: Context) {
     private val _selectedZoneFilter = MutableStateFlow<TrustZone?>(null)
     val selectedZoneFilter: StateFlow<TrustZone?> = _selectedZoneFilter.asStateFlow()
 
+    private val _selectedPortStateFilter = MutableStateFlow<PortLifecycleState?>(null)
+    val selectedPortStateFilter: StateFlow<PortLifecycleState?> = _selectedPortStateFilter.asStateFlow()
+
+    private val _userNetworks = MutableStateFlow(defaultUserNetworks())
+    val userNetworks: StateFlow<List<NetworkSite>> = _userNetworks.asStateFlow()
+
+    private val _activeNetworkId = MutableStateFlow("net-skyway")
+    val activeNetworkId: StateFlow<String> = _activeNetworkId.asStateFlow()
+
+    private val _activeDeviceCount = MutableStateFlow(12)
+    val activeDeviceCount: StateFlow<Int> = _activeDeviceCount.asStateFlow()
+
+    private val _isDeveloperMode = MutableStateFlow(false)
+    val isDeveloperMode: StateFlow<Boolean> = _isDeveloperMode.asStateFlow()
+
     private val _hacsConfig = MutableStateFlow(HacsConfig())
     val hacsConfig: StateFlow<HacsConfig> = _hacsConfig.asStateFlow()
 
@@ -56,6 +71,54 @@ class TuesdayRepository(context: Context) {
 
     fun setZoneFilter(zone: TrustZone?) {
         _selectedZoneFilter.value = zone
+    }
+
+    fun setPortStateFilter(state: PortLifecycleState?) {
+        _selectedPortStateFilter.value = state
+    }
+
+    fun toggleDeveloperMode(enabled: Boolean) {
+        _isDeveloperMode.value = enabled
+        prefs.edit().putBoolean("is_developer_mode", enabled).apply()
+    }
+
+    fun setSimulatedDeviceCount(count: Int) {
+        val clamped = count.coerceIn(0, 128)
+        _activeDeviceCount.value = clamped
+        _selectedZoneFilter.value = null
+        _selectedPortStateFilter.value = null
+        _userNetworks.value = _userNetworks.value.map {
+            if (it.id == _activeNetworkId.value) it.copy(devicesCount = clamped) else it
+        }
+    }
+
+    fun selectNetwork(netId: String) {
+        val target = _userNetworks.value.find { it.id == netId } ?: return
+        _activeNetworkId.value = target.id
+        _activeDeviceCount.value = target.devicesCount
+        _selectedZoneFilter.value = null
+        _selectedPortStateFilter.value = null
+    }
+
+    fun renameActiveNetwork(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        _userNetworks.value = _userNetworks.value.map {
+            if (it.id == _activeNetworkId.value) it.copy(name = trimmed) else it
+        }
+    }
+
+    fun createNetwork(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        val newNet = NetworkSite(
+            id = "net-${System.currentTimeMillis()}",
+            name = trimmed,
+            devicesCount = 1,
+            role = "Site"
+        )
+        _userNetworks.value = _userNetworks.value + newNet
+        selectNetwork(newNet.id)
     }
 
     fun toggleMuteFeed(slug: String) {
@@ -100,6 +163,7 @@ class TuesdayRepository(context: Context) {
     }
 
     private fun loadConfig() {
+        _isDeveloperMode.value = prefs.getBoolean("is_developer_mode", false)
         val raw = prefs.getString("hacs_config", null)
         if (raw != null) {
             try {
@@ -227,6 +291,7 @@ class TuesdayRepository(context: Context) {
             s6Remediation = if (isGuessed) "Confirm exact model on Bulletins tab." else "No action required."
         )
         _rackDevices.value = listOf(newRackDev) + _rackDevices.value
+        _activeDeviceCount.value = (_activeDeviceCount.value + 1).coerceAtMost(128)
 
         _isSyncing.value = false
         persistDevices()
@@ -271,12 +336,20 @@ class TuesdayRepository(context: Context) {
         _mutedFeedSlugs.value = setOf("lg-esphome-iot")
         _includeOkDevices.value = false
         _selectedZoneFilter.value = null
+        _selectedPortStateFilter.value = null
+        _activeDeviceCount.value = 0
         _hacsConfig.value = HacsConfig()
         persistDevices()
         persistConfig()
     }
 
     companion object {
+        fun defaultUserNetworks(): List<NetworkSite> = listOf(
+            NetworkSite(id = "net-skyway", name = "Skyway Lab", devicesCount = 12, role = "Primary Homelab"),
+            NetworkSite(id = "net-home", name = "Main Home Wi-Fi", devicesCount = 7, role = "Residential"),
+            NetworkSite(id = "net-cabin", name = "Orcas Island Cabin", devicesCount = 3, role = "Remote Site")
+        )
+
         fun defaultSeedDevices(now: Long = System.currentTimeMillis()): List<MonitoredDevice> {
             return listOf(
                 MonitoredDevice(

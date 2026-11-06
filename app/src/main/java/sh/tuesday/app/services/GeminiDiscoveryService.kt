@@ -269,7 +269,7 @@ class GeminiDiscoveryService(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_SERVER_BASE_URL = "https://api.tuesday.sh"
+        const val DEFAULT_SERVER_BASE_URL = "http://100.108.40.3:3000"
         private const val PILOT_CLIENT_TOKEN = "tuesday-pilot-v1-public-client-token"
 
         fun fallbackHeuristic(

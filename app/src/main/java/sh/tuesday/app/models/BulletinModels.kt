@@ -15,20 +15,82 @@ enum class PortLifecycleState(
     val stnLabel: String,
     val severityPriority: Int
 ) {
-    CVE_KEV("cve_kev", "CVE / KEV / RECALL", "Action Required", 1),
-    EOL("eol", "END-OF-LIFE (EOL)", "Replace Soon (Retired)", 2),
-    GUESSED("guessed", "UNKNOWN / GUESSED", "Unidentified Device", 3),
-    UPDATE("update", "UPDATE AVAILABLE", "Update Available", 4),
-    OK("ok", "LIFECYCLE OK", "Everything OK", 5)
+    CVE_KEV("cve_kev", "CVE / KEV", "Safety / Security Alert", 1),
+    EOL("eol", "EOL", "Retired / EOL", 2),
+    GUESSED("guessed", "GUESSED", "Unknown / Guessed", 3),
+    UPDATE("update", "UPDATE", "Update Available", 4),
+    OK("ok", "OK", "Everything OK", 5),
+    UNASSIGNED("unassigned", "Empty Slot", "Empty Slot", 6)
 }
 
 @Serializable
-enum class TrustZone(val key: String, val shortCode: String, val displayLabel: String, val slotCount: Int) {
-    Z0_CORE("z0_core", "Z0", "Z0 Core", 16),
-    Z1_TRUSTED("z1_trusted", "Z1", "Z1 Trusted", 32),
-    Z2_LAB("z2_lab", "Z2", "Z2 Lab", 24),
-    Z3_IOT("z3_iot", "Z3", "Z3 IoT", 40),
-    Z4_GUEST("z4_guest", "Z4", "Z4 Guest", 16)
+enum class InventoryScaleTier(
+    val id: String,
+    val label: String,
+    val minDevices: Int,
+    val maxDevices: Int,
+    val showSummaryBadge: Boolean,
+    val showPortDiagramStrip: Boolean,
+    val showFilterChips: Boolean,
+    val showTrustZonePills: Boolean,
+    val botanicalOverlayEmoji: String
+) {
+    DAY_ZERO("day_zero", "Day 0", 0, 0, false, false, false, false, ""),
+    PEA("pea", "Pea", 1, 2, false, false, false, false, "🌱"),
+    GARDEN("garden", "Garden", 3, 7, true, false, false, false, "🪴"),
+    FOREST("forest", "Forest", 8, 128, true, true, true, true, "🌲");
+
+    companion object {
+        // Backward-compatibility aliases for existing tests
+        val SEED = PEA
+        val SMALL_NETWORK = GARDEN
+        val FLEET_RACK = FOREST
+
+        fun forCount(count: Int): InventoryScaleTier = when {
+            count <= 0 -> DAY_ZERO
+            count in 1..2 -> PEA
+            count in 3..7 -> GARDEN
+            else -> FOREST
+        }
+    }
+}
+
+@Serializable
+enum class StnHardwareCategory(
+    val code: String,
+    val portSlot: Int,
+    val osiLayer: String,
+    val proLabel: String,
+    val stnLabel: String,
+    val shortName: String,
+    val description: String,
+    val examples: String
+) {
+    C1_GATEWAY("C1", 1, "L3", "Gateway / WAN", "Wi-Fi Router / Gateway", "Gateway", "Perimeter firewall, WAN uplink, NAT, DHCP server, and default gateway.", "UDM-Pro, UXG-Pro, Firewalla, pfSense"),
+    C2_SWITCH("C2", 2, "L2", "Switch Backbone", "Wired Switch Hub", "Switch", "Physical distribution plane, 802.1Q VLAN trunking, and PoE power delivery.", "USW-24-PoE, Enterprise 8 PoE, Catalyst"),
+    C3_AP("C3", 3, "L1/2", "Wireless AP", "Wi-Fi Access Point", "Wi-Fi AP", "Radio-frequency access point translating wireless airwaves into wired Ethernet.", "U6-Pro, U7-Pro, Netgear AP, Eero"),
+    C4_SERVER("C4", 4, "L4–7", "Compute / Server", "Home Server & Storage", "Server", "Storage (NAS), local DNS, container virtualization, and homelab workloads.", "TrueNAS, Unraid, Proxmox VE, Synology"),
+    C5_CAMERA("C5", 5, "L7", "Vision / Camera", "Smart Camera", "Camera", "Surveillance video, real-time RTSP/WebRTC streams, and perimeter sensing.", "UniFi Protect G5, Owlet Cam, Reolink"),
+    C6_IOT("C6", 6, "L7", "Smart Home / IoT", "Smart Home Hub", "Smart IoT", "Home automation controllers, sensor bridges, and constrained smart peripherals.", "Home Assistant, Hubitat, Hue, Ecobee"),
+    C7_CLIENT("C7", 7, "L7", "Workstation / Client", "Personal Computer / Phone", "Client", "Primary trusted user devices carrying user identities, keys, and productivity data.", "MacBook Pro, ThinkPad, Linux PC, iPad"),
+    C8_GUEST("C8", 8, "L8", "Guest / Human (L8)", "Guest / Visitor Device", "Guest L8", "Isolated perimeter for ephemeral human visitors, guest Wi-Fi, and user policy.", "Guest Portal, Visitor Laptop, Cast Client")
+}
+
+@Serializable
+data class NetworkSite(
+    val id: String,
+    val name: String,
+    val devicesCount: Int,
+    val role: String
+)
+
+@Serializable
+enum class TrustZone(val key: String, val shortCode: String, val displayLabel: String, val stnLabel: String, val slotCount: Int) {
+    Z0_CORE("z0_core", "Z0", "Core Gear", "Wi-Fi & Network Gear", 16),
+    Z1_TRUSTED("z1_trusted", "Z1", "Trusted", "Main Home Wi-Fi", 32),
+    Z2_LAB("z2_lab", "Z2", "Homelab", "Home Storage", 24),
+    Z3_IOT("z3_iot", "Z3", "Smart Home", "Smart Home Lane", 40),
+    Z4_GUEST("z4_guest", "Z4", "Guest", "Guest Wi-Fi", 16)
 }
 
 @Serializable
@@ -44,6 +106,7 @@ data class RackPortDevice(
     val portIndex: Int,
     val portState: PortLifecycleState,
     val trustZone: TrustZone,
+    val category: StnHardwareCategory = StnHardwareCategory.C6_IOT,
     val assetTag: String,
     val shortLabel: String,
     val name: String,
@@ -140,35 +203,39 @@ object BulletinsAndInventoryEngine {
         zoneFilter: TrustZone? = null
     ): List<LedSlot> {
         val slots = mutableListOf<LedSlot>()
-        var runningIndex = 1
-        TrustZone.entries.forEach { zone ->
-            if (zoneFilter != null && zoneFilter != zone) return@forEach
-            val inZone = devices
-                .filter { it.trustZone == zone }
-                .sortedBy { it.portState.severityPriority }
+        val filtered = if (zoneFilter != null) {
+            devices.filter { it.trustZone == zoneFilter }
+        } else {
+            devices
+        }
 
-            inZone.forEach { dev ->
+        // Active assigned devices occupy slots 1..N
+        var runningIndex = 1
+        filtered.forEach { dev ->
+            if (runningIndex <= 128) {
                 slots.add(
                     LedSlot(
                         index = runningIndex++,
                         state = dev.portState,
-                        trustZone = zone,
+                        trustZone = dev.trustZone,
                         deviceId = dev.id
                     )
                 )
             }
+        }
 
-            val remainingOk = (zone.slotCount - inZone.size).coerceAtLeast(0)
-            repeat(remainingOk) {
-                slots.add(
-                    LedSlot(
-                        index = runningIndex++,
-                        state = PortLifecycleState.OK,
-                        trustZone = zone,
-                        deviceId = null
-                    )
+        // Remaining (128 - N) slots are dark UNASSIGNED slots (never artificial green OK)
+        val totalCap = if (zoneFilter != null) zoneFilter.slotCount else 128
+        val remainingUnassigned = (totalCap - slots.size).coerceAtLeast(0)
+        repeat(remainingUnassigned) {
+            slots.add(
+                LedSlot(
+                    index = runningIndex++,
+                    state = PortLifecycleState.UNASSIGNED,
+                    trustZone = zoneFilter ?: TrustZone.Z3_IOT,
+                    deviceId = null
                 )
-            }
+            )
         }
         return slots
     }
@@ -176,13 +243,25 @@ object BulletinsAndInventoryEngine {
     fun filterActionFirstDevices(
         devices: List<RackPortDevice>,
         includeOk: Boolean = false,
-        zoneFilter: TrustZone? = null
+        zoneFilter: TrustZone? = null,
+        portStateFilter: PortLifecycleState? = null
     ): List<RackPortDevice> {
         return devices
             .filter { zoneFilter == null || it.trustZone == zoneFilter }
-            .filter { includeOk || it.portState != PortLifecycleState.OK }
+            .filter {
+                if (portStateFilter != null) {
+                    it.portState == portStateFilter
+                } else {
+                    includeOk || it.portState != PortLifecycleState.OK
+                }
+            }
             .sortedWith(compareBy<RackPortDevice> { it.portState.severityPriority }.thenBy { it.trustZone.ordinal })
     }
+
+    fun getCategoryDeviceCount(
+        category: StnHardwareCategory,
+        devices: List<RackPortDevice>
+    ): Int = devices.count { it.category == category }
 
     fun assembleBulletins(
         flavor: AppBrandFlavor,
@@ -319,6 +398,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 1,
             portState = PortLifecycleState.CVE_KEV,
             trustZone = TrustZone.Z0_CORE,
+            category = StnHardwareCategory.C1_GATEWAY,
             assetTag = "STN-GW-01",
             shortLabel = "UDM-Pro",
             name = "Main Rack UniFi Dream Machine Pro",
@@ -342,6 +422,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 2,
             portState = PortLifecycleState.EOL,
             trustZone = TrustZone.Z0_CORE,
+            category = StnHardwareCategory.C3_AP,
             assetTag = "STN-AP-00",
             shortLabel = "R7000 AP",
             name = "Basement Netgear R7000",
@@ -365,6 +446,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 3,
             portState = PortLifecycleState.OK,
             trustZone = TrustZone.Z0_CORE,
+            category = StnHardwareCategory.C3_AP,
             assetTag = "STN-AP-01",
             shortLabel = "U7-Pro",
             name = "Living Room Ceiling UniFi U7 Pro",
@@ -388,7 +470,8 @@ object BulletinsAndInventoryEngine {
             portIndex = 4,
             portState = PortLifecycleState.OK,
             trustZone = TrustZone.Z1_TRUSTED,
-            assetTag = "STN-CL-01",
+            category = StnHardwareCategory.C2_SWITCH,
+            assetTag = "STN-SW-01",
             shortLabel = "Switch 2",
             name = "Living Room Nintendo Switch 2",
             roomLocation = "1F Media Console",
@@ -398,7 +481,7 @@ object BulletinsAndInventoryEngine {
             purls = listOf("pkg:generic/nintendo/horizon-os@19.0.1"),
             proHeadline = "pkg:generic/nintendo/horizon-os@19.0.1 • Enrolled via Plug & Tag",
             stnHeadline = "Up to date (19.0.1) • Warranty receipt saved",
-            s0Identity = "STN-CL-01 • 1F Media Console • Z1 Trusted",
+            s0Identity = "STN-SW-01 • 1F Media Console • Z1 Trusted",
             s1Hardware = "Nintendo Switch 2 (BEE-001)",
             s2Software = "pkg:generic/nintendo/horizon-os@19.0.1",
             s3Lifecycle = "Active Support",
@@ -411,6 +494,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 5,
             portState = PortLifecycleState.UPDATE,
             trustZone = TrustZone.Z1_TRUSTED,
+            category = StnHardwareCategory.C7_CLIENT,
             assetTag = "STN-CL-02",
             shortLabel = "MacBook M4",
             name = "Aaron's MacBook Pro 16 (M4 Max)",
@@ -434,6 +518,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 6,
             portState = PortLifecycleState.GUESSED,
             trustZone = TrustZone.Z2_LAB,
+            category = StnHardwareCategory.C4_SERVER,
             assetTag = "STN-LAB-09",
             shortLabel = "Unknown Pi",
             name = "Unidentified Raspberry Pi 5 Node",
@@ -458,6 +543,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 7,
             portState = PortLifecycleState.OK,
             trustZone = TrustZone.Z2_LAB,
+            category = StnHardwareCategory.C4_SERVER,
             assetTag = "STN-NAS-01",
             shortLabel = "unraid-lml",
             name = "Unraid Storage Server (lml)",
@@ -481,6 +567,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 8,
             portState = PortLifecycleState.UPDATE,
             trustZone = TrustZone.Z2_LAB,
+            category = StnHardwareCategory.C4_SERVER,
             assetTag = "STN-LAB-02",
             shortLabel = "Proxmox VE",
             name = "Homelab Hypervisor (pve-node-01)",
@@ -504,6 +591,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 9,
             portState = PortLifecycleState.CVE_KEV,
             trustZone = TrustZone.Z3_IOT,
+            category = StnHardwareCategory.C5_CAMERA,
             assetTag = "STN-CAM-01",
             shortLabel = "Baby Cam",
             name = "Nursery Baby Monitor",
@@ -527,6 +615,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 10,
             portState = PortLifecycleState.CVE_KEV,
             trustZone = TrustZone.Z3_IOT,
+            category = StnHardwareCategory.C6_IOT,
             assetTag = "STN-IOT-01",
             shortLabel = "LG OLED",
             name = "Living Room LG OLED TV",
@@ -550,6 +639,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 11,
             portState = PortLifecycleState.UPDATE,
             trustZone = TrustZone.Z3_IOT,
+            category = StnHardwareCategory.C6_IOT,
             assetTag = "STN-IOT-04",
             shortLabel = "Garage ESP",
             name = "Garage Door Relay ESP32",
@@ -573,6 +663,7 @@ object BulletinsAndInventoryEngine {
             portIndex = 12,
             portState = PortLifecycleState.GUESSED,
             trustZone = TrustZone.Z3_IOT,
+            category = StnHardwareCategory.C6_IOT,
             assetTag = "STN-IOT-09",
             shortLabel = "Thermostat",
             name = "Hallway Smart Thermostat",

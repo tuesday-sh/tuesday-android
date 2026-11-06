@@ -41,8 +41,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.GeminiDiscoveryService
+import sh.tuesday.app.services.GoldenCorpusRecorder
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiAction
+import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 enum class EnrollmentMode(val title: String) {
     PHOTO_WIZARD("AI Photo Wizard"),
@@ -58,10 +62,14 @@ fun AddDeviceScreen(
 ) {
     var mode by remember { mutableStateOf(EnrollmentMode.PHOTO_WIZARD) }
     val hacsConfig by repository.hacsConfig.collectAsState()
+    val brandFlavor by repository.brandFlavor.collectAsState()
+    val palette = TuesdayTheme.paletteFor(brandFlavor)
+    val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // Wizard State
+    var currentSessionId by remember { mutableStateOf(System.currentTimeMillis().toString()) }
     var capturedBitmaps by remember { mutableStateOf(listOf<Bitmap>()) }
     var isAnalyzing by remember { mutableStateOf(false) }
     var discoveryResult by remember { mutableStateOf<GeminiDiscoveryTurnResult?>(null) }
@@ -70,6 +78,8 @@ fun AddDeviceScreen(
     var selectedClueType by remember { mutableStateOf(DeviceClueType.MODEL_NUMBER) }
     var clueInputText by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+    var savedCorpusCount by remember { mutableStateOf(GoldenCorpusRecorder.getSavedSessionCount(context)) }
+    var lastSavedCorpusFolder by remember { mutableStateOf<String?>(null) }
 
     // Manual State
     var manualHostname by remember { mutableStateOf("") }
@@ -114,6 +124,17 @@ fun AddDeviceScreen(
             )
             accumulatedIdentifiers.merge(res.extractedIdentifiers)
             discoveryResult = res
+            val savedDir = GoldenCorpusRecorder.saveCaptureSession(
+                context = context,
+                sessionId = currentSessionId,
+                bitmaps = updatedBitmaps,
+                result = res,
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                status = "auto_tagged"
+            )
+            lastSavedCorpusFolder = savedDir.name
+            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
             isAnalyzing = false
         }
     }
@@ -163,20 +184,21 @@ fun AddDeviceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add Device", color = Color.White, fontWeight = FontWeight.Bold) },
+                title = { Text(if (isStn) "Add Home Device" else "Add Device", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = TuesdayTheme.AppBar)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
             )
         },
-        containerColor = TuesdayTheme.Background
+        containerColor = palette.bg
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .uiComponent("AddDeviceWizard")
                 .padding(paddingValues)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
@@ -186,8 +208,10 @@ fun AddDeviceScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("enrollment-mode-tabs")
                     .clip(RoundedCornerShape(10.dp))
-                    .background(TuesdayTheme.CardSurface)
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -196,6 +220,7 @@ fun AddDeviceScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
+                            .uiAction("switchEnrollmentMode")
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) TuesdayTheme.HealthyGreen else Color.Transparent)
                             .clickable { mode = item }
@@ -209,12 +234,12 @@ fun AddDeviceScreen(
                             Icon(
                                 imageVector = if (item == EnrollmentMode.PHOTO_WIZARD) Icons.Default.CameraAlt else Icons.Default.Terminal,
                                 contentDescription = null,
-                                tint = if (isSelected) Color.Black else Color.White.copy(alpha = 0.75f),
+                                tint = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 modifier = Modifier.size(15.dp)
                             )
                             Text(
                                 text = item.title,
-                                color = if (isSelected) Color.Black else Color.White.copy(alpha = 0.75f),
+                                color = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
@@ -226,67 +251,69 @@ fun AddDeviceScreen(
             if (mode == EnrollmentMode.PHOTO_WIZARD) {
                 // Step Indicator
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiSlot("wizard-step-header"),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.15f))
+                            .background(palette.accent.copy(alpha = 0.15f))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = if (capturedBitmaps.isEmpty()) "STEP 1 OF 3 • CAPTURE HARDWARE" else "STEP 2 OF 3 • PROGRESSIVE DISCOVERY",
-                            color = TuesdayTheme.HacsCyan,
+                            color = palette.accent,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
                     }
 
+                    val isElastix = hacsConfig.aiProvider == AiProviderType.ELASTIX
+                    val activeAiColor = if (isElastix) TuesdayTheme.HealthyGreen else TuesdayTheme.LedUpdateBlue
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        AiProviderType.entries.forEach { prov ->
-                            val isActive = hacsConfig.aiProvider == prov
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isActive) TuesdayTheme.HealthyGreen.copy(alpha = 0.2f) else TuesdayTheme.CardSurface)
-                                    .border(
-                                        1.dp,
-                                        if (isActive) TuesdayTheme.HealthyGreen else Color.White.copy(alpha = 0.15f),
-                                        RoundedCornerShape(6.dp)
-                                    )
-                                    .clickable {
-                                        repository.updateHacsConfig(hacsConfig.copy(aiProvider = prov))
-                                    }
-                                    .padding(horizontal = 7.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = prov.displayName,
-                                    color = if (isActive) TuesdayTheme.HealthyGreen else Color.White.copy(alpha = 0.55f),
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                        modifier = Modifier
+                            .uiAction("switchAiProvider")
+                            .clip(CircleShape)
+                            .background(activeAiColor.copy(alpha = 0.14f))
+                            .border(1.dp, activeAiColor.copy(alpha = 0.55f), CircleShape)
+                            .clickable {
+                                val nextProvider = if (isElastix) AiProviderType.GEMINI else AiProviderType.ELASTIX
+                                repository.updateHacsConfig(hacsConfig.copy(aiProvider = nextProvider))
                             }
-                        }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(activeAiColor)
+                        )
+                        Text(
+                            text = if (isElastix) "AI: Elastix ⇄" else "AI: Gemini ⇄",
+                            color = activeAiColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
 
                 Text(
-                    text = "Inventory Device by Photo",
-                    color = Color.White,
+                    text = if (isStn) "Identify Device by Photo" else "Inventory Device by Photo",
+                    color = palette.textPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     text = "Snap a photo of a router, switch, NAS, or IoT device. Gemini AI will analyze the hardware and progressively narrow candidate models using barcodes, serial numbers, QR codes, models, or MAC addresses.",
-                    color = Color.White.copy(alpha = 0.68f),
+                    color = palette.textMuted,
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
@@ -295,8 +322,10 @@ fun AddDeviceScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .uiSlot("photo-capture-card")
                         .clip(RoundedCornerShape(12.dp))
-                        .background(TuesdayTheme.CardSurface)
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(12.dp))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
@@ -334,7 +363,9 @@ fun AddDeviceScreen(
                                 contentColor = Color.Black
                             ),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .uiAction("captureHardwarePhoto")
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -473,6 +504,8 @@ fun AddDeviceScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiComponent("AiDiscoveryPanel")
+                            .uiSlot("ai-discovery-panel")
                             .clip(RoundedCornerShape(12.dp))
                             .background(TuesdayTheme.CardSurface)
                             .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
@@ -494,6 +527,96 @@ fun AddDeviceScreen(
                         }
 
                         Text(result.visualSummary, color = Color.White.copy(alpha = 0.82f), fontSize = 12.sp)
+
+                        // Golden Corpus Auto-Save Status & Quick Next-Device Loop Button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .uiSlot("golden-corpus-bar")
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.12f))
+                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "📦 GOLDEN CORPUS AUTO-SAVED ($savedCorpusCount TOTAL)",
+                                    color = TuesdayTheme.HealthyGreen,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = lastSavedCorpusFolder ?: "Saved to /sdcard/.../golden_corpus/",
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    onClick = {
+                                        val sid = currentSessionId
+                                        scope.launch {
+                                            GoldenCorpusRecorder.deleteCaptureSession(context, sid)
+                                            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                            lastSavedCorpusFolder = null
+                                            currentSessionId = System.currentTimeMillis().toString()
+                                            capturedBitmaps = emptyList()
+                                            discoveryResult = null
+                                            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+                                            userClueNotes = emptyList()
+                                            clueInputText = ""
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.2f),
+                                    modifier = Modifier
+                                        .uiAction("discardCaptureSession")
+                                        .border(
+                                            1.dp,
+                                            TuesdayTheme.CriticalRed.copy(alpha = 0.6f),
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                ) {
+                                    Text(
+                                        text = "✕ Discard",
+                                        color = TuesdayTheme.CriticalRed,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    )
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        // Reset wizard state to immediately scan the next piece of hardware
+                                        currentSessionId = System.currentTimeMillis().toString()
+                                        capturedBitmaps = emptyList()
+                                        discoveryResult = null
+                                        accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+                                        userClueNotes = emptyList()
+                                        clueInputText = ""
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = TuesdayTheme.HealthyGreen,
+                                    modifier = Modifier.uiAction("scanNextDevice")
+                                ) {
+                                    Text(
+                                        text = "Scan Next →",
+                                        color = Color.Black,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
 
                         HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
@@ -523,7 +646,10 @@ fun AddDeviceScreen(
                         }
 
                         // Add Clue Input
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            modifier = Modifier.uiSlot("clue-refinement-form"),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text("ADD IDENTIFIER TO NARROW CANDIDATES (BARCODE, S/N, QR, MODEL, MAC)", color = Color.White.copy(alpha = 0.55f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(DeviceClueType.entries) { clue ->
@@ -587,12 +713,26 @@ fun AddDeviceScreen(
                                                 )
                                                 accumulatedIdentifiers.merge(res.extractedIdentifiers)
                                                 discoveryResult = res
+                                                if (capturedBitmaps.isNotEmpty()) {
+                                                    val savedDir = GoldenCorpusRecorder.saveCaptureSession(
+                                                        context = context,
+                                                        sessionId = currentSessionId,
+                                                        bitmaps = capturedBitmaps,
+                                                        result = res,
+                                                        accumulatedIdentifiers = accumulatedIdentifiers,
+                                                        userClueNotes = userClueNotes,
+                                                        status = "refined_clues"
+                                                    )
+                                                    lastSavedCorpusFolder = savedDir.name
+                                                    savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                                }
                                                 isAnalyzing = false
                                             }
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.uiAction("refineDiscoveryClue")
                                 ) {
                                     Text("Refine", fontWeight = FontWeight.Bold)
                                 }
@@ -614,6 +754,7 @@ fun AddDeviceScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .uiSlot("candidate-match-card")
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(TuesdayTheme.CardSurface)
                                 .border(1.dp, if (index == 0) badgeColor.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
@@ -646,6 +787,20 @@ fun AddDeviceScreen(
                                     scope.launch {
                                         isSaving = true
                                         val resolvedModel = accumulatedIdentifiers.modelNumber ?: candidate.modelNumber
+                                        if (capturedBitmaps.isNotEmpty()) {
+                                            GoldenCorpusRecorder.saveCaptureSession(
+                                                context = context,
+                                                sessionId = currentSessionId,
+                                                bitmaps = capturedBitmaps,
+                                                result = result,
+                                                accumulatedIdentifiers = accumulatedIdentifiers,
+                                                userClueNotes = userClueNotes,
+                                                status = "user_confirmed",
+                                                confirmedCandidate = candidate,
+                                                confirmedModelOverride = resolvedModel
+                                            )
+                                            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                        }
                                         val meta = DiscoveredDeviceMetadata(
                                             manufacturer = candidate.manufacturer,
                                             modelNumber = resolvedModel,
@@ -679,7 +834,9 @@ fun AddDeviceScreen(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HealthyGreen, contentColor = Color.Black),
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .uiAction("enrollConfirmedDevice")
                             ) {
                                 Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -693,6 +850,7 @@ fun AddDeviceScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiSlot("incomplete-guess-fallback-card")
                             .clip(RoundedCornerShape(12.dp))
                             .background(TuesdayTheme.CardSurface)
                             .padding(14.dp),
@@ -743,6 +901,7 @@ fun AddDeviceScreen(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .uiAction("enrollGuessedDevice")
                                 .border(1.dp, TuesdayTheme.WarningAmber.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))
