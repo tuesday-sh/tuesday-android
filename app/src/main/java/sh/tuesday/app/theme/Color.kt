@@ -11,15 +11,18 @@ data class BrandPalette(
     val textPrimary: Color,
     val textMuted: Color,
     val border: Color,
-    val accent: Color
+    val accent: Color,
+    val brandPrimary: Color = accent
 )
 
 object TuesdayTheme {
-    // Preset A: UniFi 9.5 Carbon (Tuesday.sh STN-Pro)
+    // Preset A: Tuesday.sh Brand Orange & Carbon Rack (STN-Pro)
     val Background = Color(0xFF111215)
     val AppBar = Color(0xFF181A1F)
     val CardSurface = Color(0xFF181A1F)
     val ElevatedPill = Color(0xFF20232A)
+    val ProBrandPrimary = Color(0xFFE57819)
+    val ProAccent = Color(0xFFE8772E)
 
     // Preset A: Daylight Home (SureThingNet STN-Home)
     val StnBackground = Color(0xFFF1F5F9)
@@ -39,7 +42,7 @@ object TuesdayTheme {
     val HealthyGreen = LedOkGreen
     val WarningAmber = LedEolAmber
     val CriticalRed = LedCveRed
-    val HacsCyan = Color(0xFF3B82F6)
+    val HacsCyan = ProAccent
 
     fun paletteFor(flavor: AppBrandFlavor): BrandPalette = when (flavor) {
         AppBrandFlavor.TUESDAY_PRO -> BrandPalette(
@@ -49,7 +52,8 @@ object TuesdayTheme {
             textPrimary = Color(0xFFF3F4F6),
             textMuted = Color(0xFF8E95A2),
             border = Color(0xFF242730),
-            accent = Color(0xFF3B82F6)
+            accent = ProAccent,
+            brandPrimary = ProBrandPrimary
         )
         AppBrandFlavor.SURETHING_HOME -> BrandPalette(
             bg = StnBackground,
@@ -58,7 +62,8 @@ object TuesdayTheme {
             textPrimary = Color(0xFF0F172A),
             textMuted = Color(0xFF475569),
             border = Color(0xFFCBD5E1),
-            accent = Color(0xFF0284C7)
+            accent = Color(0xFF0284C7),
+            brandPrimary = Color(0xFF0284C7)
         )
     }
 

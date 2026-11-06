@@ -25,6 +25,9 @@ import sh.tuesday.app.models.NetworkSite
 import sh.tuesday.app.models.StnHardwareCategory
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiAction
+import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 @Composable
 fun NetworkPickerModalDialog(
@@ -44,6 +47,7 @@ fun NetworkPickerModalDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
+                .uiComponent("NetworkPickerModal")
                 .clip(RoundedCornerShape(16.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(16.dp))
@@ -81,7 +85,10 @@ fun NetworkPickerModalDialog(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.uiAction("closeNetworkPicker")
+                ) {
                     Text("✕", color = palette.textMuted, fontWeight = FontWeight.Bold)
                 }
             }
@@ -93,12 +100,16 @@ fun NetworkPickerModalDialog(
                 lineHeight = 15.sp
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.uiSlot("network-picker-list"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 networks.forEach { net ->
                     val isActive = net.id == activeNetworkId
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiAction("selectNetwork")
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isActive) palette.accent.copy(alpha = 0.12f) else palette.elevated)
                             .border(
@@ -152,6 +163,7 @@ fun NetworkPickerModalDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("create-network-form")
                     .clip(RoundedCornerShape(10.dp))
                     .background(palette.bg)
                     .border(1.dp, palette.border, RoundedCornerShape(10.dp))
@@ -194,7 +206,8 @@ fun NetworkPickerModalDialog(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.uiAction("createNetwork")
                     ) {
                         Text("Create", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     }
@@ -221,6 +234,7 @@ fun ReferenceGuideModalDialog(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.88f)
+                .uiComponent("ReferenceGuideModal")
                 .clip(RoundedCornerShape(16.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(16.dp))
@@ -260,7 +274,10 @@ fun ReferenceGuideModalDialog(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.uiAction("closeReferenceGuide")
+                ) {
                     Text("✕", color = palette.textMuted, fontWeight = FontWeight.Bold)
                 }
             }

@@ -23,6 +23,9 @@ import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.services.GoldenCorpusRecorder
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiAction
+import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 @Composable
 fun AccountSettingsScreen(
@@ -55,6 +58,7 @@ fun AccountSettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .uiComponent("AccountSettingsCard")
                 .clip(RoundedCornerShape(12.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(12.dp))
@@ -63,7 +67,9 @@ fun AccountSettingsScreen(
         ) {
             // Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiSlot("account-header"),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -90,7 +96,10 @@ fun AccountSettingsScreen(
             }
 
             // Network / Location Name Field
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier.uiSlot("location-name-editor"),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
                     text = if (isStn) "HOME / NETWORK NAME" else "NETWORK / LOCATION NAME",
                     color = palette.textMuted,
@@ -118,7 +127,8 @@ fun AccountSettingsScreen(
                     Button(
                         onClick = { onSaveNetworkName(draftName) },
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.uiAction("saveNetworkName")
                     ) {
                         Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
@@ -138,6 +148,7 @@ fun AccountSettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("account-profile-summary")
                     .clip(RoundedCornerShape(8.dp))
                     .background(palette.bg)
                     .border(1.dp, palette.border, RoundedCornerShape(8.dp))
@@ -168,6 +179,7 @@ fun AccountSettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("developer-mode-card")
                     .clip(RoundedCornerShape(10.dp))
                     .background(palette.accent.copy(alpha = 0.08f))
                     .border(1.dp, palette.accent.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
@@ -218,6 +230,7 @@ fun AccountSettingsScreen(
                     Switch(
                         checked = isDeveloperMode,
                         onCheckedChange = onToggleDeveloperMode,
+                        modifier = Modifier.uiAction("toggleDeveloperMode"),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = palette.accent,
@@ -252,7 +265,7 @@ fun AccountSettingsScreen(
                             }
                         )
                         DevStateSimButton(
-                            label = if (isStn) "🌐 1 Router (Seed)" else "🌐 1 Node (Seed)",
+                            label = "🌱 Pea (1)",
                             isSelected = activeDeviceCount == 1,
                             palette = palette,
                             modifier = Modifier.weight(1f),
@@ -268,7 +281,7 @@ fun AccountSettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         DevStateSimButton(
-                            label = if (isStn) "🌱 7 Devices (Small)" else "🌱 7 Nodes (Small)",
+                            label = "🪴 Garden (7)",
                             isSelected = activeDeviceCount == 7,
                             palette = palette,
                             modifier = Modifier.weight(1f),
@@ -278,7 +291,7 @@ fun AccountSettingsScreen(
                             }
                         )
                         DevStateSimButton(
-                            label = if (isStn) "🌲 12 Devices (Full)" else "🌲 12 Nodes (Fleet)",
+                            label = "🌲 Forest (12)",
                             isSelected = activeDeviceCount == 12,
                             palette = palette,
                             modifier = Modifier.weight(1f),
@@ -316,6 +329,7 @@ fun AccountSettingsScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiAction("purgeGoldenCorpus")
                             .clip(RoundedCornerShape(6.dp))
                             .background(TuesdayTheme.LedCveRed.copy(alpha = 0.14f))
                             .border(1.dp, TuesdayTheme.LedCveRed.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
@@ -342,7 +356,9 @@ fun AccountSettingsScreen(
             // Open Camera Intake Flow Button
             OutlinedButton(
                 onClick = onOpenIntakeFlow,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiAction("openAddDevice"),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
@@ -389,6 +405,7 @@ private fun DevStateSimButton(
 ) {
     Box(
         modifier = modifier
+            .uiAction("setSimulatedDeviceCount")
             .clip(RoundedCornerShape(6.dp))
             .background(if (isSelected) palette.accent.copy(alpha = 0.2f) else palette.surface)
             .border(1.dp, if (isSelected) palette.accent else palette.border, RoundedCornerShape(6.dp))

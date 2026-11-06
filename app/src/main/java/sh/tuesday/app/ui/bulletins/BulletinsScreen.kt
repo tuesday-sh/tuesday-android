@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.sp
 import sh.tuesday.app.models.*
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiAction
+import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 @Composable
 fun BulletinsScreen(
@@ -35,6 +38,7 @@ fun BulletinsScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .uiComponent("BulletinsScreen")
             .padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
@@ -44,6 +48,8 @@ fun BulletinsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiComponent("AiSummaryCard")
+                    .uiSlot("ai-summary-card")
                     .clip(RoundedCornerShape(10.dp))
                     .background(palette.surface)
                     .border(1.dp, palette.accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
@@ -150,6 +156,8 @@ fun BulletinsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiComponent("MatchedFeedsSection")
+                    .uiSlot("matched-feed-row", "slug=${feed.slug};muted=${feed.isMuted}")
                     .clip(RoundedCornerShape(8.dp))
                     .background(palette.surface.copy(alpha = if (feed.isMuted) 0.65f else 1f))
                     .border(
@@ -219,6 +227,7 @@ fun BulletinsScreen(
                     } else {
                         Box(
                             modifier = Modifier
+                                .uiAction("toggleMuteFeed")
                                 .clip(RoundedCornerShape(5.dp))
                                 .background(
                                     if (feed.isMuted) TuesdayTheme.LedEolAmber.copy(alpha = 0.16f)
@@ -253,6 +262,7 @@ fun BulletinsScreen(
                         feed.candidateModels.forEach { candidate ->
                             Box(
                                 modifier = Modifier
+                                    .uiAction("confirmGuessedModel")
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(palette.accent.copy(alpha = 0.15f))
                                     .border(1.dp, palette.accent, RoundedCornerShape(4.dp))
@@ -270,6 +280,7 @@ fun BulletinsScreen(
                         }
                         Box(
                             modifier = Modifier
+                                .uiAction("rejectGuessedModel")
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(palette.elevated)
                                 .border(1.dp, palette.border, RoundedCornerShape(4.dp))
@@ -326,6 +337,8 @@ fun BulletinsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiComponent("BulletinInboxList")
+                    .uiSlot("bulletin-inbox-item", "id=${item.externalId};type=${item.bulletinType}")
                     .clip(RoundedCornerShape(8.dp))
                     .background(palette.surface)
                     .border(1.dp, palette.border, RoundedCornerShape(8.dp))

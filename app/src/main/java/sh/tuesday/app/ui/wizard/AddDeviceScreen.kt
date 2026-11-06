@@ -44,6 +44,9 @@ import sh.tuesday.app.services.GeminiDiscoveryService
 import sh.tuesday.app.services.GoldenCorpusRecorder
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiAction
+import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 enum class EnrollmentMode(val title: String) {
     PHOTO_WIZARD("AI Photo Wizard"),
@@ -59,6 +62,9 @@ fun AddDeviceScreen(
 ) {
     var mode by remember { mutableStateOf(EnrollmentMode.PHOTO_WIZARD) }
     val hacsConfig by repository.hacsConfig.collectAsState()
+    val brandFlavor by repository.brandFlavor.collectAsState()
+    val palette = TuesdayTheme.paletteFor(brandFlavor)
+    val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -178,20 +184,21 @@ fun AddDeviceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add Device", color = Color.White, fontWeight = FontWeight.Bold) },
+                title = { Text(if (isStn) "Add Home Device" else "Add Device", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = TuesdayTheme.AppBar)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
             )
         },
-        containerColor = TuesdayTheme.Background
+        containerColor = palette.bg
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .uiComponent("AddDeviceWizard")
                 .padding(paddingValues)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
@@ -201,8 +208,10 @@ fun AddDeviceScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("enrollment-mode-tabs")
                     .clip(RoundedCornerShape(10.dp))
-                    .background(TuesdayTheme.CardSurface)
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -211,6 +220,7 @@ fun AddDeviceScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
+                            .uiAction("switchEnrollmentMode")
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) TuesdayTheme.HealthyGreen else Color.Transparent)
                             .clickable { mode = item }
@@ -224,12 +234,12 @@ fun AddDeviceScreen(
                             Icon(
                                 imageVector = if (item == EnrollmentMode.PHOTO_WIZARD) Icons.Default.CameraAlt else Icons.Default.Terminal,
                                 contentDescription = null,
-                                tint = if (isSelected) Color.Black else Color.White.copy(alpha = 0.75f),
+                                tint = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 modifier = Modifier.size(15.dp)
                             )
                             Text(
                                 text = item.title,
-                                color = if (isSelected) Color.Black else Color.White.copy(alpha = 0.75f),
+                                color = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
@@ -241,19 +251,21 @@ fun AddDeviceScreen(
             if (mode == EnrollmentMode.PHOTO_WIZARD) {
                 // Step Indicator
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiSlot("wizard-step-header"),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.15f))
+                            .background(palette.accent.copy(alpha = 0.15f))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = if (capturedBitmaps.isEmpty()) "STEP 1 OF 3 • CAPTURE HARDWARE" else "STEP 2 OF 3 • PROGRESSIVE DISCOVERY",
-                            color = TuesdayTheme.HacsCyan,
+                            color = palette.accent,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
@@ -264,6 +276,7 @@ fun AddDeviceScreen(
                     val activeAiColor = if (isElastix) TuesdayTheme.HealthyGreen else TuesdayTheme.LedUpdateBlue
                     Row(
                         modifier = Modifier
+                            .uiAction("switchAiProvider")
                             .clip(CircleShape)
                             .background(activeAiColor.copy(alpha = 0.14f))
                             .border(1.dp, activeAiColor.copy(alpha = 0.55f), CircleShape)
@@ -292,15 +305,15 @@ fun AddDeviceScreen(
                 }
 
                 Text(
-                    text = "Inventory Device by Photo",
-                    color = Color.White,
+                    text = if (isStn) "Identify Device by Photo" else "Inventory Device by Photo",
+                    color = palette.textPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     text = "Snap a photo of a router, switch, NAS, or IoT device. Gemini AI will analyze the hardware and progressively narrow candidate models using barcodes, serial numbers, QR codes, models, or MAC addresses.",
-                    color = Color.White.copy(alpha = 0.68f),
+                    color = palette.textMuted,
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
@@ -309,8 +322,10 @@ fun AddDeviceScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .uiSlot("photo-capture-card")
                         .clip(RoundedCornerShape(12.dp))
-                        .background(TuesdayTheme.CardSurface)
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(12.dp))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
@@ -348,7 +363,9 @@ fun AddDeviceScreen(
                                 contentColor = Color.Black
                             ),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .uiAction("captureHardwarePhoto")
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -487,6 +504,8 @@ fun AddDeviceScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiComponent("AiDiscoveryPanel")
+                            .uiSlot("ai-discovery-panel")
                             .clip(RoundedCornerShape(12.dp))
                             .background(TuesdayTheme.CardSurface)
                             .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
@@ -513,6 +532,7 @@ fun AddDeviceScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .uiSlot("golden-corpus-bar")
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.12f))
                                 .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
@@ -556,11 +576,13 @@ fun AddDeviceScreen(
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = TuesdayTheme.CriticalRed.copy(alpha = 0.2f),
-                                    modifier = Modifier.border(
-                                        1.dp,
-                                        TuesdayTheme.CriticalRed.copy(alpha = 0.6f),
-                                        RoundedCornerShape(6.dp)
-                                    )
+                                    modifier = Modifier
+                                        .uiAction("discardCaptureSession")
+                                        .border(
+                                            1.dp,
+                                            TuesdayTheme.CriticalRed.copy(alpha = 0.6f),
+                                            RoundedCornerShape(6.dp)
+                                        )
                                 ) {
                                     Text(
                                         text = "✕ Discard",
@@ -582,7 +604,8 @@ fun AddDeviceScreen(
                                         clueInputText = ""
                                     },
                                     shape = RoundedCornerShape(6.dp),
-                                    color = TuesdayTheme.HealthyGreen
+                                    color = TuesdayTheme.HealthyGreen,
+                                    modifier = Modifier.uiAction("scanNextDevice")
                                 ) {
                                     Text(
                                         text = "Scan Next →",
@@ -623,7 +646,10 @@ fun AddDeviceScreen(
                         }
 
                         // Add Clue Input
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            modifier = Modifier.uiSlot("clue-refinement-form"),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text("ADD IDENTIFIER TO NARROW CANDIDATES (BARCODE, S/N, QR, MODEL, MAC)", color = Color.White.copy(alpha = 0.55f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(DeviceClueType.entries) { clue ->
@@ -705,7 +731,8 @@ fun AddDeviceScreen(
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.uiAction("refineDiscoveryClue")
                                 ) {
                                     Text("Refine", fontWeight = FontWeight.Bold)
                                 }
@@ -727,6 +754,7 @@ fun AddDeviceScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .uiSlot("candidate-match-card")
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(TuesdayTheme.CardSurface)
                                 .border(1.dp, if (index == 0) badgeColor.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
@@ -806,7 +834,9 @@ fun AddDeviceScreen(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HealthyGreen, contentColor = Color.Black),
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .uiAction("enrollConfirmedDevice")
                             ) {
                                 Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -820,6 +850,7 @@ fun AddDeviceScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiSlot("incomplete-guess-fallback-card")
                             .clip(RoundedCornerShape(12.dp))
                             .background(TuesdayTheme.CardSurface)
                             .padding(14.dp),
@@ -870,6 +901,7 @@ fun AddDeviceScreen(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .uiAction("enrollGuessedDevice")
                                 .border(1.dp, TuesdayTheme.WarningAmber.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))

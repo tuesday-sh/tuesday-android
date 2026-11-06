@@ -25,6 +25,8 @@ enum class PortLifecycleState(
 
 @Serializable
 enum class InventoryScaleTier(
+    val id: String,
+    val label: String,
     val minDevices: Int,
     val maxDevices: Int,
     val showSummaryBadge: Boolean,
@@ -33,17 +35,22 @@ enum class InventoryScaleTier(
     val showTrustZonePills: Boolean,
     val botanicalOverlayEmoji: String
 ) {
-    DAY_ZERO(0, 0, false, false, false, false, ""),
-    SEED(1, 2, false, false, false, false, "🌱"),
-    SMALL_NETWORK(3, 7, true, false, false, false, "🌿"),
-    FLEET_RACK(8, 128, true, true, true, true, "🌲");
+    DAY_ZERO("day_zero", "Day 0", 0, 0, false, false, false, false, ""),
+    PEA("pea", "Pea", 1, 2, false, false, false, false, "🌱"),
+    GARDEN("garden", "Garden", 3, 7, true, false, false, false, "🪴"),
+    FOREST("forest", "Forest", 8, 128, true, true, true, true, "🌲");
 
     companion object {
+        // Backward-compatibility aliases for existing tests
+        val SEED = PEA
+        val SMALL_NETWORK = GARDEN
+        val FLEET_RACK = FOREST
+
         fun forCount(count: Int): InventoryScaleTier = when {
             count <= 0 -> DAY_ZERO
-            count in 1..2 -> SEED
-            count in 3..7 -> SMALL_NETWORK
-            else -> FLEET_RACK
+            count in 1..2 -> PEA
+            count in 3..7 -> GARDEN
+            else -> FOREST
         }
     }
 }
