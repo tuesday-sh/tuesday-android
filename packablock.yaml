@@ -1,0 +1,12 @@
+lockfiles:
+  gradle-wrapper.properties:
+    packages: []
+---
+$yaml-chain-meta:
+  version: 1.0.0
+  block_index: 0
+  timestamp: 2026-11-06T19:32:16.048Z
+  hashing_strategy: raw
+  data_hash: 7a0d3df723cdadbe08959d16c8dd67490d0b2ef99761fe32d337c0c8f2f09fff
+  prev_meta_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+  meta_hash: 8845f2cdaa93f1be43c2587e97954563b7b9fcf69af527f75bbb847b2b59612b

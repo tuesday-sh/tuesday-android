@@ -75,6 +75,7 @@ fun HomeScreen(
     val activeNetworkId by repository.activeNetworkId.collectAsState()
     val activeDeviceCount by repository.activeDeviceCount.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
+    val entitlementTier by repository.entitlementTier.collectAsState()
     val hacsConfig by repository.hacsConfig.collectAsState()
     val isWifiConnected by connectivity.isWifiConnected.collectAsState()
     val isSimulatingWifi by connectivity.simulateWifiDisconnected.collectAsState()
@@ -349,6 +350,8 @@ fun HomeScreen(
                     networkLocationName = activeNetwork.name,
                     activeDeviceCount = visibleDevices.size,
                     isDeveloperMode = isDeveloperMode,
+                    entitlementTier = entitlementTier,
+                    onUpgradeProTier1 = { repository.upgradeToProTier1() },
                     onSaveNetworkName = { repository.renameActiveNetwork(it) },
                     onToggleDeveloperMode = { repository.toggleDeveloperMode(it) },
                     onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },

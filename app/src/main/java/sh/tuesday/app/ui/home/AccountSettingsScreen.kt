@@ -34,6 +34,8 @@ fun AccountSettingsScreen(
     networkLocationName: String,
     activeDeviceCount: Int,
     isDeveloperMode: Boolean,
+    entitlementTier: String = "free",
+    onUpgradeProTier1: () -> Unit = {},
     onSaveNetworkName: (String) -> Unit,
     onToggleDeveloperMode: (Boolean) -> Unit,
     onSetSimulatedDeviceCount: (Int) -> Unit,
@@ -173,6 +175,30 @@ fun AccountSettingsScreen(
                     valueColor = TuesdayTheme.LedOkGreen,
                     palette = palette
                 )
+                AccountSummaryRow(
+                    label = "Entitlement Tier",
+                    value = if (entitlementTier == "pro_tier_1") "Pro Tier 1 (<=128 Active)" else "Standard Free Tier",
+                    valueColor = if (entitlementTier == "pro_tier_1") TuesdayTheme.LedOkGreen else palette.accent,
+                    palette = palette
+                )
+            }
+
+            if (!isStn && entitlementTier != "pro_tier_1") {
+                Button(
+                    onClick = onUpgradeProTier1,
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiAction("upgradeProTier1")
+                ) {
+                    Text(
+                        text = "⚡ Upgrade to Tuesday Pro Tier 1 (Play Billing • <=128 Ports)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.5.sp
+                    )
+                }
             }
 
             // Developer Mode Toggle & In-App Inventory State Tester

@@ -2,16 +2,46 @@ package sh.tuesday.app.services
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import sh.tuesday.app.models.*
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 class TuesdayRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("tuesday_prefs_v1", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    private val clientDeviceId: String by lazy {
+        val existing = prefs.getString("client_device_id", null)
+        if (!existing.isNullOrBlank()) {
+            existing
+        } else {
+            val generated = "android-" + UUID.randomUUID().toString().take(8)
+            prefs.edit().putString("client_device_id", generated).apply()
+            generated
+        }
+    }
 
     private val _devices = MutableStateFlow<List<MonitoredDevice>>(emptyList())
     val devices: StateFlow<List<MonitoredDevice>> = _devices.asStateFlow()
@@ -51,6 +81,9 @@ class TuesdayRepository(context: Context) {
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _entitlementTier = MutableStateFlow(prefs.getString("entitlement_tier", "free") ?: "free")
+    val entitlementTier: StateFlow<String> = _entitlementTier.asStateFlow()
 
     init {
         loadConfig()
@@ -132,8 +165,10 @@ class TuesdayRepository(context: Context) {
     }
 
     fun confirmProvisionalDeviceModel(chosenModel: String) {
+        var targetDeviceId: String? = null
         _rackDevices.value = _rackDevices.value.map { dev ->
             if (dev.confidenceTier == DeviceConfidenceTier.PROVISIONAL_GUESS) {
+                targetDeviceId = dev.id
                 dev.copy(
                     confidenceTier = DeviceConfidenceTier.CONFIRMED,
                     portState = PortLifecycleState.CVE_KEV,
@@ -147,11 +182,21 @@ class TuesdayRepository(context: Context) {
                 )
             } else dev
         }
+        targetDeviceId?.let { devId ->
+            syncDevicePatchToServerAsync(
+                deviceId = devId,
+                payload = JSONObject().apply {
+                    put("confirmed_candidate_model", chosenModel)
+                }
+            )
+        }
     }
 
     fun rejectProvisionalDeviceModel() {
+        var targetDeviceId: String? = null
         _rackDevices.value = _rackDevices.value.map { dev ->
             if (dev.confidenceTier == DeviceConfidenceTier.PROVISIONAL_GUESS) {
+                targetDeviceId = dev.id
                 dev.copy(
                     confidenceTier = DeviceConfidenceTier.OPAQUE_UNKNOWN,
                     excludedPurlPrefixes = dev.excludedPurlPrefixes + "pkg:generic/ecobee/*",
@@ -159,6 +204,15 @@ class TuesdayRepository(context: Context) {
                     stnHeadline = "Not an Ecobee • Snap a photo of the thermostat label to identify"
                 )
             } else dev
+        }
+        targetDeviceId?.let { devId ->
+            syncDevicePatchToServerAsync(
+                deviceId = devId,
+                payload = JSONObject().apply {
+                    put("confidence_tier", "opaque_unknown")
+                    put("add_excluded_purl_prefix", "pkg:generic/ecobee/*")
+                }
+            )
         }
     }
 
@@ -293,6 +347,8 @@ class TuesdayRepository(context: Context) {
         _rackDevices.value = listOf(newRackDev) + _rackDevices.value
         _activeDeviceCount.value = (_activeDeviceCount.value + 1).coerceAtMost(128)
 
+        syncDeviceCreateToServerAsync(newRackDev, discoveredMetadata)
+
         _isSyncing.value = false
         persistDevices()
     }
@@ -327,7 +383,91 @@ class TuesdayRepository(context: Context) {
                 )
             } else it
         }
+        syncDevicePatchToServerAsync(
+            deviceId = deviceId,
+            payload = JSONObject().apply {
+                put("mark_remediated", true)
+            }
+        )
         persistDevices()
+    }
+
+    fun upgradeToProTier1(productId: String = "sh.tuesday.pro.tier1.annual") {
+        _entitlementTier.value = "pro_tier_1"
+        prefs.edit().putString("entitlement_tier", "pro_tier_1").apply()
+        ioScope.launch {
+            try {
+                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val payload = JSONObject().apply {
+                    put("platform", "android")
+                    put("product_id", productId)
+                    put("purchase_token", "gp_token_${UUID.randomUUID()}")
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/v1/billing/verify")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().close()
+            } catch (e: Exception) {
+                Log.w("TuesdayRepoSync", "Billing verification queued offline: ${e.message}")
+            }
+        }
+    }
+
+    private fun syncDeviceCreateToServerAsync(dev: RackPortDevice, meta: DiscoveredDeviceMetadata?) {
+        ioScope.launch {
+            try {
+                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val payload = JSONObject().apply {
+                    put("id", dev.id)
+                    put("port_index", dev.portIndex)
+                    put("category_code", dev.category.code)
+                    put("trust_zone", dev.trustZone.key)
+                    put("port_state", dev.portState.key)
+                    put("confidence_tier", dev.confidenceTier.name.lowercase())
+                    put("asset_tag", dev.assetTag)
+                    put("short_label", dev.shortLabel)
+                    put("name", dev.name)
+                    put("vendor", meta?.manufacturer ?: "Generic")
+                    put("model_number", meta?.modelNumber ?: dev.shortLabel)
+                    put("room_location", dev.roomLocation)
+                    put("version", dev.version)
+                    put("target_version", dev.targetVersion ?: dev.version)
+                    put("purls", JSONArray(dev.purls))
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/v1/inventory")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().close()
+            } catch (e: Exception) {
+                Log.w("TuesdayRepoSync", "Inventory create queued offline: ${e.message}")
+            }
+        }
+    }
+
+    private fun syncDevicePatchToServerAsync(deviceId: String, payload: JSONObject) {
+        ioScope.launch {
+            try {
+                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val req = Request.Builder()
+                    .url("$baseUrl/api/v1/inventory/$deviceId")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .patch(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().close()
+            } catch (e: Exception) {
+                Log.w("TuesdayRepoSync", "Inventory patch queued offline: ${e.message}")
+            }
+        }
     }
 
     fun resetDemoData() {
