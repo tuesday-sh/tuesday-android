@@ -83,6 +83,7 @@ fun HomeScreen(
     val activeNetworkId by repository.activeNetworkId.collectAsState()
     val activeDeviceCount by repository.activeDeviceCount.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
+    val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
     val entitlementTier by repository.entitlementTier.collectAsState()
     val remindersEnabled by repository.remindersEnabled.collectAsState()
     val dispatchSubscribed by repository.dispatchSubscribed.collectAsState()
@@ -146,6 +147,19 @@ fun HomeScreen(
             sh.tuesday.app.navigation.DeepLinkDestination.ResetDemo -> {
                 repository.resetDemoData()
                 activeTab = MainNavTab.STATUS
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.VisionDebug -> {
+                repository.toggleDeveloperMode(true)
+                repository.toggleVisionDebugMode(pendingDestination.enabled)
+                if (pendingDestination.openWizard) {
+                    onNavigateToAddDevice()
+                }
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.SetApiEndpoint -> {
+                repository.toggleDeveloperMode(true)
+                repository.setTuesdayApiBaseUrl(pendingDestination.url)
                 onConsumePendingDestination()
             }
             null -> {}
@@ -452,6 +466,10 @@ fun HomeScreen(
                         onUpgradeProTier1 = { repository.upgradeToProTier1() },
                         onSaveNetworkName = { repository.renameActiveNetwork(it) },
                         onToggleDeveloperMode = { repository.toggleDeveloperMode(it) },
+                        isVisionDebugEnabled = isVisionDebugEnabled,
+                        onToggleVisionDebugMode = { repository.toggleVisionDebugMode(it) },
+                        tuesdayApiBaseUrl = hacsConfig.tuesdayApiBaseUrl,
+                        onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
                         onSwitchToFleetTab = { activeTab = MainNavTab.STATUS }
                     )

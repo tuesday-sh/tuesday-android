@@ -85,6 +85,10 @@ dependencies {
     // Image loading with Coil
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // Deterministic Barcode & QR Scanning (ML Kit + Play Services Code Scanner)
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     // Networking & Serialization
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

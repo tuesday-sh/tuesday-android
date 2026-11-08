@@ -43,6 +43,10 @@ data class AccountSettingsParams(
     val onUpgradeProTier1: () -> Unit = {},
     val onSaveNetworkName: (String) -> Unit = {},
     val onToggleDeveloperMode: (Boolean) -> Unit = {},
+    val isVisionDebugEnabled: Boolean = true,
+    val onToggleVisionDebugMode: (Boolean) -> Unit = {},
+    val tuesdayApiBaseUrl: String = "http://100.108.40.3:3000",
+    val onSetTuesdayApiBaseUrl: (String) -> Unit = {},
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
     val onSwitchToFleetTab: () -> Unit = {}
 )
@@ -103,6 +107,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
 
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     var draftName by remember(networkLocationName) { mutableStateOf(networkLocationName) }
+    var draftApiUrl by remember(params.tuesdayApiBaseUrl) { mutableStateOf(params.tuesdayApiBaseUrl) }
     val scrollState = rememberScrollState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -369,6 +374,127 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 }
 
                                 if (isDeveloperMode) {
+                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+
+                                    // Vision API Debug Console Toggle
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .uiSlot("vision-debug-toggle-row"),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "🐞 Vision API Debug & Raw Match Logs",
+                                                color = palette.textPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "Shows a live monospace API log view on Add Device with raw LLM matches and Gold Datalake alignment diagnostics.",
+                                                color = palette.textMuted,
+                                                fontSize = 10.5.sp,
+                                                lineHeight = 14.sp
+                                            )
+                                        }
+                                        Switch(
+                                            checked = params.isVisionDebugEnabled,
+                                            onCheckedChange = params.onToggleVisionDebugMode,
+                                            modifier = Modifier.uiAction("toggleVisionDebugMode"),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = TuesdayTheme.HealthyGreen,
+                                                uncheckedThumbColor = Color.White,
+                                                uncheckedTrackColor = palette.border
+                                            )
+                                        )
+                                    }
+
+                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+
+                                    // API Endpoint Target Switcher (Local vs Prod GCP)
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .uiSlot("dev-api-endpoint-selector"),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        val activePreset = sh.tuesday.app.models.ApiEndpointPreset.fromUrl(params.tuesdayApiBaseUrl)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "TUESDAY API ENDPOINT TARGET:",
+                                                color = palette.textMuted,
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                            Text(
+                                                text = activePreset?.shortBadge ?: "⚙️ CUSTOM URL",
+                                                color = if (activePreset == sh.tuesday.app.models.ApiEndpointPreset.PROD_GCP) TuesdayTheme.HacsCyan else TuesdayTheme.HealthyGreen,
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            sh.tuesday.app.models.ApiEndpointPreset.entries.forEach { preset ->
+                                                val isSel = activePreset == preset
+                                                DevStateSimButton(
+                                                    label = preset.shortBadge,
+                                                    isSelected = isSel,
+                                                    palette = palette,
+                                                    modifier = Modifier.weight(1f),
+                                                    onClick = {
+                                                        draftApiUrl = preset.url
+                                                        params.onSetTuesdayApiBaseUrl(preset.url)
+                                                    }
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = draftApiUrl,
+                                                onValueChange = { draftApiUrl = it },
+                                                singleLine = true,
+                                                textStyle = androidx.compose.ui.text.TextStyle(
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 11.5.sp,
+                                                    color = palette.textPrimary
+                                                ),
+                                                placeholder = {
+                                                    Text("http://100.108.40.3:3000 or https://api.tuesday.sh", fontSize = 11.sp)
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = palette.accent,
+                                                    unfocusedBorderColor = palette.border
+                                                )
+                                            )
+                                            Button(
+                                                onClick = { params.onSetTuesdayApiBaseUrl(draftApiUrl) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.uiAction("saveApiEndpoint")
+                                            ) {
+                                                Text("Set", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                            }
+                                        }
+                                    }
+
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
                                     Text(
                                         text = "INVENTORY SEEDS:",

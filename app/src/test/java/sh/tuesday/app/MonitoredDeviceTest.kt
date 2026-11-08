@@ -197,4 +197,31 @@ class MonitoredDeviceTest {
         val allOkDevices = devices.map { it.copy(portState = PortLifecycleState.OK, confidenceTier = DeviceConfidenceTier.CONFIRMED) }
         assertFalse(sh.tuesday.app.ui.tabs.hasActiveCheckupRecommendation(allOkDevices, welcomeComplete = true))
     }
+
+    @Test
+    fun testVisionDebugGoldAlignmentAndDeepLink() {
+        val destOn = sh.tuesday.app.navigation.DeepLinkDestination.fromUri("tuesday://dev/vision-debug")
+        assertTrue(destOn is sh.tuesday.app.navigation.DeepLinkDestination.VisionDebug)
+        val visionDest = destOn as sh.tuesday.app.navigation.DeepLinkDestination.VisionDebug
+        assertTrue(visionDest.enabled)
+        assertTrue(visionDest.openWizard)
+
+        val res = GeminiDiscoveryService.fallbackHeuristic(
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers(),
+            userClueNotes = emptyList(),
+            imageCount = 1,
+            usedLiveApi = false,
+            fallbackErrorReason = "SocketTimeoutException: test"
+        )
+        assertEquals(3, res.candidates.size)
+        val alignedCand = res.candidates[0]
+        val unalignedCand = res.candidates[2]
+        assertTrue(alignedCand.goldAlignment?.aligned == true)
+        assertEquals("ubiquiti-advisories", alignedCand.goldAlignment?.matchedFeedSlug)
+        assertFalse(unalignedCand.goldAlignment?.aligned == true)
+        assertEquals("UNALIGNED RAW MATCH", unalignedCand.goldAlignment?.statusLabel)
+        assertNotNull(res.debugLogText)
+        assertTrue(res.debugLogText!!.contains("[✓ GOLD ALIGNED]"))
+        assertTrue(res.debugLogText!!.contains("[⚠ UNALIGNED RAW]"))
+    }
 }

@@ -10,6 +10,8 @@ sealed interface DeepLinkDestination {
     data class SeedFleet(val count: Int) : DeepLinkDestination
     data object ToggleFlavor : DeepLinkDestination
     data object ResetDemo : DeepLinkDestination
+    data class VisionDebug(val enabled: Boolean, val openWizard: Boolean = true) : DeepLinkDestination
+    data class SetApiEndpoint(val url: String) : DeepLinkDestination
 
     companion object {
         fun fromUri(uriString: String?): DeepLinkDestination? {
@@ -41,6 +43,20 @@ sealed interface DeepLinkDestination {
                 "device" -> {
                     val deviceId = parts.getOrNull(1)
                     if (!deviceId.isNullOrBlank()) Device(deviceId) else null
+                }
+                "vision-debug", "debug-vision", "dev" -> {
+                    val sub = parts.getOrNull(1)?.lowercase()
+                    val isOff = clean.contains("enabled=false", ignoreCase = true) || sub == "off" || sub == "false"
+                    VisionDebug(enabled = !isOff, openWizard = !clean.contains("wizard=false", ignoreCase = true))
+                }
+                "api-endpoint", "api-target" -> {
+                    val target = parts.getOrNull(1)?.lowercase()
+                    val resolvedUrl = when (target) {
+                        "prod", "gcp" -> "https://api.tuesday.sh"
+                        "lan" -> "http://192.168.9.201:3000"
+                        else -> "http://100.108.40.3:3000"
+                    }
+                    SetApiEndpoint(resolvedUrl)
                 }
                 else -> null
             }

@@ -32,13 +32,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.mlkit.vision.common.InputImage
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.GeminiDiscoveryService
 import sh.tuesday.app.services.GoldenCorpusRecorder
@@ -49,11 +56,12 @@ import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
 
 enum class EnrollmentMode(val title: String) {
-    PHOTO_WIZARD("AI Photo Wizard"),
-    MANUAL_AGENT("Manual / Agent")
+    PHOTO_WIZARD("Photo"),
+    BARCODE_SCAN("Scan"),
+    MANUAL_AGENT("Manual")
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddDeviceScreen(
     repository: TuesdayRepository,
@@ -63,9 +71,13 @@ fun AddDeviceScreen(
     var mode by remember { mutableStateOf(EnrollmentMode.PHOTO_WIZARD) }
     val hacsConfig by repository.hacsConfig.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
+    val isDeveloperMode by repository.isDeveloperMode.collectAsState()
+    val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
+    val showVisionDebug = isDeveloperMode && isVisionDebugEnabled
     val palette = TuesdayTheme.paletteFor(brandFlavor)
     val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
     // Wizard State
@@ -80,6 +92,8 @@ fun AddDeviceScreen(
     var isSaving by remember { mutableStateOf(false) }
     var savedCorpusCount by remember { mutableStateOf(GoldenCorpusRecorder.getSavedSessionCount(context)) }
     var lastSavedCorpusFolder by remember { mutableStateOf<String?>(null) }
+    var debugLogHistory by remember { mutableStateOf(listOf<String>()) }
+    var copyLogFeedback by remember { mutableStateOf<String?>(null) }
 
     // Manual State
     var manualHostname by remember { mutableStateOf("") }
@@ -120,10 +134,15 @@ fun AddDeviceScreen(
                 elastixApiKeyOverride = hacsConfig.elastixApiKey,
                 elastixModelName = hacsConfig.elastixModel,
                 apiKeyOverride = hacsConfig.geminiApiKey,
-                modelName = hacsConfig.geminiModel
+                modelName = hacsConfig.geminiModel,
+                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
+                debugEnabled = showVisionDebug
             )
             accumulatedIdentifiers.merge(res.extractedIdentifiers)
             discoveryResult = res
+            res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
+                debugLogHistory = debugLogHistory + logEntry
+            }
             val savedDir = GoldenCorpusRecorder.saveCaptureSession(
                 context = context,
                 sessionId = currentSessionId,
@@ -139,12 +158,106 @@ fun AddDeviceScreen(
         }
     }
 
-    // Gallery Picker
+    var scanStatusMessage by remember { mutableStateOf<String?>(null) }
+
+    fun triggerIdentifierOnlyAnalysis() {
+        scope.launch {
+            isAnalyzing = true
+            val res = discoveryService.analyzeDeviceProgressive(
+                bitmaps = capturedBitmaps,
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                aiProvider = hacsConfig.aiProvider,
+                elastixApiKeyOverride = hacsConfig.elastixApiKey,
+                elastixModelName = hacsConfig.elastixModel,
+                apiKeyOverride = hacsConfig.geminiApiKey,
+                modelName = hacsConfig.geminiModel,
+                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
+                debugEnabled = showVisionDebug
+            )
+            accumulatedIdentifiers.merge(res.extractedIdentifiers)
+            discoveryResult = res
+            res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
+                debugLogHistory = debugLogHistory + logEntry
+            }
+            isAnalyzing = false
+        }
+    }
+
+    fun applyDecodedBarcode(rawValue: String, format: Int) {
+        val cleaned = rawValue.trim()
+        if (cleaned.isEmpty()) return
+        val is2D = format == Barcode.FORMAT_QR_CODE ||
+            format == Barcode.FORMAT_DATA_MATRIX ||
+            format == Barcode.FORMAT_AZTEC ||
+            format == Barcode.FORMAT_PDF417
+        // Normalize 13-digit 0-prefixed EAN-13 into 12-digit UPC-A for cross-platform Android/iOS parity
+        val normalized = if (!is2D && cleaned.length == 13 && cleaned.startsWith("0") && cleaned.all { it.isDigit() }) {
+            cleaned.removePrefix("0")
+        } else {
+            cleaned
+        }
+        if (is2D) {
+            accumulatedIdentifiers.qrCode = normalized
+            userClueNotes = userClueNotes + "QR Code=$normalized"
+            scanStatusMessage = "✓ Decoded 2D QR/Matrix: $normalized"
+        } else {
+            accumulatedIdentifiers.barcode = normalized
+            userClueNotes = userClueNotes + "Barcode=$normalized"
+            scanStatusMessage = "✓ Decoded 1D Barcode: $normalized"
+        }
+        triggerIdentifierOnlyAnalysis()
+    }
+
+    fun decodeBarcodesFromBitmap(bmp: Bitmap) {
+        val inputImage = InputImage.fromBitmap(bmp, 0)
+        val scanner = BarcodeScanning.getClient()
+        scanner.process(inputImage)
+            .addOnSuccessListener { barcodes ->
+                val first = barcodes.firstOrNull { !it.rawValue.isNullOrBlank() }
+                if (first != null && !first.rawValue.isNullOrBlank()) {
+                    applyDecodedBarcode(first.rawValue!!, first.format)
+                } else {
+                    scanStatusMessage = "⚠ No 1D/2D barcode matrix detected in file — falling back to Vision OCR"
+                    triggerProgressiveAnalysis(bmp)
+                }
+            }
+            .addOnFailureListener { e ->
+                scanStatusMessage = "⚠ ML Kit decode error (${e.localizedMessage}) — falling back to Vision OCR"
+                triggerProgressiveAnalysis(bmp)
+            }
+    }
+
+    fun launchLiveBarcodeScanner() {
+        val scanner = GmsBarcodeScanning.getClient(context)
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                val raw = barcode.rawValue
+                if (!raw.isNullOrBlank()) {
+                    applyDecodedBarcode(raw, barcode.format)
+                }
+            }
+            .addOnFailureListener { e ->
+                scanStatusMessage = "Scanner canceled or unavailable: ${e.localizedMessage ?: "try Upload File"}"
+            }
+    }
+
+    // Upload File Picker (Photo Mode)
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val bmp = decodeUriToSoftwareBitmap(uri)
             if (bmp != null) {
                 triggerProgressiveAnalysis(bmp)
+            }
+        }
+    }
+
+    // Upload File Picker (Scan Mode — runs deterministic ML Kit barcode extraction on bitmap)
+    val scanFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val bmp = decodeUriToSoftwareBitmap(uri)
+            if (bmp != null) {
+                decodeBarcodesFromBitmap(bmp)
             }
         }
     }
@@ -181,6 +294,167 @@ fun AddDeviceScreen(
         }
     }
 
+    @Composable
+    fun DevPresetsAndControlsRow(includePhotoSamples: Boolean) {
+        val isElastix = hacsConfig.aiProvider == AiProviderType.ELASTIX
+        val activeAiColor = if (isElastix) TuesdayTheme.HealthyGreen else TuesdayTheme.LedUpdateBlue
+        val debugActiveColor = if (showVisionDebug) TuesdayTheme.WarningAmber else palette.textMuted
+
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "QUICK PILOT PRESETS & DEV CONTROLS",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (includePhotoSamples) {
+                    Surface(
+                        onClick = {
+                            val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
+                            capturedBitmaps = capturedBitmaps + sample
+                            triggerIdentifierOnlyAnalysis()
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Router, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(12.dp))
+                            Text("Sample Router", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    Surface(
+                        onClick = {
+                            val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
+                            capturedBitmaps = capturedBitmaps + sample
+                            userClueNotes = userClueNotes + "Zigbee coordinator antenna"
+                            triggerIdentifierOnlyAnalysis()
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = TuesdayTheme.WarningAmber.copy(alpha = 0.15f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Sensors, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(12.dp))
+                            Text("Sample IoT", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                } else {
+                    Surface(
+                        onClick = {
+                            applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128)
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.QrCode, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(12.dp))
+                            Text("Sample Barcode (UDM-Pro)", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    Surface(
+                        onClick = {
+                            applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE)
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = TuesdayTheme.WarningAmber.copy(alpha = 0.15f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(12.dp))
+                            Text("Sample QR (UCG-Ultra)", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                // Debug Mode Toggle Pill
+                Surface(
+                    onClick = {
+                        if (!isDeveloperMode) {
+                            repository.toggleDeveloperMode(true)
+                            repository.toggleVisionDebugMode(true)
+                        } else {
+                            repository.toggleVisionDebugMode(!isVisionDebugEnabled)
+                        }
+                    },
+                    shape = RoundedCornerShape(6.dp),
+                    color = debugActiveColor.copy(alpha = if (showVisionDebug) 0.16f else 0.08f),
+                    modifier = Modifier
+                        .uiAction("toggleVisionDebugMode")
+                        .border(1.dp, debugActiveColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (showVisionDebug) "🐞 DEBUG ON" else "🐞 DEBUG",
+                            color = debugActiveColor,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // AI Model Switcher Pill
+                Surface(
+                    onClick = {
+                        val nextProvider = if (isElastix) AiProviderType.GEMINI else AiProviderType.ELASTIX
+                        repository.updateHacsConfig(hacsConfig.copy(aiProvider = nextProvider))
+                    },
+                    shape = RoundedCornerShape(6.dp),
+                    color = activeAiColor.copy(alpha = 0.14f),
+                    modifier = Modifier
+                        .uiAction("switchAiProvider")
+                        .border(1.dp, activeAiColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(activeAiColor)
+                        )
+                        Text(
+                            text = if (isElastix) "AI: Elastix ⇄" else "AI: Gemini ⇄",
+                            color = activeAiColor,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -204,7 +478,7 @@ fun AddDeviceScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Mode Switcher Tabs
+            // Mode Switcher Tabs: Photo | Scan | Manual
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -217,6 +491,11 @@ fun AddDeviceScreen(
             ) {
                 EnrollmentMode.entries.forEach { item ->
                     val isSelected = mode == item
+                    val tabIcon = when (item) {
+                        EnrollmentMode.PHOTO_WIZARD -> Icons.Default.CameraAlt
+                        EnrollmentMode.BARCODE_SCAN -> Icons.Default.QrCodeScanner
+                        EnrollmentMode.MANUAL_AGENT -> Icons.Default.Terminal
+                    }
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -232,7 +511,7 @@ fun AddDeviceScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = if (item == EnrollmentMode.PHOTO_WIZARD) Icons.Default.CameraAlt else Icons.Default.Terminal,
+                                imageVector = tabIcon,
                                 contentDescription = null,
                                 tint = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 modifier = Modifier.size(15.dp)
@@ -241,233 +520,178 @@ fun AddDeviceScreen(
                                 text = item.title,
                                 color = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                fontSize = 13.sp,
+                                maxLines = 1
                             )
                         }
                     }
                 }
             }
 
-            if (mode == EnrollmentMode.PHOTO_WIZARD) {
-                // Step Indicator
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("wizard-step-header"),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+            if (mode == EnrollmentMode.PHOTO_WIZARD || mode == EnrollmentMode.BARCODE_SCAN) {
+                if (mode == EnrollmentMode.PHOTO_WIZARD) {
+                    Text(
+                        text = if (isStn) "Identify Device by Photo" else "Inventory Device by Photo",
+                        color = palette.textPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Capture a photo of a device chassis, bottom label, or retail box. Tuesday AI will analyze the hardware and progressively narrow candidate models.",
+                        color = palette.textMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+
+                    // Photo Capture Box
+                    Column(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(palette.accent.copy(alpha = 0.15f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .fillMaxWidth()
+                            .uiSlot("photo-capture-card")
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text(
-                            text = if (capturedBitmaps.isEmpty()) "STEP 1 OF 3 • CAPTURE HARDWARE" else "STEP 2 OF 3 • PROGRESSIVE DISCOVERY",
-                            color = palette.accent,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-
-                    val isElastix = hacsConfig.aiProvider == AiProviderType.ELASTIX
-                    val activeAiColor = if (isElastix) TuesdayTheme.HealthyGreen else TuesdayTheme.LedUpdateBlue
-                    Row(
-                        modifier = Modifier
-                            .uiAction("switchAiProvider")
-                            .clip(CircleShape)
-                            .background(activeAiColor.copy(alpha = 0.14f))
-                            .border(1.dp, activeAiColor.copy(alpha = 0.55f), CircleShape)
-                            .clickable {
-                                val nextProvider = if (isElastix) AiProviderType.GEMINI else AiProviderType.ELASTIX
-                                repository.updateHacsConfig(hacsConfig.copy(aiProvider = nextProvider))
-                            }
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(activeAiColor)
-                        )
-                        Text(
-                            text = if (isElastix) "AI: Elastix ⇄" else "AI: Gemini ⇄",
-                            color = activeAiColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-
-                Text(
-                    text = if (isStn) "Identify Device by Photo" else "Inventory Device by Photo",
-                    color = palette.textPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "Snap a photo of a router, switch, NAS, or IoT device. Gemini AI will analyze the hardware and progressively narrow candidate models using barcodes, serial numbers, QR codes, models, or MAC addresses.",
-                    color = palette.textMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-
-                // Capture Box
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("photo-capture-card")
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    if (capturedBitmaps.isNotEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(capturedBitmaps) { bmp ->
-                                Image(
-                                    bitmap = bmp.asImageBitmap(),
-                                    contentDescription = "Captured Device",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(width = 140.dp, height = 95.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                )
+                        if (capturedBitmaps.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                items(capturedBitmaps) { bmp ->
+                                    Image(
+                                        bitmap = bmp.asImageBitmap(),
+                                        contentDescription = "Captured Device",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(width = 140.dp, height = 95.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = {
-                                val hasPerm = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.CAMERA
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPerm) {
-                                    launchCameraWithUri()
-                                } else {
-                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.HealthyGreen,
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .uiAction("captureHardwarePhoto")
-                        ) {
-                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    val hasPerm = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.CAMERA
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPerm) {
+                                        launchCameraWithUri()
+                                    } else {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TuesdayTheme.HealthyGreen,
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .uiAction("captureHardwarePhoto")
+                            ) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Capture Photo",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+
+                            Button(
+                                onClick = { galleryLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TuesdayTheme.ElevatedPill,
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.uiAction("uploadHardwarePhoto")
+                            ) {
+                                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+
+                        DevPresetsAndControlsRow(includePhotoSamples = true)
+                    }
+                } else {
+                    Text(
+                        text = "Scan Barcode or QR Code",
+                        color = palette.textPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Deterministically decode 1D retail UPC/EAN barcodes, Code-128 serial stickers, or 2D QR / DataMatrix codes for $0.00 Gold Catalog lookup.",
+                        color = palette.textMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+
+                    // Deterministic Barcode / QR Scan Box
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiSlot("barcode-scan-card")
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        scanStatusMessage?.let { msg ->
                             Text(
-                                text = if (capturedBitmaps.isEmpty()) "Take Device Photo" else "Snap Label / Sticker",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                text = msg,
+                                color = if (msg.startsWith("✓")) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace
                             )
                         }
 
-                        Button(
-                            onClick = { galleryLauncher.launch("image/*") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.ElevatedPill,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Library", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-
-                    // Quick Sample Presets
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "QUICK PILOT HARDWARE PRESETS (FOR SIMULATOR / FAST TESTING)",
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Surface(
-                                onClick = {
-                                    val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
-                                    capturedBitmaps = capturedBitmaps + sample
-                                    scope.launch {
-                                        isAnalyzing = true
-                                        val res = discoveryService.analyzeDeviceProgressive(
-                                            bitmaps = capturedBitmaps,
-                                            accumulatedIdentifiers = accumulatedIdentifiers,
-                                            userClueNotes = userClueNotes,
-                                            aiProvider = hacsConfig.aiProvider,
-                                            elastixApiKeyOverride = hacsConfig.elastixApiKey,
-                                            elastixModelName = hacsConfig.elastixModel,
-                                            apiKeyOverride = hacsConfig.geminiApiKey,
-                                            modelName = hacsConfig.geminiModel
-                                        )
-                                        accumulatedIdentifiers.merge(res.extractedIdentifiers)
-                                        discoveryResult = res
-                                        isAnalyzing = false
-                                    }
-                                },
-                                shape = RoundedCornerShape(6.dp),
-                                color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = { launchLiveBarcodeScanner() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TuesdayTheme.HealthyGreen,
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .uiAction("scanBarcodeOrQr")
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.Router, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(12.dp))
-                                    Text("Sample Router Photo", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Scan Barcode / QR",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
                             }
 
-                            Surface(
-                                onClick = {
-                                    val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
-                                    capturedBitmaps = capturedBitmaps + sample
-                                    userClueNotes = userClueNotes + "Zigbee coordinator antenna"
-                                    scope.launch {
-                                        isAnalyzing = true
-                                        val res = discoveryService.analyzeDeviceProgressive(
-                                            bitmaps = capturedBitmaps,
-                                            accumulatedIdentifiers = accumulatedIdentifiers,
-                                            userClueNotes = userClueNotes,
-                                            aiProvider = hacsConfig.aiProvider,
-                                            elastixApiKeyOverride = hacsConfig.elastixApiKey,
-                                            elastixModelName = hacsConfig.elastixModel,
-                                            apiKeyOverride = hacsConfig.geminiApiKey,
-                                            modelName = hacsConfig.geminiModel
-                                        )
-                                        accumulatedIdentifiers.merge(res.extractedIdentifiers)
-                                        discoveryResult = res
-                                        isAnalyzing = false
-                                    }
-                                },
-                                shape = RoundedCornerShape(6.dp),
-                                color = TuesdayTheme.WarningAmber.copy(alpha = 0.15f)
+                            Button(
+                                onClick = { scanFileLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TuesdayTheme.ElevatedPill,
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.uiAction("uploadBarcodeImage")
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.Sensors, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(12.dp))
-                                    Text("Sample IoT Dongle", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                }
+                                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         }
+
+                        DevPresetsAndControlsRow(includePhotoSamples = false)
                     }
                 }
 
@@ -709,10 +933,15 @@ fun AddDeviceScreen(
                                                     elastixApiKeyOverride = hacsConfig.elastixApiKey,
                                                     elastixModelName = hacsConfig.elastixModel,
                                                     apiKeyOverride = hacsConfig.geminiApiKey,
-                                                    modelName = hacsConfig.geminiModel
+                                                    modelName = hacsConfig.geminiModel,
+                                                    serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
+                                                    debugEnabled = showVisionDebug
                                                 )
                                                 accumulatedIdentifiers.merge(res.extractedIdentifiers)
                                                 discoveryResult = res
+                                                res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
+                                                    debugLogHistory = debugLogHistory + logEntry
+                                                }
                                                 if (capturedBitmaps.isNotEmpty()) {
                                                     val savedDir = GoldenCorpusRecorder.saveCaptureSession(
                                                         context = context,
@@ -781,6 +1010,57 @@ fun AddDeviceScreen(
                             }
 
                             Text(candidate.reasoning, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
+
+                            candidate.goldAlignment?.let { ga ->
+                                val isAligned = ga.aligned
+                                val gaColor = if (isAligned) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(gaColor.copy(alpha = 0.1f))
+                                        .border(1.dp, gaColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isAligned) {
+                                                "✓ GOLD ALIGNED • ${ga.matchedFeedSlug ?: "built-in-catalog"}"
+                                            } else if (!ga.matchedFeedSlug.isNullOrBlank()) {
+                                                "⚠ ${ga.statusLabel} • ${ga.matchedFeedSlug}"
+                                            } else {
+                                                "⚠ ${ga.statusLabel}"
+                                            },
+                                            color = gaColor,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        if (ga.inferredPurl.isNotBlank()) {
+                                            Text(
+                                                text = ga.inferredPurl,
+                                                color = Color.White.copy(alpha = 0.7f),
+                                                fontSize = 9.5.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                    if (showVisionDebug && ga.diagnosticNote.isNotBlank()) {
+                                        Text(
+                                            text = ga.diagnosticNote,
+                                            color = Color.White.copy(alpha = 0.78f),
+                                            fontSize = 10.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
 
                             Button(
                                 onClick = {
@@ -907,6 +1187,170 @@ fun AddDeviceScreen(
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Add as Incomplete / Best-Guess Device", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                // Developer Mode Vision API Debug Log View (Text Area)
+                if (showVisionDebug) {
+                    val combinedLogText = if (debugLogHistory.isEmpty()) {
+                        buildString {
+                            appendLine("=== TUESDAY VISION DEBUG CONSOLE READY ===")
+                            appendLine("Server Endpoint: ${hacsConfig.tuesdayApiBaseUrl.trimEnd('/')}/api/v1/discovery/analyze (debug=true)")
+                            appendLine("Livetail Stream: ${hacsConfig.tuesdayApiBaseUrl.trimEnd('/')}/api/v1/discovery/livetail?format=text")
+                            appendLine("Active AI Provider: ${hacsConfig.aiProvider.displayName}")
+                            appendLine()
+                            appendLine("Submit a photo (or tap a Quick Pilot Hardware Preset above) to inspect:")
+                            appendLine(" • Step-by-step server pipeline trace & latency")
+                            appendLine(" • Raw LLM JSON output & extracted identifiers")
+                            appendLine(" • Raw candidate matches (including unaligned candidates missing from Gold Datalake)")
+                        }.trimEnd()
+                    } else {
+                        debugLogHistory.asReversed().joinToString("\n\n" + "=".repeat(64) + "\n\n")
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiSlot("vision-debug-log-panel")
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF0A0E17))
+                            .border(1.dp, TuesdayTheme.WarningAmber.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "🐞 VISION API DEBUG LOG (${debugLogHistory.size} TURN${if (debugLogHistory.size == 1) "" else "S"})",
+                                    color = TuesdayTheme.WarningAmber,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "Target: ${hacsConfig.tuesdayApiBaseUrl}",
+                                    color = Color.White.copy(alpha = 0.65f),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1
+                                )
+                            }
+
+                            copyLogFeedback?.let { msg ->
+                                Text(
+                                    text = msg,
+                                    color = TuesdayTheme.HealthyGreen,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val currentPreset = ApiEndpointPreset.fromUrl(hacsConfig.tuesdayApiBaseUrl)
+                                val isProdGcp = currentPreset == ApiEndpointPreset.PROD_GCP
+                                val targetColor = if (isProdGcp) TuesdayTheme.LedUpdateBlue else TuesdayTheme.HealthyGreen
+                                Surface(
+                                    onClick = {
+                                        val presets = ApiEndpointPreset.entries
+                                        val nextIdx = if (currentPreset != null) (presets.indexOf(currentPreset) + 1) % presets.size else 0
+                                        val nextPreset = presets[nextIdx]
+                                        repository.setTuesdayApiBaseUrl(nextPreset.url)
+                                        copyLogFeedback = "Switched API → ${nextPreset.url}"
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = targetColor.copy(alpha = 0.16f),
+                                    modifier = Modifier
+                                        .uiAction("cycleApiEndpointPreset")
+                                        .border(1.dp, targetColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                                ) {
+                                    Text(
+                                        text = "${currentPreset?.shortBadge ?: "⚙️ CUSTOM"} ⇄",
+                                        color = targetColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    )
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(combinedLogText))
+                                        copyLogFeedback = "✓ Copied ${combinedLogText.length} chars to clipboard"
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = TuesdayTheme.HacsCyan.copy(alpha = 0.18f),
+                                    modifier = Modifier
+                                        .uiAction("copyVisionDebugLog")
+                                        .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                ) {
+                                    Text(
+                                        text = "Copy Log",
+                                        color = TuesdayTheme.HacsCyan,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    )
+                                }
+                                if (debugLogHistory.isNotEmpty()) {
+                                    Surface(
+                                        onClick = {
+                                            debugLogHistory = emptyList()
+                                            copyLogFeedback = null
+                                        },
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = TuesdayTheme.CriticalRed.copy(alpha = 0.18f),
+                                        modifier = Modifier
+                                            .uiAction("clearVisionDebugLog")
+                                            .border(1.dp, TuesdayTheme.CriticalRed.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                    ) {
+                                        Text(
+                                            text = "Clear",
+                                            color = TuesdayTheme.CriticalRed,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        SelectionContainer {
+                            OutlinedTextField(
+                                value = combinedLogText,
+                                onValueChange = {},
+                                readOnly = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.5.sp,
+                                    color = Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 180.dp, max = 420.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = TuesdayTheme.WarningAmber.copy(alpha = 0.5f),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.16f),
+                                    focusedContainerColor = Color(0xFF060911),
+                                    unfocusedContainerColor = Color(0xFF060911)
+                                )
+                            )
                         }
                     }
                 }

@@ -76,6 +76,9 @@ class TuesdayRepository(context: Context) {
     private val _isDeveloperMode = MutableStateFlow(false)
     val isDeveloperMode: StateFlow<Boolean> = _isDeveloperMode.asStateFlow()
 
+    private val _isVisionDebugEnabled = MutableStateFlow(true)
+    val isVisionDebugEnabled: StateFlow<Boolean> = _isVisionDebugEnabled.asStateFlow()
+
     private val _hacsConfig = MutableStateFlow(HacsConfig())
     val hacsConfig: StateFlow<HacsConfig> = _hacsConfig.asStateFlow()
 
@@ -128,6 +131,11 @@ class TuesdayRepository(context: Context) {
     fun toggleDeveloperMode(enabled: Boolean) {
         _isDeveloperMode.value = enabled
         prefs.edit().putBoolean("is_developer_mode", enabled).apply()
+    }
+
+    fun toggleVisionDebugMode(enabled: Boolean) {
+        _isVisionDebugEnabled.value = enabled
+        prefs.edit().putBoolean("is_vision_debug_enabled", enabled).apply()
     }
 
     fun setSimulatedDeviceCount(count: Int) {
@@ -258,6 +266,7 @@ class TuesdayRepository(context: Context) {
 
     private fun loadConfig() {
         _isDeveloperMode.value = prefs.getBoolean("is_developer_mode", false)
+        _isVisionDebugEnabled.value = prefs.getBoolean("is_vision_debug_enabled", true)
         val raw = prefs.getString("hacs_config", null)
         if (raw != null) {
             try {
@@ -293,6 +302,13 @@ class TuesdayRepository(context: Context) {
 
     fun updateHacsConfig(config: HacsConfig) {
         _hacsConfig.value = config
+        persistConfig()
+    }
+
+    fun setTuesdayApiBaseUrl(url: String) {
+        val clean = url.trim().trimEnd('/')
+        if (clean.isEmpty()) return
+        _hacsConfig.value = _hacsConfig.value.copy(tuesdayApiBaseUrl = clean)
         persistConfig()
     }
 

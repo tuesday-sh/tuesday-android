@@ -46,7 +46,8 @@ class GeminiDiscoveryService(private val context: Context) {
         elastixModelName: String = "qwen3.8-27b",
         apiKeyOverride: String = "",
         modelName: String = "gemini-3.8-flash",
-        serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
+        serverBaseUrl: String = DEFAULT_SERVER_BASE_URL,
+        debugEnabled: Boolean = false
     ): GeminiDiscoveryTurnResult = withContext(Dispatchers.IO) {
         turnCounter += 1
         try {
@@ -55,7 +56,8 @@ class GeminiDiscoveryService(private val context: Context) {
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = userClueNotes,
                 aiProvider = aiProvider,
-                serverBaseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL }
+                serverBaseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL },
+                debugEnabled = debugEnabled
             )
         } catch (e: Exception) {
             Log.w("TuesdayVisionProxy", "Hosted proxy unreachable (${e.message}); falling back to local heuristic")
@@ -63,7 +65,8 @@ class GeminiDiscoveryService(private val context: Context) {
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = userClueNotes,
                 imageCount = bitmaps.size,
-                usedLiveApi = false
+                usedLiveApi = false,
+                fallbackErrorReason = "${e.javaClass.simpleName}: ${e.message ?: "Network unreachable"}"
             )
         }
     }
@@ -119,7 +122,8 @@ class GeminiDiscoveryService(private val context: Context) {
         accumulatedIdentifiers: ExtractedDeviceIdentifiers,
         userClueNotes: List<String>,
         aiProvider: AiProviderType,
-        serverBaseUrl: String
+        serverBaseUrl: String,
+        debugEnabled: Boolean = false
     ): GeminiDiscoveryTurnResult {
         val baseUrl = serverBaseUrl.trimEnd('/')
         val providerOverride = when (aiProvider) {
@@ -142,7 +146,7 @@ class GeminiDiscoveryService(private val context: Context) {
 
         val imagesArr = JSONArray()
         for (bmp in bitmaps.takeLast(2)) {
-            val b64 = downscaleAndEncode(bmp, 640)
+            val b64 = downscaleAndEncode(bmp, 1024)
             if (b64 != null) {
                 imagesArr.put(b64)
             }
@@ -157,6 +161,7 @@ class GeminiDiscoveryService(private val context: Context) {
             put("extracted_identifiers", extractedObj)
             put("user_clue_notes", cluesArr)
             put("images_base64", imagesArr)
+            put("debug", debugEnabled)
         }
 
         val request = Request.Builder()
@@ -166,6 +171,7 @@ class GeminiDiscoveryService(private val context: Context) {
             .addHeader("X-Tuesday-Device-ID", sessionStickinessId)
             .addHeader("X-Tuesday-Client-Platform", "android")
             .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
+            .addHeader("X-Tuesday-Debug", debugEnabled.toString())
             .post(requestPayload.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -216,6 +222,22 @@ class GeminiDiscoveryService(private val context: Context) {
                 else -> "Linux"
             }
 
+            val gaObj = c.optJSONObject("goldAlignment")
+            val goldAlignment = if (gaObj != null) {
+                GoldAlignmentInfo(
+                    aligned = gaObj.optBoolean("aligned", false),
+                    matchedFeedSlug = gaObj.optString("matchedFeedSlug").takeIf { it.isNotBlank() && it != "null" },
+                    matchedFeedName = gaObj.optString("matchedFeedName").takeIf { it.isNotBlank() && it != "null" },
+                    matchedPurlPrefix = gaObj.optString("matchedPurlPrefix").takeIf { it.isNotBlank() && it != "null" },
+                    inferredPurl = gaObj.optString("inferredPurl", ""),
+                    latestGoldRelease = gaObj.optString("latestGoldRelease").takeIf { it.isNotBlank() && it != "null" },
+                    inBuiltInCatalog = gaObj.optBoolean("inBuiltInCatalog", false),
+                    inConfirmedCatalog = gaObj.optBoolean("inConfirmedCatalog", false),
+                    statusLabel = gaObj.optString("statusLabel", if (gaObj.optBoolean("aligned", false)) "GOLD ALIGNED" else "UNALIGNED RAW MATCH"),
+                    diagnosticNote = gaObj.optString("diagnosticNote", "")
+                )
+            } else null
+
             candidatesList.add(
                 DeviceCandidateMatch(
                     manufacturer = c.optString("manufacturer", "Generic Vendor"),
@@ -226,7 +248,8 @@ class GeminiDiscoveryService(private val context: Context) {
                     reasoning = c.optString("reasoning", ""),
                     suggestedHostname = c.optString("suggestedHostname", "device.local"),
                     suggestedOsDetails = osDetailsStr,
-                    suggestedPackageManager = c.optString("suggestedPackageManager", "firmware")
+                    suggestedPackageManager = c.optString("suggestedPackageManager", "firmware"),
+                    goldAlignment = goldAlignment
                 )
             )
         }
@@ -239,6 +262,14 @@ class GeminiDiscoveryService(private val context: Context) {
             }
         }
 
+        val traceList = mutableListOf<String>()
+        val traceArr = parsed.optJSONArray("debugTrace")
+        if (traceArr != null) {
+            for (i in 0 until traceArr.length()) {
+                traceList.add(traceArr.getString(i))
+            }
+        }
+
         return GeminiDiscoveryTurnResult(
             visualSummary = parsed.optString("visualSummary", "Analyzed device hardware."),
             nextNarrowingQuestion = parsed.optString("nextNarrowingQuestion", "Can you check for a model number or MAC address?"),
@@ -246,7 +277,12 @@ class GeminiDiscoveryService(private val context: Context) {
             extractedIdentifiers = merged,
             candidates = candidatesList,
             usedLiveGeminiApi = true,
-            providerUsed = providerLabel
+            providerUsed = providerLabel,
+            latencyMs = parsed.optLong("latencyMs", 0L),
+            costUsd = parsed.optDouble("costUSD", 0.0),
+            debugTrace = traceList,
+            rawLlmResponse = parsed.optString("rawLlmResponse").takeIf { it.isNotBlank() && it != "null" },
+            debugLogText = parsed.optString("debugLogText").takeIf { it.isNotBlank() && it != "null" }
         )
     }
 
@@ -276,7 +312,8 @@ class GeminiDiscoveryService(private val context: Context) {
             accumulatedIdentifiers: ExtractedDeviceIdentifiers,
             userClueNotes: List<String>,
             imageCount: Int,
-            usedLiveApi: Boolean
+            usedLiveApi: Boolean,
+            fallbackErrorReason: String? = null
         ): GeminiDiscoveryTurnResult {
             val combined = (
                 accumulatedIdentifiers.nonEmptyPairs().map { "${it.first.rawValue}: ${it.second}" } + userClueNotes
@@ -285,6 +322,46 @@ class GeminiDiscoveryService(private val context: Context) {
             val hasSpecificClue = accumulatedIdentifiers.nonEmptyPairs().isNotEmpty() || imageCount > 1
 
             if (combined.contains("zigbee") || combined.contains("sonoff") || combined.contains("zbdongle")) {
+                val cands = listOf(
+                    DeviceCandidateMatch(
+                        manufacturer = "ITEAD / SONOFF",
+                        modelNumber = accumulatedIdentifiers.modelNumber ?: "ZBDongle-E",
+                        displayName = "SONOFF Zigbee 3.0 USB Dongle Plus (EFR32MG21)",
+                        deviceCategory = "IoT Coordinator",
+                        confidencePercent = if (hasSpecificClue) 95 else 74,
+                        reasoning = "Matches aluminum housing profile and SMA dipole antenna; commonly paired with Home Assistant ZHA / Zigbee2MQTT.",
+                        suggestedHostname = "sonoff-zigbee-coordinator",
+                        suggestedOsDetails = "EZSP v7.4.4 / Home Assistant HACS ZHA",
+                        suggestedPackageManager = "hacs",
+                        goldAlignment = GoldAlignmentInfo(
+                            aligned = true,
+                            matchedFeedSlug = null,
+                            inferredPurl = "pkg:generic/itead-sonoff/zbdongle-e",
+                            inBuiltInCatalog = true,
+                            statusLabel = "GOLD ALIGNED",
+                            diagnosticNote = "Aligned with Built-in Gold Catalog Signature (ZBDongle-E), but no active feed in canonical_feeds.json yet."
+                        )
+                    ),
+                    DeviceCandidateMatch(
+                        manufacturer = "Nabu Casa",
+                        modelNumber = "SkyConnect-ZBT1",
+                        displayName = "Home Assistant Connect ZBT-1",
+                        deviceCategory = "IoT Radio",
+                        confidencePercent = if (hasSpecificClue) 25 else 42,
+                        reasoning = "Alternative Silabs EFR32 Zigbee/Thread coordinator used in Home Assistant setups.",
+                        suggestedHostname = "ha-zbt1-radio",
+                        suggestedOsDetails = "Home Assistant Connect Firmware (HACS)",
+                        suggestedPackageManager = "hacs",
+                        goldAlignment = GoldAlignmentInfo(
+                            aligned = false,
+                            matchedFeedSlug = null,
+                            inferredPurl = "pkg:generic/nabu-casa/skyconnect-zbt1",
+                            inBuiltInCatalog = false,
+                            statusLabel = "UNALIGNED RAW MATCH",
+                            diagnosticNote = "Raw candidate 'Nabu Casa SkyConnect-ZBT1' has no matching PURL prefix in canonical_feeds.json or catalog_releases.json"
+                        )
+                    )
+                )
                 return GeminiDiscoveryTurnResult(
                     visualSummary = "Detected an aluminum USB Zigbee 3.0 coordinator / IoT radio peripheral with external dipole antenna.",
                     nextNarrowingQuestion = if (hasSpecificClue) {
@@ -294,37 +371,85 @@ class GeminiDiscoveryService(private val context: Context) {
                     },
                     recommendedClueTypes = listOf("Model", "Serial Number", "Barcode", "MAC Address"),
                     extractedIdentifiers = accumulatedIdentifiers,
-                    candidates = listOf(
-                        DeviceCandidateMatch(
-                            manufacturer = "ITEAD / SONOFF",
-                            modelNumber = accumulatedIdentifiers.modelNumber ?: "ZBDongle-E",
-                            displayName = "SONOFF Zigbee 3.0 USB Dongle Plus (EFR32MG21)",
-                            deviceCategory = "IoT Coordinator",
-                            confidencePercent = if (hasSpecificClue) 95 else 74,
-                            reasoning = "Matches aluminum housing profile and SMA dipole antenna; commonly paired with Home Assistant ZHA / Zigbee2MQTT.",
-                            suggestedHostname = "sonoff-zigbee-coordinator",
-                            suggestedOsDetails = "EZSP v7.4.4 / Home Assistant HACS ZHA",
-                            suggestedPackageManager = "hacs"
-                        ),
-                        DeviceCandidateMatch(
-                            manufacturer = "Nabu Casa",
-                            modelNumber = "SkyConnect-ZBT1",
-                            displayName = "Home Assistant Connect ZBT-1",
-                            deviceCategory = "IoT Radio",
-                            confidencePercent = if (hasSpecificClue) 25 else 42,
-                            reasoning = "Alternative Silabs EFR32 Zigbee/Thread coordinator used in Home Assistant setups.",
-                            suggestedHostname = "ha-zbt1-radio",
-                            suggestedOsDetails = "Home Assistant Connect Firmware (HACS)",
-                            suggestedPackageManager = "hacs"
-                        )
-                    ),
+                    candidates = cands,
                     usedLiveGeminiApi = usedLiveApi,
-                    providerUsed = "Pilot Heuristic"
+                    providerUsed = "Pilot Heuristic",
+                    debugLogText = buildClientFallbackDebugLog(cands, imageCount, fallbackErrorReason)
                 )
             }
 
             val topConfidence = if (hasSpecificClue) 94 else 68
             val detectedModel = accumulatedIdentifiers.modelNumber ?: (if (hasSpecificClue) "UCG-Ultra" else "UCG-Ultra / UXG-Max")
+
+            val cands = listOf(
+                DeviceCandidateMatch(
+                    manufacturer = "Ubiquiti Inc.",
+                    modelNumber = detectedModel,
+                    displayName = "UniFi Cloud Gateway Ultra ($detectedModel)",
+                    deviceCategory = "Router / Security Gateway",
+                    confidencePercent = topConfidence,
+                    reasoning = if (hasSpecificClue) {
+                        "Model/OUI clue confirms Ubiquiti UniFi Cloud Gateway Ultra running UniFi OS (Debian apt)."
+                    } else {
+                        "Form factor and front status display match the UniFi Cloud Gateway Ultra series."
+                    },
+                    suggestedHostname = "unifi-ucg-ultra.local",
+                    suggestedOsDetails = "UniFi OS 4.0.20 (Debian 12 Bookworm apt)",
+                    suggestedPackageManager = "apt",
+                    goldAlignment = GoldAlignmentInfo(
+                        aligned = true,
+                        matchedFeedSlug = "ubiquiti-advisories",
+                        matchedFeedName = "Ubiquiti UniFi Security & Firmware",
+                        matchedPurlPrefix = "pkg:generic/ui/",
+                        inferredPurl = "pkg:generic/ui/unifi-os",
+                        latestGoldRelease = "4.0.20",
+                        inBuiltInCatalog = true,
+                        statusLabel = "GOLD ALIGNED",
+                        diagnosticNote = "Aligned with Gold Datalake [Feed: ubiquiti-advisories (pkg:generic/ui/) • Gold Release: v4.0.20 • Built-in Catalog Signature]"
+                    )
+                ),
+                DeviceCandidateMatch(
+                    manufacturer = "Ubiquiti Inc.",
+                    modelNumber = "UXG-Max",
+                    displayName = "UniFi Gateway Max (UXG-Max)",
+                    deviceCategory = "Multi-Gig Router",
+                    confidencePercent = if (hasSpecificClue) 32 else 54,
+                    reasoning = "Identical footprint to UCG-Ultra without integrated LCM screen; disambiguate via bottom label Model or MAC.",
+                    suggestedHostname = "unifi-uxg-max.local",
+                    suggestedOsDetails = "UniFi OS 4.0.20 (Debian apt)",
+                    suggestedPackageManager = "apt",
+                    goldAlignment = GoldAlignmentInfo(
+                        aligned = true,
+                        matchedFeedSlug = "ubiquiti-advisories",
+                        matchedFeedName = "Ubiquiti UniFi Security & Firmware",
+                        matchedPurlPrefix = "pkg:generic/ui/",
+                        inferredPurl = "pkg:generic/ui/unifi-os",
+                        latestGoldRelease = "4.0.20",
+                        inBuiltInCatalog = false,
+                        statusLabel = "GOLD ALIGNED",
+                        diagnosticNote = "Aligned with Gold Datalake [Feed: ubiquiti-advisories (pkg:generic/ui/) • Gold Release: v4.0.20]"
+                    )
+                ),
+                DeviceCandidateMatch(
+                    manufacturer = "GL.iNet",
+                    modelNumber = "GL-MT3000",
+                    displayName = "GL.iNet Beryl AX (GL-MT3000)",
+                    deviceCategory = "OpenWrt Travel/Edge Router",
+                    confidencePercent = if (hasSpecificClue) 14 else 31,
+                    reasoning = "Compact Wi-Fi 6 router running OpenWrt / opkg firmware.",
+                    suggestedHostname = "gl-mt3000.local",
+                    suggestedOsDetails = "OpenWrt 23.05 (Firmware / opkg)",
+                    suggestedPackageManager = "firmware",
+                    goldAlignment = GoldAlignmentInfo(
+                        aligned = false,
+                        matchedFeedSlug = null,
+                        inferredPurl = "pkg:generic/gl-inet/gl-mt3000",
+                        inBuiltInCatalog = false,
+                        statusLabel = "UNALIGNED RAW MATCH",
+                        diagnosticNote = "Raw candidate 'GL.iNet GL-MT3000' (pkg:generic/gl-inet/gl-mt3000) has no matching PURL prefix in canonical_feeds.json or catalog_releases.json"
+                    )
+                )
+            )
 
             return GeminiDiscoveryTurnResult(
                 visualSummary = if (hasSpecificClue) {
@@ -339,48 +464,37 @@ class GeminiDiscoveryService(private val context: Context) {
                 },
                 recommendedClueTypes = listOf("Model", "MAC Address", "Serial Number", "Barcode", "QR Code"),
                 extractedIdentifiers = accumulatedIdentifiers,
-                candidates = listOf(
-                    DeviceCandidateMatch(
-                        manufacturer = "Ubiquiti Inc.",
-                        modelNumber = detectedModel,
-                        displayName = "UniFi Cloud Gateway Ultra ($detectedModel)",
-                        deviceCategory = "Router / Security Gateway",
-                        confidencePercent = topConfidence,
-                        reasoning = if (hasSpecificClue) {
-                            "Model/OUI clue confirms Ubiquiti UniFi Cloud Gateway Ultra running UniFi OS (Debian apt)."
-                        } else {
-                            "Form factor and front status display match the UniFi Cloud Gateway Ultra series."
-                        },
-                        suggestedHostname = "unifi-ucg-ultra.local",
-                        suggestedOsDetails = "UniFi OS 4.0.20 (Debian 12 Bookworm apt)",
-                        suggestedPackageManager = "apt"
-                    ),
-                    DeviceCandidateMatch(
-                        manufacturer = "Ubiquiti Inc.",
-                        modelNumber = "UXG-Max",
-                        displayName = "UniFi Gateway Max (UXG-Max)",
-                        deviceCategory = "Multi-Gig Router",
-                        confidencePercent = if (hasSpecificClue) 32 else 54,
-                        reasoning = "Identical footprint to UCG-Ultra without integrated LCM screen; disambiguate via bottom label Model or MAC.",
-                        suggestedHostname = "unifi-uxg-max.local",
-                        suggestedOsDetails = "UniFi OS 4.0.20 (Debian apt)",
-                        suggestedPackageManager = "apt"
-                    ),
-                    DeviceCandidateMatch(
-                        manufacturer = "GL.iNet",
-                        modelNumber = "GL-MT3000",
-                        displayName = "GL.iNet Beryl AX (GL-MT3000)",
-                        deviceCategory = "OpenWrt Travel/Edge Router",
-                        confidencePercent = if (hasSpecificClue) 14 else 31,
-                        reasoning = "Compact Wi-Fi 6 router running OpenWrt / opkg firmware.",
-                        suggestedHostname = "gl-mt3000.local",
-                        suggestedOsDetails = "OpenWrt 23.05 (Firmware / opkg)",
-                        suggestedPackageManager = "firmware"
-                    )
-                ),
+                candidates = cands,
                 usedLiveGeminiApi = usedLiveApi,
-                providerUsed = "Pilot Heuristic"
+                providerUsed = "Pilot Heuristic",
+                debugLogText = buildClientFallbackDebugLog(cands, imageCount, fallbackErrorReason)
             )
+        }
+
+        private fun buildClientFallbackDebugLog(
+            candidates: List<DeviceCandidateMatch>,
+            imageCount: Int,
+            fallbackErrorReason: String?
+        ): String {
+            return buildString {
+                appendLine("=== TUESDAY VISION DEBUG LOG [CLIENT LOCAL FALLBACK] ===")
+                appendLine("Frames Submitted: $imageCount")
+                if (!fallbackErrorReason.isNullOrBlank()) {
+                    appendLine("Proxy Status: Hosted API unreachable ($fallbackErrorReason) -> Local Pilot Heuristic")
+                } else {
+                    appendLine("Proxy Status: Local Pilot Heuristic")
+                }
+                appendLine()
+                appendLine("--- CANDIDATES & GOLD DATALAKE ALIGNMENT (${candidates.size}) ---")
+                candidates.forEachIndexed { idx, c ->
+                    val ga = c.goldAlignment
+                    val badge = if (ga?.aligned == true) "[✓ GOLD ALIGNED]" else "[⚠ UNALIGNED RAW]"
+                    appendLine("  ${idx + 1}. $badge ${c.manufacturer} ${c.modelNumber} (${c.confidencePercent}%)")
+                    appendLine("     PURL: ${ga?.inferredPurl ?: "unknown"} | Feed: ${ga?.matchedFeedSlug ?: "NONE"} | Gold Rel: ${ga?.latestGoldRelease ?: "NONE"}")
+                    appendLine("     Reason: ${c.reasoning}")
+                    appendLine("     Audit: ${ga?.diagnosticNote ?: "No audit metadata"}")
+                }
+            }.trimEnd()
         }
 
         fun createSampleHardwareBitmap(presetName: String): Bitmap {

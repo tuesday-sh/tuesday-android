@@ -8,6 +8,19 @@ enum class AiProviderType(val displayName: String, val badgeLabel: String) {
     GEMINI("GCP Gemini 3.8", "LIVE GCP GEMINI")
 }
 
+enum class ApiEndpointPreset(val label: String, val shortBadge: String, val url: String) {
+    LOCAL_TAILSCALE("Local Dev (Tailscale)", "💻 LOCAL TS", "http://100.108.40.3:3000"),
+    LOCAL_LAN("Local Dev (LAN)", "🏠 LOCAL LAN", "http://192.168.9.201:3000"),
+    PROD_GCP("Prod (GCP Cloud Run)", "☁️ PROD GCP", "https://api.tuesday.sh");
+
+    companion object {
+        fun fromUrl(url: String): ApiEndpointPreset? {
+            val clean = url.trim().trimEnd('/')
+            return entries.find { it.url.trimEnd('/').equals(clean, ignoreCase = true) }
+        }
+    }
+}
+
 @Serializable
 data class HacsConfig(
     val instanceName: String = "Home Assistant (HACS)",
@@ -63,6 +76,20 @@ data class ExtractedDeviceIdentifiers(
 }
 
 @Serializable
+data class GoldAlignmentInfo(
+    val aligned: Boolean = false,
+    val matchedFeedSlug: String? = null,
+    val matchedFeedName: String? = null,
+    val matchedPurlPrefix: String? = null,
+    val inferredPurl: String = "",
+    val latestGoldRelease: String? = null,
+    val inBuiltInCatalog: Boolean = false,
+    val inConfirmedCatalog: Boolean = false,
+    val statusLabel: String = "UNALIGNED RAW MATCH",
+    val diagnosticNote: String = ""
+)
+
+@Serializable
 data class DeviceCandidateMatch(
     val manufacturer: String,
     val modelNumber: String,
@@ -72,7 +99,8 @@ data class DeviceCandidateMatch(
     val reasoning: String,
     val suggestedHostname: String,
     val suggestedOsDetails: String,
-    val suggestedPackageManager: String
+    val suggestedPackageManager: String,
+    val goldAlignment: GoldAlignmentInfo? = null
 ) {
     val resolvedPackageManager: PackageManagerType
         get() = PackageManagerType.fromRaw(suggestedPackageManager)
@@ -86,5 +114,10 @@ data class GeminiDiscoveryTurnResult(
     val extractedIdentifiers: ExtractedDeviceIdentifiers,
     val candidates: List<DeviceCandidateMatch>,
     val usedLiveGeminiApi: Boolean = true,
-    val providerUsed: String = "Elastix.ai FPGA (qwen3.8-27b)"
+    val providerUsed: String = "Elastix.ai FPGA (qwen3.8-27b)",
+    val latencyMs: Long = 0,
+    val costUsd: Double = 0.0,
+    val debugTrace: List<String> = emptyList(),
+    val rawLlmResponse: String? = null,
+    val debugLogText: String? = null
 )
