@@ -179,17 +179,29 @@ class TuesdayRepository(context: Context) {
 
     fun toggleMuteFeed(slug: String) {
         val current = _mutedFeedSlugs.value.toMutableSet()
-        if (current.contains(slug)) {
+        val nowMuted = if (current.contains(slug)) {
             current.remove(slug)
+            false
         } else {
             current.add(slug)
+            true
         }
         _mutedFeedSlugs.value = current
+        emitTelemetryEventAsync(
+            eventName = "bulletin.feed_mute_toggled",
+            targetEntityType = "CanonicalFeed",
+            targetEntityId = slug,
+            properties = mapOf("muted" to nowMuted)
+        )
     }
 
     fun setRemindersEnabled(enabled: Boolean) {
         _remindersEnabled.value = enabled
         prefs.edit().putBoolean("monthly_reminders_enabled", enabled).apply()
+        emitTelemetryEventAsync(
+            eventName = "checkup.reminders_toggled",
+            properties = mapOf("enabled" to enabled)
+        )
     }
 
     fun setDispatchSubscribed(subscribed: Boolean) {
@@ -200,16 +212,38 @@ class TuesdayRepository(context: Context) {
     fun setBulletinDismissed(dismissed: Boolean) {
         _bulletinDismissed.value = dismissed
         prefs.edit().putBoolean("bulletin_dismissed", dismissed).apply()
+        if (dismissed) {
+            emitTelemetryEventAsync(
+                eventName = "bulletin.marked_complete",
+                targetEntityType = "CuratedBulletin",
+                targetEntityId = "active-bulletin"
+            )
+        }
     }
 
     fun setBulletinSnoozed(snoozed: Boolean) {
         _bulletinSnoozed.value = snoozed
         prefs.edit().putBoolean("bulletin_snoozed", snoozed).apply()
+        if (snoozed) {
+            emitTelemetryEventAsync(
+                eventName = "bulletin.snoozed",
+                targetEntityType = "CuratedBulletin",
+                targetEntityId = "active-bulletin",
+                properties = mapOf("durationHours" to 24)
+            )
+        }
     }
 
     fun setBulletinMuted(muted: Boolean) {
         _bulletinMuted.value = muted
         prefs.edit().putBoolean("bulletin_muted", muted).apply()
+        if (muted) {
+            emitTelemetryEventAsync(
+                eventName = "bulletin.ignored",
+                targetEntityType = "CuratedBulletin",
+                targetEntityId = "active-bulletin"
+            )
+        }
     }
 
     fun confirmProvisionalDeviceModel(chosenModel: String) {
@@ -502,6 +536,42 @@ class TuesdayRepository(context: Context) {
                 httpClient.newCall(req).execute().close()
             } catch (e: Exception) {
                 Log.w("TuesdayRepoSync", "Inventory create queued offline: ${e.message}")
+            }
+        }
+    }
+
+    fun emitTelemetryEventAsync(
+        eventName: String,
+        targetEntityType: String? = null,
+        targetEntityId: String? = null,
+        properties: Map<String, Any?> = emptyMap()
+    ) {
+        ioScope.launch {
+            try {
+                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val propsObj = JSONObject()
+                for ((k, v) in properties) {
+                    if (v != null) propsObj.put(k, v)
+                }
+                val payload = JSONObject().apply {
+                    put("event_name", eventName)
+                    put("client_platform", "android")
+                    put("app_flavor", if (_brandFlavor.value == AppBrandFlavor.SURETHING_HOME) "surething" else "tuesday")
+                    put("device_id", clientDeviceId)
+                    if (!targetEntityType.isNullOrBlank()) put("target_entity_type", targetEntityType)
+                    if (!targetEntityId.isNullOrBlank()) put("target_entity_id", targetEntityId)
+                    put("properties", propsObj)
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/v1/telemetry/events")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().close()
+            } catch (e: Exception) {
+                Log.w("TuesdayRepoSync", "Telemetry event queued offline: ${e.message}")
             }
         }
     }

@@ -81,7 +81,7 @@ fun AddDeviceScreen(
     val scope = rememberCoroutineScope()
 
     // Wizard State
-    var currentSessionId by remember { mutableStateOf(System.currentTimeMillis().toString()) }
+    var currentSessionId by remember { mutableStateOf(discoveryService.startNewSession()) }
     var capturedBitmaps by remember { mutableStateOf(listOf<Bitmap>()) }
     var isAnalyzing by remember { mutableStateOf(false) }
     var discoveryResult by remember { mutableStateOf<GeminiDiscoveryTurnResult?>(null) }
@@ -502,7 +502,25 @@ fun AddDeviceScreen(
                             .uiAction("switchEnrollmentMode")
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) TuesdayTheme.HealthyGreen else Color.Transparent)
-                            .clickable { mode = item }
+                            .clickable {
+                                val prevMode = mode
+                                mode = item
+                                if (prevMode != item && discoveryService.currentTurnCount() > 0) {
+                                    scope.launch {
+                                        discoveryService.emitProductTelemetryEvent(
+                                            eventName = "discovery.mode_pivoted",
+                                            targetEntityType = "DiscoverySession",
+                                            targetEntityId = currentSessionId,
+                                            properties = mapOf(
+                                                "fromMode" to prevMode.name.lowercase(),
+                                                "toMode" to item.name.lowercase(),
+                                                "turnsSoFar" to discoveryService.currentTurnCount()
+                                            ),
+                                            serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
+                                        )
+                                    }
+                                }
+                            }
                             .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -786,11 +804,27 @@ fun AddDeviceScreen(
                                 Surface(
                                     onClick = {
                                         val sid = currentSessionId
+                                        val topCand = result.candidates.firstOrNull()
+                                        val idsSnapshot = accumulatedIdentifiers
+                                        val cluesSnapshot = userClueNotes
                                         scope.launch {
+                                            discoveryService.confirmDeviceDiscovery(
+                                                inferredVendor = topCand?.manufacturer,
+                                                inferredModel = topCand?.modelNumber,
+                                                confirmedVendor = "",
+                                                confirmedModel = "",
+                                                wasEdited = false,
+                                                accumulatedIdentifiers = idsSnapshot,
+                                                userClueNotes = cluesSnapshot,
+                                                selectedCandidateRank = null,
+                                                resolutionStatus = "abandoned_discarded",
+                                                enrollOnServer = false,
+                                                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
+                                            )
                                             GoldenCorpusRecorder.deleteCaptureSession(context, sid)
                                             savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
                                             lastSavedCorpusFolder = null
-                                            currentSessionId = System.currentTimeMillis().toString()
+                                            currentSessionId = discoveryService.startNewSession()
                                             capturedBitmaps = emptyList()
                                             discoveryResult = null
                                             accumulatedIdentifiers = ExtractedDeviceIdentifiers()
@@ -820,7 +854,7 @@ fun AddDeviceScreen(
                                 Surface(
                                     onClick = {
                                         // Reset wizard state to immediately scan the next piece of hardware
-                                        currentSessionId = System.currentTimeMillis().toString()
+                                        currentSessionId = discoveryService.startNewSession()
                                         capturedBitmaps = emptyList()
                                         discoveryResult = null
                                         accumulatedIdentifiers = ExtractedDeviceIdentifiers()
@@ -1098,6 +1132,12 @@ fun AddDeviceScreen(
                                             confirmedModel = resolvedModel,
                                             wasEdited = (resolvedModel != candidate.modelNumber) || (index > 0),
                                             accumulatedIdentifiers = accumulatedIdentifiers,
+                                            userClueNotes = userClueNotes,
+                                            selectedCandidateRank = index,
+                                            resolutionStatus = if (mode == EnrollmentMode.BARCODE_SCAN && capturedBitmaps.isNotEmpty()) "pivoted_to_barcode" else "confirmed_candidate",
+                                            initialMode = "photo_wizard",
+                                            finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else "photo_wizard",
+                                            candidateModels = result.candidates.map { it.modelNumber },
                                             serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
                                         )
                                         repository.enrollDevice(
@@ -1162,6 +1202,21 @@ fun AddDeviceScreen(
                                         discoveryNotes = "Added via AI Photo Wizard as Incomplete/Guessed"
                                     )
                                     val host = bestGuess?.let { "${it.suggestedHostname} (guessed)" } ?: "unidentified-device.local"
+                                    discoveryService.confirmDeviceDiscovery(
+                                        inferredVendor = bestGuess?.manufacturer,
+                                        inferredModel = bestGuess?.modelNumber,
+                                        confirmedVendor = meta.manufacturer ?: "Unknown Vendor",
+                                        confirmedModel = meta.modelNumber ?: "Unidentified Hardware",
+                                        wasEdited = false,
+                                        accumulatedIdentifiers = accumulatedIdentifiers,
+                                        userClueNotes = userClueNotes,
+                                        selectedCandidateRank = null,
+                                        resolutionStatus = "saved_best_guess",
+                                        initialMode = "photo_wizard",
+                                        finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else "photo_wizard",
+                                        candidateModels = result.candidates.map { it.modelNumber },
+                                        serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
+                                    )
                                     repository.enrollDevice(
                                         hostname = host,
                                         osDetails = bestGuess?.let { "${it.displayName} • ${it.suggestedOsDetails}" } ?: "Unverified Hardware Photo (Pending Audit)",
@@ -1396,9 +1451,25 @@ fun AddDeviceScreen(
                         }
                         scope.launch {
                             isSaving = true
+                            val topCand = discoveryResult?.candidates?.firstOrNull()
+                            val cleanOs = manualOsDetails.trim().ifBlank { "Linux (${manualPkgManager.rawValue})" }
+                            discoveryService.confirmDeviceDiscovery(
+                                inferredVendor = topCand?.manufacturer,
+                                inferredModel = topCand?.modelNumber,
+                                confirmedVendor = topCand?.manufacturer ?: "Manual Entry",
+                                confirmedModel = host,
+                                wasEdited = true,
+                                accumulatedIdentifiers = accumulatedIdentifiers,
+                                userClueNotes = userClueNotes + listOf("ManualHost=$host", "ManualOS=$cleanOs"),
+                                selectedCandidateRank = null,
+                                resolutionStatus = "pivoted_to_manual",
+                                initialMode = if (capturedBitmaps.isNotEmpty()) "photo_wizard" else "manual_agent",
+                                finalMode = "manual_agent",
+                                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
+                            )
                             repository.enrollDevice(
                                 hostname = host,
-                                osDetails = manualOsDetails.trim().ifBlank { "Linux (${manualPkgManager.rawValue})" },
+                                osDetails = cleanOs,
                                 packageManager = manualPkgManager,
                                 agentToken = manualToken.trim().ifBlank { "tuesday_tok_auto" }
                             )

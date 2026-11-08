@@ -34,8 +34,18 @@ class GeminiDiscoveryService(private val context: Context) {
         .readTimeout(35, TimeUnit.SECONDS)
         .build()
 
-    private val sessionStickinessId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
+    private val persistentDeviceId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
+    private var sessionStickinessId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
     private var turnCounter = 0
+
+    fun startNewSession(): String {
+        sessionStickinessId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
+        turnCounter = 0
+        return sessionStickinessId
+    }
+
+    fun currentSessionId(): String = sessionStickinessId
+    fun currentTurnCount(): Int = turnCounter
 
     suspend fun analyzeDeviceProgressive(
         bitmaps: List<Bitmap>,
@@ -47,7 +57,8 @@ class GeminiDiscoveryService(private val context: Context) {
         apiKeyOverride: String = "",
         modelName: String = "gemini-3.8-flash",
         serverBaseUrl: String = DEFAULT_SERVER_BASE_URL,
-        debugEnabled: Boolean = false
+        debugEnabled: Boolean = false,
+        initialMode: String = "photo_wizard"
     ): GeminiDiscoveryTurnResult = withContext(Dispatchers.IO) {
         turnCounter += 1
         try {
@@ -57,7 +68,8 @@ class GeminiDiscoveryService(private val context: Context) {
                 userClueNotes = userClueNotes,
                 aiProvider = aiProvider,
                 serverBaseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL },
-                debugEnabled = debugEnabled
+                debugEnabled = debugEnabled,
+                initialMode = initialMode
             )
         } catch (e: Exception) {
             Log.w("TuesdayVisionProxy", "Hosted proxy unreachable (${e.message}); falling back to local heuristic")
@@ -78,6 +90,13 @@ class GeminiDiscoveryService(private val context: Context) {
         confirmedModel: String,
         wasEdited: Boolean,
         accumulatedIdentifiers: ExtractedDeviceIdentifiers,
+        userClueNotes: List<String> = emptyList(),
+        selectedCandidateRank: Int? = 0,
+        resolutionStatus: String = "confirmed_candidate",
+        initialMode: String = "photo_wizard",
+        finalMode: String = "photo_wizard",
+        candidateModels: List<String> = emptyList(),
+        enrollOnServer: Boolean = true,
         serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
     ): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -86,23 +105,42 @@ class GeminiDiscoveryService(private val context: Context) {
             for ((type, value) in accumulatedIdentifiers.nonEmptyPairs()) {
                 idsArray.put("${type.rawValue}: $value")
             }
+            val cluesArray = JSONArray()
+            for (note in userClueNotes) {
+                if (note.isNotBlank()) cluesArray.put(note)
+            }
+            val candModelsArray = JSONArray()
+            for (cm in candidateModels) {
+                if (cm.isNotBlank()) candModelsArray.put(cm)
+            }
 
             val payload = JSONObject().apply {
                 put("session_id", sessionStickinessId)
                 put("client_platform", "android")
-                put("device_id", sessionStickinessId)
+                put("device_id", persistentDeviceId)
+                put("resolution_status", resolutionStatus)
+                if (selectedCandidateRank != null) {
+                    put("selected_candidate_rank", selectedCandidateRank)
+                }
+                put("initial_mode", initialMode)
+                put("final_mode", finalMode)
                 put("inferred_vendor", inferredVendor ?: "")
                 put("inferred_model", inferredModel ?: "")
                 put("confirmed_vendor", confirmedVendor)
                 put("confirmed_model", confirmedModel)
                 put("was_edited", wasEdited)
+                put("enroll", enrollOnServer)
                 put("extracted_identifiers", idsArray)
+                put("user_clue_notes", cluesArray)
+                if (candModelsArray.length() > 0) {
+                    put("candidate_models", candModelsArray)
+                }
             }
 
             val request = Request.Builder()
-                .url("$baseUrl/api/v1/discovery/confirm")
+                .url("$baseUrl/api/v1/discovery/resolve")
                 .addHeader("Content-Type", "application/json")
-                .addHeader("X-Tuesday-Device-ID", sessionStickinessId)
+                .addHeader("X-Tuesday-Device-ID", persistentDeviceId)
                 .addHeader("X-Tuesday-Client-Platform", "android")
                 .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
@@ -112,7 +150,48 @@ class GeminiDiscoveryService(private val context: Context) {
                 return@withContext resp.isSuccessful
             }
         } catch (e: Exception) {
-            Log.w("TuesdayVisionProxy", "Confirm telemetry skipped: ${e.message}")
+            Log.w("TuesdayVisionProxy", "Resolve telemetry skipped: ${e.message}")
+            return@withContext false
+        }
+    }
+
+    suspend fun emitProductTelemetryEvent(
+        eventName: String,
+        targetEntityType: String? = null,
+        targetEntityId: String? = null,
+        properties: Map<String, Any?> = emptyMap(),
+        serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+            val propsObj = JSONObject()
+            for ((k, v) in properties) {
+                if (v != null) propsObj.put(k, v)
+            }
+            val payload = JSONObject().apply {
+                put("event_name", eventName)
+                put("client_platform", "android")
+                put("device_id", persistentDeviceId)
+                put("session_id", sessionStickinessId)
+                if (!targetEntityType.isNullOrBlank()) put("target_entity_type", targetEntityType)
+                if (!targetEntityId.isNullOrBlank()) put("target_entity_id", targetEntityId)
+                put("properties", propsObj)
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/v1/telemetry/events")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-Tuesday-Device-ID", persistentDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { resp ->
+                return@withContext resp.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w("TuesdayVisionProxy", "Product telemetry skipped: ${e.message}")
             return@withContext false
         }
     }
@@ -123,7 +202,8 @@ class GeminiDiscoveryService(private val context: Context) {
         userClueNotes: List<String>,
         aiProvider: AiProviderType,
         serverBaseUrl: String,
-        debugEnabled: Boolean = false
+        debugEnabled: Boolean = false,
+        initialMode: String = "photo_wizard"
     ): GeminiDiscoveryTurnResult {
         val baseUrl = serverBaseUrl.trimEnd('/')
         val providerOverride = when (aiProvider) {
@@ -156,7 +236,8 @@ class GeminiDiscoveryService(private val context: Context) {
             put("session_id", sessionStickinessId)
             put("turn_index", turnCounter)
             put("client_platform", "android")
-            put("device_id", sessionStickinessId)
+            put("device_id", persistentDeviceId)
+            put("initial_mode", initialMode)
             put("provider_override", providerOverride)
             put("extracted_identifiers", extractedObj)
             put("user_clue_notes", cluesArr)
