@@ -1351,8 +1351,8 @@ private fun WelcomeCard(
             )
         }
 
-        if (bulletinDismissed) {
-            // Router recommendation tip row and Add Device CTA block (visible once welcome bulletin is dismissed)
+        if (bulletinDismissed && activeDeviceCount == 0) {
+            // Router recommendation tip row and Add Device CTA block (visible once welcome bulletin is dismissed on Day 0)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1400,18 +1400,20 @@ private fun WelcomeCard(
             }
         }
 
-        TextButton(
-            onClick = onLoadDemoFleet,
-            modifier = Modifier
-                .uiAction("enableDemoMode")
-                .uiAction("setSimulatedDeviceCount")
-        ) {
-            Text(
-                text = "Enable Demo Mode (seed Forest fleet)",
-                color = palette.accent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
+        if (activeDeviceCount == 0) {
+            TextButton(
+                onClick = onLoadDemoFleet,
+                modifier = Modifier
+                    .uiAction("enableDemoMode")
+                    .uiAction("setSimulatedDeviceCount")
+            ) {
+                Text(
+                    text = "Enable Demo Mode (seed Forest fleet)",
+                    color = palette.accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
