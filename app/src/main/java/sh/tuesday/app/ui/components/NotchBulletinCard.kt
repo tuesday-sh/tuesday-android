@@ -80,6 +80,7 @@ fun NotchBulletinCard(
         modifier = modifier
             .fillMaxWidth()
             .uiComponent("NotchBulletinCard")
+            .uiSlot("rhythm-reminder-panel")
             .clip(RoundedCornerShape(10.dp))
             .background(palette.surface)
             .border(1.dp, borderColor, RoundedCornerShape(10.dp))

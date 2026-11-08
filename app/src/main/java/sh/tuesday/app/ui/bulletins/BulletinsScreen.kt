@@ -99,6 +99,7 @@ fun BulletinsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiComponent("BulletinInboxList")
                     .padding(horizontal = 2.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
