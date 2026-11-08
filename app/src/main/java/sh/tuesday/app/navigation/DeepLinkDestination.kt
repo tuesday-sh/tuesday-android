@@ -9,6 +9,7 @@ sealed interface DeepLinkDestination {
     data object ReferenceGuide : DeepLinkDestination
     data class SeedFleet(val count: Int) : DeepLinkDestination
     data object ToggleFlavor : DeepLinkDestination
+    data object ResetDemo : DeepLinkDestination
 
     companion object {
         fun fromUri(uriString: String?): DeepLinkDestination? {
@@ -32,6 +33,7 @@ sealed interface DeepLinkDestination {
                 "network-picker", "networks", "sites" -> NetworkPicker
                 "reference-guide", "reference", "standards" -> ReferenceGuide
                 "toggle-flavor", "flavor" -> ToggleFlavor
+                "reset-demo", "reset" -> ResetDemo
                 "seed", "seed-forest", "demo" -> {
                     val count = parts.getOrNull(1)?.toIntOrNull() ?: 12
                     SeedFleet(count)

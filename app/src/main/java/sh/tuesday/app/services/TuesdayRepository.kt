@@ -516,7 +516,15 @@ class TuesdayRepository(context: Context) {
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
         _activeDeviceCount.value = 0
+        _bulletinDismissed.value = false
+        _bulletinSnoozed.value = false
+        _bulletinMuted.value = false
         _hacsConfig.value = HacsConfig()
+        prefs.edit()
+            .putBoolean("bulletin_dismissed", false)
+            .putBoolean("bulletin_snoozed", false)
+            .putBoolean("bulletin_muted", false)
+            .apply()
         persistDevices()
         persistConfig()
     }

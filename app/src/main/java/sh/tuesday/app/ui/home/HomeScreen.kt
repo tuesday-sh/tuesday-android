@@ -143,6 +143,11 @@ fun HomeScreen(
                 repository.toggleBrandFlavor()
                 onConsumePendingDestination()
             }
+            sh.tuesday.app.navigation.DeepLinkDestination.ResetDemo -> {
+                repository.resetDemoData()
+                activeTab = MainNavTab.STATUS
+                onConsumePendingDestination()
+            }
             null -> {}
         }
     }
