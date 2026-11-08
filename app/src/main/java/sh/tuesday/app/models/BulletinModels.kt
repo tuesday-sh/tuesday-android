@@ -4,8 +4,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class AppBrandFlavor(val title: String, val badge: String) {
-    TUESDAY_PRO("Tuesday.sh", "PRO • RACK"),
-    SURETHING_HOME("SureThingNet", "HOME • CALM")
+    TUESDAY_PRO("Tuesday.sh", "PRO"),
+    SURETHING_HOME("SureThingNet", "HOME")
 }
 
 @Serializable
@@ -101,6 +101,16 @@ enum class DeviceConfidenceTier {
 }
 
 @Serializable
+data class DeviceLifecycleCandle(
+    val ver: String,
+    val released: Float,
+    val attested: Float,
+    val ended: Float,
+    val eol: Float,
+    val cveStart: Float? = null
+)
+
+@Serializable
 data class RackPortDevice(
     val id: String,
     val portIndex: Int,
@@ -113,6 +123,9 @@ data class RackPortDevice(
     val roomLocation: String,
     val version: String,
     val targetVersion: String? = null,
+    val purchaseDate: String? = null,
+    val vendorEolAt: String? = null,
+    val candles: List<DeviceLifecycleCandle> = emptyList(),
     val lifecycleTier: String,
     val purls: List<String>,
     val confidenceTier: DeviceConfidenceTier = DeviceConfidenceTier.CONFIRMED,
@@ -263,6 +276,52 @@ object BulletinsAndInventoryEngine {
         devices: List<RackPortDevice>
     ): Int = devices.count { it.category == category }
 
+    fun sortDevicesForTimeline(devices: List<RackPortDevice>): List<RackPortDevice> =
+        devices.sortedWith(compareBy<RackPortDevice> { it.trustZone.ordinal }.thenBy { it.portIndex })
+
+    fun sortDevicesByRecentChanges(devices: List<RackPortDevice>): List<RackPortDevice> =
+        devices
+            .sortedWith(
+                compareBy<RackPortDevice> { it.portState.severityPriority }
+                    .thenByDescending { it.purchaseDate ?: "" }
+            )
+            .take(12)
+
+    fun getEstimatedVersionAtCursor(device: RackPortDevice, scrubNorm: Float? = null): String {
+        if (scrubNorm == null) {
+            return device.version
+        }
+        if (device.portState == PortLifecycleState.GUESSED || device.version == "unverified") {
+            return "Unverified (Est. Drift)"
+        }
+        val candles = device.candles
+        if (candles.isEmpty()) {
+            return device.version
+        }
+        val earliestCandle = candles.first()
+        if (scrubNorm < earliestCandle.released) {
+            return "Not Yet Released"
+        }
+        val latestCandle = candles.last()
+        if (latestCandle.eol > 0f && scrubNorm > latestCandle.eol) {
+            return "${latestCandle.ver} (EOL)"
+        }
+        for (i in candles.indices) {
+            val c = candles[i]
+            val nextCandle = candles.getOrNull(i + 1)
+            if (nextCandle != null) {
+                if (scrubNorm >= c.attested && scrubNorm < nextCandle.attested) {
+                    return c.ver
+                }
+            } else {
+                if (scrubNorm >= c.attested) {
+                    return c.ver
+                }
+            }
+        }
+        return earliestCandle.ver
+    }
+
     fun assembleBulletins(
         flavor: AppBrandFlavor,
         devices: List<RackPortDevice>,
@@ -405,6 +464,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack U02",
             version = "4.0.20",
             targetVersion = "4.0.20",
+            purchaseDate = "2024-02-01",
+            vendorEolAt = "2030-06-01",
+            candles = listOf(
+                DeviceLifecycleCandle("3.2.12", 0.05f, 0.14f, 0.50f, 0.70f, null),
+                DeviceLifecycleCandle("4.0.20", 0.46f, 0.50f, 0.96f, 0.99f, 0.78f)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/ui/unifi-os@4.0.20"),
             proHeadline = "CVE-2026-50881 (0-Day • No Patch): Disable Direct Remote Connection",
@@ -429,6 +494,11 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Workbench",
             version = "1.0.11.136",
             targetVersion = null,
+            purchaseDate = "2016-09-01",
+            vendorEolAt = "2025-12-31",
+            candles = listOf(
+                DeviceLifecycleCandle("1.0.11.136", 0.08f, 0.18f, 0.96f, 0.65f, null)
+            ),
             lifecycleTier = "Legacy (EOL)",
             purls = listOf("pkg:generic/netgear/r7000@1.0.11.136"),
             proHeadline = "CISA BOD 23-01 • Vendor EOL (2025-12-31) • Decommission from Z0 Core",
@@ -453,6 +523,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Living Room",
             version = "7.0.66",
             targetVersion = "7.0.66",
+            purchaseDate = "2025-03-10",
+            vendorEolAt = "2032-03-10",
+            candles = listOf(
+                DeviceLifecycleCandle("7.0.59", 0.10f, 0.16f, 0.58f, 0.85f, null),
+                DeviceLifecycleCandle("7.0.66", 0.54f, 0.58f, 0.96f, 0.99f, null)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/ui/u7-pro@7.0.66"),
             proHeadline = "pkg:generic/ui/u7-pro@7.0.66 • 0 CVEs • Lifecycle Active (54 mo left)",
@@ -477,6 +553,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Media Console",
             version = "19.0.1",
             targetVersion = "19.0.1",
+            purchaseDate = "2025-06-15",
+            vendorEolAt = "2032-06-15",
+            candles = listOf(
+                DeviceLifecycleCandle("19.0.0", 0.15f, 0.25f, 0.68f, 0.90f, null),
+                DeviceLifecycleCandle("19.0.1", 0.64f, 0.68f, 0.96f, 0.99f, null)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/nintendo/horizon-os@19.0.1"),
             proHeadline = "pkg:generic/nintendo/horizon-os@19.0.1 • Enrolled via Plug & Tag",
@@ -501,6 +583,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "2F Office Desk",
             version = "15.3.1",
             targetVersion = "15.3.2",
+            purchaseDate = "2025-01-20",
+            vendorEolAt = "2032-01-20",
+            candles = listOf(
+                DeviceLifecycleCandle("15.2.0", 0.12f, 0.18f, 0.52f, 0.80f, null),
+                DeviceLifecycleCandle("15.3.1", 0.48f, 0.52f, 0.90f, 0.99f, null)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/apple/macos@15.3.1"),
             proHeadline = "Update Published: pkg:generic/apple/macos@15.3.1 → 15.3.2",
@@ -525,6 +613,11 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack Shelf",
             version = "unverified",
             targetVersion = null,
+            purchaseDate = null,
+            vendorEolAt = null,
+            candles = listOf(
+                DeviceLifecycleCandle("unverified", 0.60f, 0.65f, 0.96f, 0.99f, null)
+            ),
             lifecycleTier = "Unverified",
             purls = listOf("pkg:generic/unknown/*"),
             confidenceTier = DeviceConfidenceTier.OPAQUE_UNKNOWN,
@@ -550,6 +643,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack U06",
             version = "7.0.0",
             targetVersion = "7.0.0",
+            purchaseDate = "2024-11-15",
+            vendorEolAt = "2031-11-15",
+            candles = listOf(
+                DeviceLifecycleCandle("6.12.14", 0.08f, 0.15f, 0.62f, 0.85f, null),
+                DeviceLifecycleCandle("7.0.0", 0.58f, 0.62f, 0.96f, 0.99f, null)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/limetech/unraid@7.0.0"),
             proHeadline = "pkg:generic/limetech/unraid@7.0.0 • Chainguard Golden Digests Match",
@@ -574,6 +673,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack U04",
             version = "8.3.1",
             targetVersion = "8.3.2",
+            purchaseDate = "2025-02-01",
+            vendorEolAt = "2030-02-01",
+            candles = listOf(
+                DeviceLifecycleCandle("8.2.4", 0.08f, 0.14f, 0.46f, 0.78f, null),
+                DeviceLifecycleCandle("8.3.1", 0.44f, 0.46f, 0.90f, 0.99f, null)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:deb/debian/proxmox-ve@8.3.1"),
             proHeadline = "Update Published: pkg:deb/debian/proxmox-ve@8.3.1 → 8.3.2",
@@ -598,6 +703,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "2F Nursery",
             version = "1.0.4",
             targetVersion = "2.1.0",
+            purchaseDate = "2025-01-12",
+            vendorEolAt = "2026-10-15",
+            candles = listOf(
+                DeviceLifecycleCandle("1.0.2", 0.05f, 0.12f, 0.45f, 0.55f, null),
+                DeviceLifecycleCandle("1.0.4", 0.40f, 0.45f, 0.96f, 0.98f, 0.62f)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/owlet/cam-2@1.0.4"),
             proHeadline = "CPSC Recall #26-104 (Thermal Power Cord) + Firmware 1.0.4 → 2.1.0",
@@ -622,6 +733,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Living Room",
             version = "8.1.0",
             targetVersion = "8.3.0",
+            purchaseDate = "2022-11-28",
+            vendorEolAt = "2027-11-28",
+            candles = listOf(
+                DeviceLifecycleCandle("8.0.4", 0.04f, 0.10f, 0.38f, 0.60f, null),
+                DeviceLifecycleCandle("8.1.0", 0.32f, 0.38f, 0.96f, 0.99f, 0.72f)
+            ),
             lifecycleTier = "Vintage",
             purls = listOf("pkg:generic/lg/webos@8.1.0"),
             proHeadline = "CISA KEV CVE-2026-21099 (EPSS 0.91): Patch 8.1.0 → 8.3.0 Available",
@@ -646,6 +763,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Garage Ceiling",
             version = "2026.9.0",
             targetVersion = "2026.10.2",
+            purchaseDate = "2024-03-10",
+            vendorEolAt = "2029-03-10",
+            candles = listOf(
+                DeviceLifecycleCandle("2026.8.2", 0.10f, 0.18f, 0.48f, 0.75f, null),
+                DeviceLifecycleCandle("2026.9.0", 0.45f, 0.48f, 0.92f, 0.99f, null)
+            ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/esphome/firmware@2026.9.0"),
             proHeadline = "Update Published: pkg:generic/esphome/firmware@2026.9.0 → 2026.10.2",
@@ -670,6 +793,11 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Hallway",
             version = "unverified",
             targetVersion = null,
+            purchaseDate = null,
+            vendorEolAt = null,
+            candles = listOf(
+                DeviceLifecycleCandle("unverified", 0.55f, 0.62f, 0.96f, 0.99f, null)
+            ),
             lifecycleTier = "Provisional Guess",
             purls = listOf("pkg:generic/ecobee/*"),
             confidenceTier = DeviceConfidenceTier.PROVISIONAL_GUESS,

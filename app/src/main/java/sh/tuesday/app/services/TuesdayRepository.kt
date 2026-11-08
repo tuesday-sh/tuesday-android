@@ -67,10 +67,10 @@ class TuesdayRepository(context: Context) {
     private val _userNetworks = MutableStateFlow(defaultUserNetworks())
     val userNetworks: StateFlow<List<NetworkSite>> = _userNetworks.asStateFlow()
 
-    private val _activeNetworkId = MutableStateFlow("net-skyway")
+    private val _activeNetworkId = MutableStateFlow("net-default")
     val activeNetworkId: StateFlow<String> = _activeNetworkId.asStateFlow()
 
-    private val _activeDeviceCount = MutableStateFlow(12)
+    private val _activeDeviceCount = MutableStateFlow(0)
     val activeDeviceCount: StateFlow<Int> = _activeDeviceCount.asStateFlow()
 
     private val _isDeveloperMode = MutableStateFlow(false)
@@ -84,6 +84,21 @@ class TuesdayRepository(context: Context) {
 
     private val _entitlementTier = MutableStateFlow(prefs.getString("entitlement_tier", "free") ?: "free")
     val entitlementTier: StateFlow<String> = _entitlementTier.asStateFlow()
+
+    private val _remindersEnabled = MutableStateFlow(prefs.getBoolean("monthly_reminders_enabled", false))
+    val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
+
+    private val _dispatchSubscribed = MutableStateFlow(prefs.getBoolean("dispatch_subscribed", false))
+    val dispatchSubscribed: StateFlow<Boolean> = _dispatchSubscribed.asStateFlow()
+
+    private val _bulletinDismissed = MutableStateFlow(prefs.getBoolean("bulletin_dismissed", false))
+    val bulletinDismissed: StateFlow<Boolean> = _bulletinDismissed.asStateFlow()
+
+    private val _bulletinSnoozed = MutableStateFlow(prefs.getBoolean("bulletin_snoozed", false))
+    val bulletinSnoozed: StateFlow<Boolean> = _bulletinSnoozed.asStateFlow()
+
+    private val _bulletinMuted = MutableStateFlow(prefs.getBoolean("bulletin_muted", false))
+    val bulletinMuted: StateFlow<Boolean> = _bulletinMuted.asStateFlow()
 
     init {
         loadConfig()
@@ -164,6 +179,31 @@ class TuesdayRepository(context: Context) {
         _mutedFeedSlugs.value = current
     }
 
+    fun setRemindersEnabled(enabled: Boolean) {
+        _remindersEnabled.value = enabled
+        prefs.edit().putBoolean("monthly_reminders_enabled", enabled).apply()
+    }
+
+    fun setDispatchSubscribed(subscribed: Boolean) {
+        _dispatchSubscribed.value = subscribed
+        prefs.edit().putBoolean("dispatch_subscribed", subscribed).apply()
+    }
+
+    fun setBulletinDismissed(dismissed: Boolean) {
+        _bulletinDismissed.value = dismissed
+        prefs.edit().putBoolean("bulletin_dismissed", dismissed).apply()
+    }
+
+    fun setBulletinSnoozed(snoozed: Boolean) {
+        _bulletinSnoozed.value = snoozed
+        prefs.edit().putBoolean("bulletin_snoozed", snoozed).apply()
+    }
+
+    fun setBulletinMuted(muted: Boolean) {
+        _bulletinMuted.value = muted
+        prefs.edit().putBoolean("bulletin_muted", muted).apply()
+    }
+
     fun confirmProvisionalDeviceModel(chosenModel: String) {
         var targetDeviceId: String? = null
         _rackDevices.value = _rackDevices.value.map { dev ->
@@ -233,13 +273,11 @@ class TuesdayRepository(context: Context) {
         if (raw != null) {
             try {
                 val list = json.decodeFromString<List<MonitoredDevice>>(raw)
-                if (list.isNotEmpty()) {
-                    _devices.value = list
-                    return
-                }
+                _devices.value = list
+                return
             } catch (_: Exception) {}
         }
-        _devices.value = defaultSeedDevices()
+        _devices.value = emptyList()
         persistDevices()
     }
 
@@ -485,9 +523,7 @@ class TuesdayRepository(context: Context) {
 
     companion object {
         fun defaultUserNetworks(): List<NetworkSite> = listOf(
-            NetworkSite(id = "net-skyway", name = "Skyway Lab", devicesCount = 12, role = "Primary Homelab"),
-            NetworkSite(id = "net-home", name = "Main Home Wi-Fi", devicesCount = 7, role = "Residential"),
-            NetworkSite(id = "net-cabin", name = "Orcas Island Cabin", devicesCount = 3, role = "Remote Site")
+            NetworkSite(id = "net-default", name = "", devicesCount = 0, role = "Default Site")
         )
 
         fun defaultSeedDevices(now: Long = System.currentTimeMillis()): List<MonitoredDevice> {

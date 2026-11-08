@@ -2,19 +2,15 @@ package sh.tuesday.app.ui.hacs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,15 +30,6 @@ fun HacsSettingsSheet(
     onResetDemoData: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    var instanceName by remember { mutableStateOf(config.instanceName) }
-    var baseUrl by remember { mutableStateOf(config.baseUrl) }
-    var apiToken by remember { mutableStateOf(config.apiToken) }
-    var elastixApiKey by remember { mutableStateOf(config.elastixApiKey) }
-    var elastixModel by remember { mutableStateOf(config.elastixModel) }
-    var geminiApiKey by remember { mutableStateOf(config.geminiApiKey) }
-    var requireLocalWifi by remember { mutableStateOf(config.requireLocalWifi) }
-    var isSimulatingWifi by remember { mutableStateOf(simulateWifiDisconnected) }
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = TuesdayTheme.Background
@@ -51,9 +38,9 @@ fun HacsSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .uiComponent("HacsSettingsSheet")
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Header
             Row(
@@ -81,193 +68,63 @@ fun HacsSettingsSheet(
                 }
                 Column {
                     Text(
-                        text = "Tuesday.sh HACS Bridge",
+                        text = "Home Assistant Integration",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Component v${config.hacsComponentVersion} • Server v${config.tuesdayServerVersion}",
+                        text = "Tuesday.sh Bridge",
                         color = TuesdayTheme.HacsCyan,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace
+                        fontSize = 12.sp
                     )
                 }
             }
 
-            // Fields
-            OutlinedTextField(
-                value = instanceName,
-                onValueChange = { instanceName = it },
-                label = { Text("INSTANCE NAME", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                label = { Text("HACS / TUESDAY SERVER URL", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            OutlinedTextField(
-                value = apiToken,
-                onValueChange = { apiToken = it },
-                label = { Text("HACS API TOKEN", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            OutlinedTextField(
-                value = elastixApiKey,
-                onValueChange = { elastixApiKey = it },
-                label = { Text("ELASTIX.AI API KEY (DEFAULT IN pilot_secrets.json)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            OutlinedTextField(
-                value = elastixModel,
-                onValueChange = { elastixModel = it },
-                label = { Text("ELASTIX.AI MODEL (qwen3.8-27b [Vision] | gpt-oss-120b)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            OutlinedTextField(
-                value = geminiApiKey,
-                onValueChange = { geminiApiKey = it },
-                label = { Text("GEMINI API KEY (OPTIONAL OVERRIDE)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            Button(
-                onClick = {
-                    instanceName = "Home Assistant OS (lml HACS)"
-                    baseUrl = "http://homeassistant.local:8123/api/tuesday"
-                    apiToken = "tuesday_hacs_qr_${(1000..9999).random()}"
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.15f),
-                    contentColor = TuesdayTheme.HacsCyan
-                ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Simulate HACS Pairing QR Payload", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-
-            // Toggles
-            Column(
+            // Coming Soon Notice Box
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(TuesdayTheme.CardSurface)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(vertical = 36.dp, horizontal = 24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Require Local Wi-Fi (LAN Guard)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Blocks dashboard if disconnected from LAN", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
-                    }
-                    Switch(
-                        checked = requireLocalWifi,
-                        onCheckedChange = { requireLocalWifi = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = TuesdayTheme.HealthyGreen)
+                    Text(
+                        text = "Home Assistant sync coming soon.",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
-                }
-
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Simulate Wi-Fi Disconnected", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Test the Wi-Fi warning overlay on device", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
-                    }
-                    Switch(
-                        checked = isSimulatingWifi,
-                        onCheckedChange = {
-                            isSimulatingWifi = it
-                            onToggleSimulateWifi(it)
-                        },
-                        colors = SwitchDefaults.colors(checkedThumbColor = TuesdayTheme.WarningAmber)
+                    Text(
+                        text = "Native integration for Home Assistant and HACS is currently in development.",
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
             }
 
-            // Actions
+            // Dismiss Button (maintains parity action contract)
             Button(
-                onClick = {
-                    val updated = config.copy(
-                        instanceName = instanceName.trim(),
-                        baseUrl = baseUrl.trim(),
-                        apiToken = apiToken.trim(),
-                        elastixApiKey = elastixApiKey.trim(),
-                        elastixModel = elastixModel.trim().ifBlank { "qwen3.8-27b" },
-                        geminiApiKey = geminiApiKey.trim(),
-                        requireLocalWifi = requireLocalWifi,
-                        lastSyncedEpochMs = System.currentTimeMillis()
-                    )
-                    onSaveConfig(updated)
-                    onDismiss()
-                },
+                onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = TuesdayTheme.HealthyGreen,
-                    contentColor = Color.Black
+                    containerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.15f),
+                    contentColor = TuesdayTheme.HacsCyan
                 ),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiAction("saveHacsConfig")
             ) {
-                Text("Save HACS Settings", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Close", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
 
-            TextButton(
-                onClick = {
-                    onResetDemoData()
-                    onDismiss()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiAction("resetDemoData")
-            ) {
-                Text("Reset Demo Fleet Data", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

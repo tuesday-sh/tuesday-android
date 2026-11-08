@@ -137,7 +137,7 @@ fun NetworkPickerModalDialog(
                             )
                             Column {
                                 Text(
-                                    text = net.name,
+                                    text = net.name.ifBlank { "Default Network" },
                                     color = palette.textPrimary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
@@ -362,10 +362,10 @@ fun ReferenceGuideModalDialog(
                     }
                 }
 
-                // Section 2: Industry-Standard Ordinal Scales (S0->S6, Z0->Z5, R1->R3)
+                // Section 2: Industry-Standard Ordinal Scales (S0->S6, Z0->Z5, R1->R4)
                 HorizontalDivider(color = palette.border)
                 Text(
-                    text = "📐 Industry-Standard Ordinal Scales (S0→S6 • Z0→Z5 • R1→R3)",
+                    text = "📐 Industry-Standard Ordinal Scales (S0→S6 • Z0→Z5 • R1→R4)",
                     color = palette.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -404,12 +404,13 @@ fun ReferenceGuideModalDialog(
 
                 OrdinalScaleCard(
                     tag = "Scale R",
-                    title = "The 3 Operational Rhythms (R1 Event → R3 Annual)",
+                    title = "The 4 Operational Rhythms (R1 Event → R4 Annual)",
                     description = "Structures notifications and maintenance habits aligned with NIST CM-8 and NIST CSF without ITIL overhead.",
                     rows = listOf(
                         Triple("R1", "Plug & Tag (NIST CM-8)", "Name New Device — Instant on link-up"),
-                        Triple("R2", "Quarterly Tune-Up", "Seasonal Checkup — Every 90 days drift audit"),
-                        Triple("R3", "Annual Gear Review", "Yearly Lifespan Check — Warranty & EOL")
+                        Triple("R2", "Monthly Patch Tuesday Readiness", "Monthly CVE/KEV & Firmware Triage — 2nd Tuesday"),
+                        Triple("R3", "Seasonal Safety, Passwords & Drift Audit", "Seasonal Checkup — Every 90 days drift audit"),
+                        Triple("R4", "Annual Gear Review", "Yearly Lifespan Check — Warranty & EOL")
                     ),
                     palette = palette
                 )

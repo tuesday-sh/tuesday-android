@@ -167,4 +167,34 @@ class MonitoredDeviceTest {
         assertNull(payload.inbox.find { it.externalId == "REL-esphome-2026.10.2" })
         assertNull(payload.inbox.find { it.externalId == "REL-ecobee-4.8.7.220" })
     }
+
+    @Test
+    fun testTimelineSortingScrubberVersionAndRecentChanges() {
+        val devices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+
+        // 1. Timeline sort: Z0_CORE -> Z4_GUEST, then portIndex ascending
+        val timelineSorted = BulletinsAndInventoryEngine.sortDevicesForTimeline(devices)
+        assertEquals(12, timelineSorted.size)
+        assertEquals(TrustZone.Z0_CORE, timelineSorted.first().trustZone)
+        assertEquals(1, timelineSorted.first().portIndex)
+        assertEquals(TrustZone.Z3_IOT, timelineSorted.last().trustZone)
+
+        // 2. Dynamic scrubber version interpolation
+        val udmPro = devices.first { it.portIndex == 1 }
+        assertEquals("3.2.12", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, 0.25f))
+        assertEquals("4.0.20", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, 0.65f))
+        assertEquals("4.0.20", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, null))
+
+        // 3. Recent changes sort: max 12 items, highest severity first, then newest purchaseDate
+        val recentChanges = BulletinsAndInventoryEngine.sortDevicesByRecentChanges(devices)
+        assertEquals(12, recentChanges.size)
+        assertEquals(PortLifecycleState.CVE_KEV, recentChanges.first().portState)
+        // Among the 3 CVE_KEV devices (port 1: 2024-02-01, port 9: 2025-01-12, port 10: 2022-11-28), port 9 has the most recent purchaseDate
+        assertEquals(9, recentChanges.first().portIndex)
+
+        // 4. C8 Human diagram recommendation indicator
+        assertTrue(sh.tuesday.app.ui.tabs.hasActiveCheckupRecommendation(devices))
+        val allOkDevices = devices.map { it.copy(portState = PortLifecycleState.OK, confidenceTier = DeviceConfidenceTier.CONFIRMED) }
+        assertFalse(sh.tuesday.app.ui.tabs.hasActiveCheckupRecommendation(allOkDevices, welcomeComplete = true))
+    }
 }

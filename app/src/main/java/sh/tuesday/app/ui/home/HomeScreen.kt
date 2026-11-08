@@ -1,6 +1,9 @@
 package sh.tuesday.app.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -41,7 +45,9 @@ import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.bulletins.BulletinsScreen
+import sh.tuesday.app.ui.components.BulletinChecklistStep
 import sh.tuesday.app.ui.components.CandleGraphCanvas
+import sh.tuesday.app.ui.components.NotchBulletinCard
 import sh.tuesday.app.ui.components.WifiWarningOverlay
 import sh.tuesday.app.ui.hacs.HacsSettingsSheet
 import sh.tuesday.app.ui.tabs.SeasonalCheckupScreen
@@ -51,10 +57,10 @@ import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
 
 enum class MainNavTab(val labelPro: String, val labelStn: String) {
-    STATUS("Status", "Home"),
+    STATUS("My Net", "Home Grid"),
     BULLETINS("Bulletins", "Bulletins"),
     TIMELINE("Timeline", "Lifespan"),
-    CHECKUP("Q4 Tune-Up", "Checkup"),
+    CHECKUP("Check-Up", "Check-Up"),
     ACCOUNT("Account", "Account")
 }
 
@@ -63,7 +69,9 @@ enum class MainNavTab(val labelPro: String, val labelStn: String) {
 fun HomeScreen(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
-    onNavigateToAddDevice: () -> Unit
+    onNavigateToAddDevice: () -> Unit,
+    pendingDestination: sh.tuesday.app.navigation.DeepLinkDestination? = null,
+    onConsumePendingDestination: () -> Unit = {}
 ) {
     val rackDevices by repository.rackDevices.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
@@ -76,6 +84,11 @@ fun HomeScreen(
     val activeDeviceCount by repository.activeDeviceCount.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
     val entitlementTier by repository.entitlementTier.collectAsState()
+    val remindersEnabled by repository.remindersEnabled.collectAsState()
+    val dispatchSubscribed by repository.dispatchSubscribed.collectAsState()
+    val bulletinDismissed by repository.bulletinDismissed.collectAsState()
+    val bulletinSnoozed by repository.bulletinSnoozed.collectAsState()
+    val bulletinMuted by repository.bulletinMuted.collectAsState()
     val hacsConfig by repository.hacsConfig.collectAsState()
     val isWifiConnected by connectivity.isWifiConnected.collectAsState()
     val isSimulatingWifi by connectivity.simulateWifiDisconnected.collectAsState()
@@ -86,12 +99,51 @@ fun HomeScreen(
     var showNetworkPicker by remember { mutableStateOf(false) }
     var showReferenceGuide by remember { mutableStateOf(false) }
 
+    LaunchedEffect(pendingDestination) {
+        when (pendingDestination) {
+            is sh.tuesday.app.navigation.DeepLinkDestination.Tab -> {
+                when (pendingDestination.tab) {
+                    "status" -> activeTab = MainNavTab.STATUS
+                    "bulletins" -> activeTab = MainNavTab.BULLETINS
+                    "timeline" -> activeTab = MainNavTab.TIMELINE
+                    "checkup" -> activeTab = MainNavTab.CHECKUP
+                    "account" -> activeTab = MainNavTab.ACCOUNT
+                }
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.Device -> {
+                val dev = rackDevices.find { it.id.equals(pendingDestination.deviceId, ignoreCase = true) }
+                if (dev != null) {
+                    inspectedDevice = dev
+                }
+                onConsumePendingDestination()
+            }
+            sh.tuesday.app.navigation.DeepLinkDestination.AddDevice -> {
+                onNavigateToAddDevice()
+                onConsumePendingDestination()
+            }
+            sh.tuesday.app.navigation.DeepLinkDestination.HacsSettings -> {
+                showHacsSheet = true
+                onConsumePendingDestination()
+            }
+            sh.tuesday.app.navigation.DeepLinkDestination.NetworkPicker -> {
+                showNetworkPicker = true
+                onConsumePendingDestination()
+            }
+            sh.tuesday.app.navigation.DeepLinkDestination.ReferenceGuide -> {
+                showReferenceGuide = true
+                onConsumePendingDestination()
+            }
+            null -> {}
+        }
+    }
+
     val palette = TuesdayTheme.paletteFor(brandFlavor)
     val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
     val shouldShowWifiOverlay = hacsConfig.requireLocalWifi && !isWifiConnected
 
     val activeNetwork = remember(userNetworks, activeNetworkId) {
-        userNetworks.find { it.id == activeNetworkId } ?: userNetworks.first()
+        userNetworks.find { it.id == activeNetworkId } ?: userNetworks.firstOrNull() ?: NetworkSite(id = "net-default", name = "", devicesCount = 0, role = "Default Site")
     }
     val visibleDevices = remember(rackDevices, activeDeviceCount) {
         rackDevices.take(activeDeviceCount)
@@ -321,6 +373,17 @@ fun HomeScreen(
                     onToggleIncludeOk = { repository.toggleIncludeOkDevices() },
                     onOpenReferenceGuide = { showReferenceGuide = true },
                     onNavigateToAddDevice = onNavigateToAddDevice,
+                    onNavigateToBulletins = { activeTab = MainNavTab.BULLETINS },
+                    onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
+                    remindersEnabled = remindersEnabled,
+                    dispatchSubscribed = dispatchSubscribed,
+                    onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
+                    bulletinDismissed = bulletinDismissed,
+                    onSetBulletinDismissed = { repository.setBulletinDismissed(it) },
+                    bulletinSnoozed = bulletinSnoozed,
+                    onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
+                    bulletinMuted = bulletinMuted,
+                    onSetBulletinMuted = { repository.setBulletinMuted(it) },
                     onLoadDemoFleet = { repository.setSimulatedDeviceCount(12) },
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
@@ -332,7 +395,23 @@ fun HomeScreen(
                     payload = bulletinsPayload,
                     onToggleMuteFeed = { repository.toggleMuteFeed(it) },
                     onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
-                    onRejectModel = { repository.rejectProvisionalDeviceModel() }
+                    onRejectModel = { repository.rejectProvisionalDeviceModel() },
+                    onOpenFeedsSettings = { activeTab = MainNavTab.ACCOUNT },
+                    onInspectDevice = { devId ->
+                        visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
+                    },
+                    onNavigateToAddDevice = onNavigateToAddDevice,
+                    onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
+                    remindersEnabled = remindersEnabled,
+                    dispatchSubscribed = dispatchSubscribed,
+                    onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
+                    activeDeviceCount = visibleDevices.size,
+                    bulletinDismissed = bulletinDismissed,
+                    onSetBulletinDismissed = { repository.setBulletinDismissed(it) },
+                    bulletinSnoozed = bulletinSnoozed,
+                    onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
+                    bulletinMuted = bulletinMuted,
+                    onSetBulletinMuted = { repository.setBulletinMuted(it) }
                 )
                 MainNavTab.TIMELINE -> SwimlaneTimelineScreen(
                     flavor = brandFlavor,
@@ -345,18 +424,23 @@ fun HomeScreen(
                     devices = visibleDevices
                 )
                 MainNavTab.ACCOUNT -> AccountSettingsScreen(
-                    flavor = brandFlavor,
-                    palette = palette,
-                    networkLocationName = activeNetwork.name,
-                    activeDeviceCount = visibleDevices.size,
-                    isDeveloperMode = isDeveloperMode,
-                    entitlementTier = entitlementTier,
-                    onUpgradeProTier1 = { repository.upgradeToProTier1() },
-                    onSaveNetworkName = { repository.renameActiveNetwork(it) },
-                    onToggleDeveloperMode = { repository.toggleDeveloperMode(it) },
-                    onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
-                    onOpenIntakeFlow = onNavigateToAddDevice,
-                    onSwitchToFleetTab = { activeTab = MainNavTab.STATUS }
+                    params = AccountSettingsParams(
+                        flavor = brandFlavor,
+                        palette = palette,
+                        networkLocationName = activeNetwork.name,
+                        activeDeviceCount = visibleDevices.size,
+                        isDeveloperMode = isDeveloperMode,
+                        entitlementTier = entitlementTier,
+                        matchedFeeds = bulletinsPayload.matchedFeeds,
+                        remindersEnabled = remindersEnabled,
+                        onToggleReminders = { repository.setRemindersEnabled(it) },
+                        onToggleMuteFeed = { repository.toggleMuteFeed(it) },
+                        onUpgradeProTier1 = { repository.upgradeToProTier1() },
+                        onSaveNetworkName = { repository.renameActiveNetwork(it) },
+                        onToggleDeveloperMode = { repository.toggleDeveloperMode(it) },
+                        onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
+                        onSwitchToFleetTab = { activeTab = MainNavTab.STATUS }
+                    )
                 )
             }
 
@@ -445,6 +529,17 @@ private fun StatusMatrixAndActionListScreen(
     onToggleIncludeOk: () -> Unit,
     onOpenReferenceGuide: () -> Unit,
     onNavigateToAddDevice: () -> Unit,
+    onNavigateToBulletins: () -> Unit,
+    onNavigateToAccount: () -> Unit = {},
+    remindersEnabled: Boolean = false,
+    dispatchSubscribed: Boolean = false,
+    onSetDispatchSubscribed: (Boolean) -> Unit = {},
+    bulletinDismissed: Boolean = false,
+    onSetBulletinDismissed: (Boolean) -> Unit = {},
+    bulletinSnoozed: Boolean = false,
+    onSetBulletinSnoozed: (Boolean) -> Unit = {},
+    bulletinMuted: Boolean = false,
+    onSetBulletinMuted: (Boolean) -> Unit = {},
     onLoadDemoFleet: () -> Unit,
     onInspectDevice: (String) -> Unit
 ) {
@@ -463,17 +558,30 @@ private fun StatusMatrixAndActionListScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        if (scaleTier == InventoryScaleTier.DAY_ZERO) {
-            // Day 0 Onboarding Welcome Card
-            item {
-                WelcomeCard(
-                    palette = palette,
-                    onAddRouter = onNavigateToAddDevice,
-                    onAddAnyDevice = onNavigateToAddDevice,
-                    onLoadDemoFleet = onLoadDemoFleet
-                )
-            }
-        } else {
+        // Welcome Bulletin Card (kept visible on home screen above inventory for continuity)
+        item {
+            WelcomeCard(
+                palette = palette,
+                activeDeviceCount = visibleDevices.size,
+                remindersEnabled = remindersEnabled,
+                dispatchSubscribed = dispatchSubscribed,
+                onSetDispatchSubscribed = onSetDispatchSubscribed,
+                bulletinDismissed = bulletinDismissed,
+                onSetBulletinDismissed = onSetBulletinDismissed,
+                bulletinSnoozed = bulletinSnoozed,
+                onSetBulletinSnoozed = onSetBulletinSnoozed,
+                bulletinMuted = bulletinMuted,
+                onSetBulletinMuted = onSetBulletinMuted,
+                onAddRouter = onNavigateToAddDevice,
+                onAddAnyDevice = onNavigateToAddDevice,
+                onLoadDemoFleet = onLoadDemoFleet,
+                onOpenReferenceGuide = onOpenReferenceGuide,
+                onNavigateToBulletins = onNavigateToBulletins,
+                onNavigateToAccount = onNavigateToAccount
+            )
+        }
+
+        if (scaleTier != InventoryScaleTier.DAY_ZERO) {
             // 1. Inventory Card (8-Port Category Strip + 16x8 LED Matrix + Botanical Overlay)
             item {
                 Column(
@@ -1121,92 +1229,179 @@ fun RiskMeter(
 @Composable
 private fun WelcomeCard(
     palette: BrandPalette,
+    activeDeviceCount: Int = 0,
+    remindersEnabled: Boolean = false,
+    dispatchSubscribed: Boolean = false,
+    onSetDispatchSubscribed: (Boolean) -> Unit = {},
+    bulletinDismissed: Boolean = false,
+    onSetBulletinDismissed: (Boolean) -> Unit = {},
+    bulletinSnoozed: Boolean = false,
+    onSetBulletinSnoozed: (Boolean) -> Unit = {},
+    bulletinMuted: Boolean = false,
+    onSetBulletinMuted: (Boolean) -> Unit = {},
     onAddRouter: () -> Unit,
     onAddAnyDevice: () -> Unit,
-    onLoadDemoFleet: () -> Unit
+    onLoadDemoFleet: () -> Unit,
+    onOpenReferenceGuide: () -> Unit = {},
+    onNavigateToBulletins: () -> Unit = {},
+    onNavigateToAccount: () -> Unit = {}
 ) {
+    var showIgnoreDialog by remember { mutableStateOf(false) }
+
+    if (showIgnoreDialog) {
+        sh.tuesday.app.ui.components.BulletinPreferencesDialog(
+            palette = palette,
+            onDismissRequest = { showIgnoreDialog = false },
+            onConfirmMute = {
+                showIgnoreDialog = false
+                onSetBulletinMuted(true)
+                onSetBulletinDismissed(true)
+            },
+            onConfirmIgnoreUntilNextMonth = {
+                showIgnoreDialog = false
+                onSetBulletinSnoozed(true)
+                onSetBulletinDismissed(true)
+            }
+        )
+    }
+
+    val step1Done = activeDeviceCount > 0
+    val step2Done = remindersEnabled
+    val step3Done = dispatchSubscribed
+    val allStepsDone = step1Done && step2Done && step3Done
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .uiComponent("WelcomeCard", "tier=day_zero;active=0")
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-            .padding(16.dp),
+            .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(text = "🏠", fontSize = 28.sp)
-        Text(
-            text = "Welcome to your network inventory",
-            color = palette.textPrimary,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = "Start by adding 1 device — snap a photo of its label, or type its make & model.",
-            color = palette.textMuted,
-            fontSize = 11.5.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 16.sp
-        )
-
-        // Router recommendation tip box
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiSlot("router-advisory-tip")
-                .clip(RoundedCornerShape(8.dp))
-                .background(palette.accent.copy(alpha = 0.10f))
-                .border(1.dp, palette.accent.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                text = "💡 Best place to start: Your Router",
-                color = palette.accent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
+        if (!bulletinDismissed) {
+            val context = LocalContext.current
+            val steps = listOf(
+                BulletinChecklistStep(
+                    id = "step1",
+                    num = "1",
+                    title = "Inventory Your Network",
+                    description = "Kick off Plug & Tag intake to map active routers, switches, NAS, and IoT nodes.",
+                    linkText = if (step1Done) "✓ Added" else "Add Device →",
+                    isDone = step1Done,
+                    onClick = onAddRouter
+                ),
+                BulletinChecklistStep(
+                    id = "step2",
+                    num = "2",
+                    title = "Enable Push Reminders",
+                    description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
+                    linkText = if (step2Done) "✓ Active" else "Enable →",
+                    isDone = step2Done,
+                    onClick = onNavigateToAccount
+                ),
+                BulletinChecklistStep(
+                    id = "step3",
+                    num = "3",
+                    title = "Subscribe to the Dispatch",
+                    description = "Get human-curated patch analysis and firmware changelogs delivered every cycle.",
+                    linkText = if (step3Done) "✓ Subscribed" else "Dispatch ↗",
+                    isDone = step3Done,
+                    onClick = {
+                        onSetDispatchSubscribed(true)
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tuesday.sh/dispatch"))
+                        context.startActivity(intent)
+                    }
+                )
             )
-            Text(
-                text = "Your router is the front door to your home network and the single highest-impact device to keep updated.",
-                color = palette.textMuted,
-                fontSize = 10.sp,
-                lineHeight = 14.sp
+
+            NotchBulletinCard(
+                palette = palette,
+                title = "Patch Tuesday Readiness",
+                description = if (bulletinSnoozed) {
+                    "💤 Reminder snoozed until tomorrow at 10:00 AM PT. Get your perimeter cataloged before vendors push critical firmware fixes."
+                } else {
+                    "Get your perimeter cataloged before vendors push critical firmware and OS fixes."
+                },
+                leftNotchLabel = "BULLETIN",
+                onLeftNotchClick = onNavigateToBulletins,
+                rightNotchLabel = "RHYTHM",
+                onRightNotchClick = onOpenReferenceGuide,
+                steps = steps,
+                allStepsDone = allStepsDone,
+                primaryActionLabel = "Snooze 24h",
+                completeActionLabel = "Mark Complete",
+                secondaryActionLabel = "Ignore",
+                onPrimaryAction = {
+                    if (allStepsDone) {
+                        onSetBulletinDismissed(true)
+                    } else {
+                        onSetBulletinSnoozed(true)
+                    }
+                },
+                onSecondaryAction = { showIgnoreDialog = true }
             )
         }
 
-        Button(
-            onClick = onAddRouter,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = palette.accent,
-                contentColor = Color.White
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiAction("openAddDevice")
-        ) {
-            Text("Add Your Router (Recommended) →", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-        }
+        if (bulletinDismissed) {
+            // Router recommendation tip row and Add Device CTA block (visible once welcome bulletin is dismissed)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiSlot("router-advisory-tip")
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.accent.copy(alpha = 0.10f))
+                    .border(1.dp, palette.accent.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = "💡 Best place to start: Your Router",
+                    color = palette.accent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Your router is the front door to your home network and the single highest-impact device to keep updated.",
+                    color = palette.textMuted,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+            }
 
-        OutlinedButton(
-            onClick = onAddAnyDevice,
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiAction("openAddDevice")
-        ) {
-            Text("+ Add Any Device", color = palette.textPrimary, fontSize = 11.5.sp)
+            Button(
+                onClick = onAddRouter,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = palette.accent,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiAction("openAddDevice")
+            ) {
+                Text("Add Your Router (Recommended) →", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = onAddAnyDevice,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiAction("openAddDevice")
+            ) {
+                Text("+ Add Any Device", color = palette.textPrimary, fontSize = 11.5.sp)
+            }
         }
 
         TextButton(
             onClick = onLoadDemoFleet,
-            modifier = Modifier.uiAction("setSimulatedDeviceCount")
+            modifier = Modifier
+                .uiAction("enableDemoMode")
+                .uiAction("setSimulatedDeviceCount")
         ) {
             Text(
-                text = "or seed Forest fleet (12 nodes)",
-                color = palette.textMuted,
-                fontSize = 10.5.sp
+                text = "Enable Demo Mode (seed Forest fleet)",
+                color = palette.accent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
             )
         }
     }
