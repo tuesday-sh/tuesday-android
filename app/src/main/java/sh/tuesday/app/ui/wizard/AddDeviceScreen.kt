@@ -1202,6 +1202,16 @@ fun AddDeviceScreen(
                                         discoveryNotes = "Added via AI Photo Wizard as Incomplete/Guessed"
                                     )
                                     val host = bestGuess?.let { "${it.suggestedHostname} (guessed)" } ?: "unidentified-device.local"
+                                    GoldenCorpusRecorder.saveCaptureSession(
+                                        context = context,
+                                        sessionId = currentSessionId,
+                                        bitmaps = capturedBitmaps,
+                                        result = result,
+                                        accumulatedIdentifiers = accumulatedIdentifiers,
+                                        userClueNotes = userClueNotes,
+                                        confirmedCandidate = bestGuess,
+                                        status = "saved_best_guess"
+                                    )
                                     discoveryService.confirmDeviceDiscovery(
                                         inferredVendor = bestGuess?.manufacturer,
                                         inferredModel = bestGuess?.modelNumber,
@@ -1453,6 +1463,18 @@ fun AddDeviceScreen(
                             isSaving = true
                             val topCand = discoveryResult?.candidates?.firstOrNull()
                             val cleanOs = manualOsDetails.trim().ifBlank { "Linux (${manualPkgManager.rawValue})" }
+                            if (capturedBitmaps.isNotEmpty() && discoveryResult != null) {
+                                GoldenCorpusRecorder.saveCaptureSession(
+                                    context = context,
+                                    sessionId = currentSessionId,
+                                    bitmaps = capturedBitmaps,
+                                    result = discoveryResult!!,
+                                    accumulatedIdentifiers = accumulatedIdentifiers,
+                                    userClueNotes = userClueNotes + listOf("ManualHost=$host", "ManualOS=$cleanOs"),
+                                    confirmedCandidate = topCand,
+                                    status = "pivoted_to_manual"
+                                )
+                            }
                             discoveryService.confirmDeviceDiscovery(
                                 inferredVendor = topCand?.manufacturer,
                                 inferredModel = topCand?.modelNumber,
