@@ -134,6 +134,15 @@ fun HomeScreen(
                 showReferenceGuide = true
                 onConsumePendingDestination()
             }
+            is sh.tuesday.app.navigation.DeepLinkDestination.SeedFleet -> {
+                repository.setSimulatedDeviceCount(pendingDestination.count)
+                activeTab = MainNavTab.STATUS
+                onConsumePendingDestination()
+            }
+            sh.tuesday.app.navigation.DeepLinkDestination.ToggleFlavor -> {
+                repository.toggleBrandFlavor()
+                onConsumePendingDestination()
+            }
             null -> {}
         }
     }
@@ -1734,11 +1743,8 @@ private fun TrackedHardwareProfilesCard(
     palette: BrandPalette,
     onInspectDevice: (String) -> Unit
 ) {
-    val preferredIds = listOf("dev-01", "dev-09", "dev-10", "dev-02", "dev-05", "dev-07")
     val featured = remember(devices) {
-        val byId = devices.associateBy { it.id }
-        val matched = preferredIds.mapNotNull { byId[it] }
-        if (matched.isNotEmpty()) matched else devices.take(6)
+        BulletinsAndInventoryEngine.sortDevicesByRecentChanges(devices)
     }
 
     Column(
@@ -1765,7 +1771,7 @@ private fun TrackedHardwareProfilesCard(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Tap to inspect S0→S6",
+                text = "Recent changes",
                 color = palette.textMuted,
                 fontSize = 9.sp
             )
