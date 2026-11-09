@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -372,23 +373,24 @@ fun AddDeviceScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (includePhotoSamples) {
-                    // Replay... Picker Button
+                    // Replay... Native Picker Button
                     Box {
-                        Surface(
+                        OutlinedButton(
                             onClick = { showReplayMenu = true },
-                            shape = RoundedCornerShape(6.dp),
-                            color = TuesdayTheme.HealthyGreen.copy(alpha = 0.16f),
-                            modifier = Modifier.border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = TuesdayTheme.HealthyGreen.copy(alpha = 0.12f),
+                                contentColor = TuesdayTheme.HealthyGreen
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 36.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(13.dp))
-                                Text("Replay...", color = TuesdayTheme.HealthyGreen, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(15.dp))
-                            }
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Replay...", color = TuesdayTheme.HealthyGreen, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(16.dp))
                         }
 
                         DropdownMenu(
@@ -435,23 +437,24 @@ fun AddDeviceScreen(
                         }
                     }
 
-                    // Synthesize... Picker Button
+                    // Synthesize... Native Picker Button
                     Box {
-                        Surface(
+                        OutlinedButton(
                             onClick = { showSynthMenu = true },
-                            shape = RoundedCornerShape(6.dp),
-                            color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f),
-                            modifier = Modifier.border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.12f),
+                                contentColor = TuesdayTheme.HacsCyan
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 36.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(13.dp))
-                                Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(15.dp))
-                            }
+                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(16.dp))
                         }
 
                         DropdownMenu(
