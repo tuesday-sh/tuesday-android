@@ -139,7 +139,8 @@ fun AddDeviceScreen(
                 apiKeyOverride = hacsConfig.geminiApiKey,
                 modelName = hacsConfig.geminiModel,
                 serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
-                debugEnabled = showVisionDebug
+                debugEnabled = showVisionDebug,
+                initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard"
             )
             accumulatedIdentifiers.merge(res.extractedIdentifiers)
             discoveryResult = res

@@ -31,7 +31,7 @@ import kotlin.math.roundToInt
 class GeminiDiscoveryService(private val context: Context) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
+        .readTimeout(55, TimeUnit.SECONDS)
         .build()
 
     private val persistentDeviceId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
@@ -72,14 +72,107 @@ class GeminiDiscoveryService(private val context: Context) {
                 initialMode = initialMode
             )
         } catch (e: Exception) {
-            Log.w("TuesdayVisionProxy", "Hosted proxy unreachable (${e.message}); falling back to local heuristic")
+            Log.w("TuesdayVisionProxy", "Analyze socket interrupted (${e.message}); checking server session recovery for $sessionStickinessId")
+            val recovered = recoverCompletedTurnFromServer(
+                serverBaseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL },
+                sessionId = sessionStickinessId,
+                accumulatedIdentifiers = accumulatedIdentifiers
+            )
+            if (recovered != null) {
+                Log.i("TuesdayVisionProxy", "Recovered completed server turn for session $sessionStickinessId")
+                return@withContext recovered
+            }
+            Log.w("TuesdayVisionProxy", "Hosted proxy unreachable (${e.message}); returning offline status")
+            val errReason = "${e.javaClass.simpleName}: ${e.message ?: "Network unreachable"}"
+            if (initialMode != "synthetic_sample" && bitmaps.isNotEmpty() && accumulatedIdentifiers.nonEmptyPairs().isEmpty() && userClueNotes.isEmpty()) {
+                return@withContext connectionInterruptedResult(
+                    accumulatedIdentifiers = accumulatedIdentifiers,
+                    imageCount = bitmaps.size,
+                    fallbackErrorReason = errReason
+                )
+            }
             return@withContext fallbackHeuristic(
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = userClueNotes,
                 imageCount = bitmaps.size,
                 usedLiveApi = false,
-                fallbackErrorReason = "${e.javaClass.simpleName}: ${e.message ?: "Network unreachable"}"
+                fallbackErrorReason = errReason
             )
+        }
+    }
+
+    private fun recoverCompletedTurnFromServer(
+        serverBaseUrl: String,
+        sessionId: String,
+        accumulatedIdentifiers: ExtractedDeviceIdentifiers
+    ): GeminiDiscoveryTurnResult? {
+        return try {
+            val baseUrl = serverBaseUrl.trimEnd('/')
+            val request = Request.Builder()
+                .url("$baseUrl/api/v1/discovery/sessions?session_id=$sessionId&limit=1")
+                .addHeader("Accept", "application/json")
+                .addHeader("X-Tuesday-Device-ID", persistentDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val body = resp.body?.string() ?: return null
+                val root = JSONObject(body)
+                val sessions = root.optJSONArray("sessions") ?: return null
+                if (sessions.length() == 0) return null
+                val sess = sessions.getJSONObject(0)
+                val turns = sess.optJSONArray("turns") ?: return null
+                if (turns.length() == 0) return null
+                val lastTurn = turns.getJSONObject(turns.length() - 1)
+                val candArr = lastTurn.optJSONArray("candidates") ?: return null
+                if (candArr.length() == 0) return null
+
+                val cands = mutableListOf<DeviceCandidateMatch>()
+                for (i in 0 until candArr.length()) {
+                    val c = candArr.getJSONObject(i)
+                    val gaStatus = c.optString("goldAlignmentStatus", "UNALIGNED RAW MATCH")
+                    val aligned = gaStatus == "GOLD ALIGNED"
+                    cands.add(
+                        DeviceCandidateMatch(
+                            manufacturer = c.optString("manufacturer", "Unknown Vendor"),
+                            modelNumber = c.optString("modelNumber", "Unidentified Hardware"),
+                            displayName = c.optString("displayName", "${c.optString("manufacturer")} ${c.optString("modelNumber")}"),
+                            deviceCategory = c.optString("deviceCategory", "Network Hardware"),
+                            confidencePercent = c.optInt("confidencePercent", 50),
+                            reasoning = "Recovered from Tuesday Server session after background socket interruption.",
+                            suggestedHostname = c.optString("modelNumber", "device").lowercase().replace(Regex("[^a-z0-9]+"), "-"),
+                            suggestedOsDetails = "Linux / Firmware",
+                            suggestedPackageManager = "firmware",
+                            goldAlignment = GoldAlignmentInfo(
+                                aligned = aligned,
+                                matchedFeedSlug = c.optString("matchedFeedSlug").takeIf { it.isNotBlank() && it != "null" },
+                                inferredPurl = c.optString("inferredPurl", ""),
+                                statusLabel = gaStatus,
+                                diagnosticNote = "Recovered from server session $sessionId"
+                            )
+                        )
+                    )
+                }
+
+                val provider = lastTurn.optString("provider", "Elastix")
+                val model = lastTurn.optString("model", "qwen3.8-27b")
+                val latSec = String.format("%.2fs", lastTurn.optLong("latencyMs", 0L) / 1000.0)
+                GeminiDiscoveryTurnResult(
+                    visualSummary = "Recovered server analysis for ${cands.first().manufacturer} ${cands.first().modelNumber} (socket interrupted while app was backgrounded).",
+                    nextNarrowingQuestion = lastTurn.optString("nextNarrowingQuestion", "Can you check for a Barcode, Serial Number, Model, or MAC Address on the label?"),
+                    recommendedClueTypes = DeviceClueType.entries.map { it.rawValue },
+                    extractedIdentifiers = accumulatedIdentifiers,
+                    candidates = cands,
+                    usedLiveGeminiApi = true,
+                    providerUsed = "Tuesday Server → $provider ($model • $latSec • Recovered)",
+                    latencyMs = lastTurn.optLong("latencyMs", 0L)
+                )
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -388,6 +481,37 @@ class GeminiDiscoveryService(private val context: Context) {
     companion object {
         const val DEFAULT_SERVER_BASE_URL = "http://100.108.40.3:3000"
         private const val PILOT_CLIENT_TOKEN = "tuesday-pilot-v1-public-client-token"
+
+        fun connectionInterruptedResult(
+            accumulatedIdentifiers: ExtractedDeviceIdentifiers,
+            imageCount: Int,
+            fallbackErrorReason: String
+        ): GeminiDiscoveryTurnResult {
+            val errCand = listOf(
+                DeviceCandidateMatch(
+                    manufacturer = "Unidentified Hardware",
+                    modelNumber = "Retry Vision Analysis",
+                    displayName = "Connection Interrupted During Photo Analysis",
+                    deviceCategory = "Network / IoT Device",
+                    confidencePercent = 10,
+                    reasoning = "The connection to Tuesday Server was interrupted ($fallbackErrorReason) — often caused by locking the screen or switching apps while the vision model is running.",
+                    suggestedHostname = "unidentified-device.local",
+                    suggestedOsDetails = "Pending Re-Analysis",
+                    suggestedPackageManager = "firmware",
+                    goldAlignment = null
+                )
+            )
+            return GeminiDiscoveryTurnResult(
+                visualSummary = "⚠ Connection interrupted before vision response arrived ($fallbackErrorReason). Keep the screen awake during analysis or tap the green Replay chip above to re-run this photo.",
+                nextNarrowingQuestion = "Tap the green Replay chip above to re-analyze this photo, or enter a Model / Barcode clue below.",
+                recommendedClueTypes = listOf("Model", "MAC Address", "Serial Number", "Barcode", "QR Code"),
+                extractedIdentifiers = accumulatedIdentifiers,
+                candidates = errCand,
+                usedLiveGeminiApi = false,
+                providerUsed = "Connection Interrupted (Offline)",
+                debugLogText = buildClientFallbackDebugLog(errCand, imageCount, fallbackErrorReason)
+            )
+        }
 
         fun fallbackHeuristic(
             accumulatedIdentifiers: ExtractedDeviceIdentifiers,
