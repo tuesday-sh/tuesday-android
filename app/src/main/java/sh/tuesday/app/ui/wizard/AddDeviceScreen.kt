@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -297,11 +298,11 @@ fun AddDeviceScreen(
                 }
                 "barcode", "barcode-udm-pro", "udm-pro" -> {
                     mode = EnrollmentMode.BARCODE_SCAN
-                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("barcode-udm-pro"))
+                    applyDecodedBarcode("817882027373", Barcode.FORMAT_UPC_A, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("barcode-udm-pro"))
                 }
                 "qr", "qr-ucg-ultra", "ucg-ultra" -> {
                     mode = EnrollmentMode.BARCODE_SCAN
-                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("qr-ucg-ultra"))
+                    applyDecodedBarcode("https://setup.ui.com/entry?sku=UCG-Ultra&mac=74:AC:B9:4E:88:12", Barcode.FORMAT_QR_CODE, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("qr-ucg-ultra"))
                 }
             }
         }
@@ -594,7 +595,7 @@ fun AddDeviceScreen(
                                 },
                                 onClick = {
                                     showSynthMenu = false
-                                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("barcode-udm-pro"))
+                                    applyDecodedBarcode("817882027373", Barcode.FORMAT_UPC_A, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("barcode-udm-pro"))
                                 }
                             )
                             DropdownMenuItem(
@@ -612,7 +613,7 @@ fun AddDeviceScreen(
                                 },
                                 onClick = {
                                     showSynthMenu = false
-                                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("qr-ucg-ultra"))
+                                    applyDecodedBarcode("https://setup.ui.com/entry?sku=UCG-Ultra&mac=74:AC:B9:4E:88:12", Barcode.FORMAT_QR_CODE, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("qr-ucg-ultra"))
                                 }
                             )
                         }
@@ -1037,9 +1038,10 @@ fun AddDeviceScreen(
                                     }
                                 }
                                 items(scannedBarcodesList) { code ->
+                                    val displayCode = if (code.length > 28) code.take(25) + "…" else code
                                     Box(
                                         modifier = Modifier
-                                            .size(width = 130.dp, height = 75.dp)
+                                            .size(width = 135.dp, height = 75.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .background(TuesdayTheme.HacsCyan.copy(alpha = 0.12f))
                                             .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
@@ -1072,12 +1074,13 @@ fun AddDeviceScreen(
                                                 )
                                             }
                                             Text(
-                                                text = code,
+                                                text = displayCode,
                                                 color = palette.textPrimary,
-                                                fontSize = 11.5.sp,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 fontFamily = FontFamily.Monospace,
-                                                maxLines = 2
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                     }
