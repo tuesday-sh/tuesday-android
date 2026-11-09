@@ -49,6 +49,7 @@ data class AccountSettingsParams(
     val onSetTuesdayApiBaseUrl: (String) -> Unit = {},
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
     val onSwitchToFleetTab: () -> Unit = {},
+    val initialExpandNetwork: Boolean = false,
     val onResendInventoryNotifications: suspend () -> Int = { 0 },
     val onTriggerMockPatchTuesday: () -> Boolean = { false }
 )
@@ -119,7 +120,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     var isResendingNotifs by remember { mutableStateOf(false) }
 
     // Accordion Expansion States
-    var isNetworkOpen by remember { mutableStateOf(false) }
+    var isNetworkOpen by remember(params.initialExpandNetwork) { mutableStateOf(params.initialExpandNetwork) }
     var isDevModeOpen by remember(isDeveloperMode) { mutableStateOf(isDeveloperMode) }
     var isRemindersOpen by remember { mutableStateOf(false) }
     var isFeedsOpen by remember { mutableStateOf(false) }

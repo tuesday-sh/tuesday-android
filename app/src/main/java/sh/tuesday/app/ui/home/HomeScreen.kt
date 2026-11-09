@@ -97,6 +97,7 @@ fun HomeScreen(
     val isSimulatingWifi by connectivity.simulateWifiDisconnected.collectAsState()
 
     var activeTab by remember { mutableStateOf(MainNavTab.STATUS) }
+    var expandNetworkInSettings by remember { mutableStateOf(false) }
     var inspectedDevice by remember { mutableStateOf<RackPortDevice?>(null) }
     var showHacsSheet by remember { mutableStateOf(false) }
     var showNetworkPicker by remember { mutableStateOf(false) }
@@ -517,6 +518,7 @@ fun HomeScreen(
                         onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
                         onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
+                        initialExpandNetwork = expandNetworkInSettings,
                         onResendInventoryNotifications = {
                             if (notificationManager != null) {
                                 repository.syncPendingNotifications(
@@ -596,6 +598,7 @@ fun HomeScreen(
                 showNetworkPicker = false
             },
             onOpenNetworkSettings = {
+                expandNetworkInSettings = true
                 activeTab = MainNavTab.ACCOUNT
             },
             onDismiss = { showNetworkPicker = false }
