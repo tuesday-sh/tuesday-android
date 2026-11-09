@@ -90,6 +90,7 @@ fun AddDeviceScreen(
     // Wizard State
     var currentSessionId by remember { mutableStateOf(discoveryService.startNewSession()) }
     var capturedBitmaps by remember { mutableStateOf(listOf<Bitmap>()) }
+    var scannedBarcodesList by remember { mutableStateOf(listOf<String>()) }
     var isAnalyzing by remember { mutableStateOf(false) }
 
     // Keep the screen awake while vision analysis is in flight so Android does not freeze the process and abort the socket
@@ -140,7 +141,7 @@ fun AddDeviceScreen(
 
     fun triggerProgressiveAnalysis(newBmp: Bitmap, captureSource: String = "camera") {
         currentCaptureSource = captureSource
-        val updatedBitmaps = capturedBitmaps + newBmp
+        val updatedBitmaps = if (capturedBitmaps.contains(newBmp)) capturedBitmaps else capturedBitmaps + newBmp
         capturedBitmaps = updatedBitmaps
         scope.launch {
             isAnalyzing = true
@@ -205,7 +206,7 @@ fun AddDeviceScreen(
         }
     }
 
-    fun applyDecodedBarcode(rawValue: String, format: Int) {
+    fun applyDecodedBarcode(rawValue: String, format: Int, sourceBitmap: Bitmap? = null) {
         val cleaned = rawValue.trim()
         if (cleaned.isEmpty()) return
         val is2D = format == Barcode.FORMAT_QR_CODE ||
@@ -218,16 +219,24 @@ fun AddDeviceScreen(
         } else {
             cleaned
         }
+        val prefix = if (is2D) "QR Code" else "Barcode"
         if (is2D) {
             accumulatedIdentifiers.qrCode = normalized
-            userClueNotes = userClueNotes + "QR Code=$normalized"
             scanStatusMessage = "✓ Decoded 2D QR/Matrix: $normalized"
         } else {
             accumulatedIdentifiers.barcode = normalized
-            userClueNotes = userClueNotes + "Barcode=$normalized"
             scanStatusMessage = "✓ Decoded 1D Barcode: $normalized"
         }
-        triggerIdentifierOnlyAnalysis()
+        val entry = "$prefix=$normalized"
+        if (!userClueNotes.contains(entry)) {
+            userClueNotes = userClueNotes + entry
+        }
+        if (!scannedBarcodesList.contains(normalized)) {
+            scannedBarcodesList = scannedBarcodesList + normalized
+        }
+        if (sourceBitmap != null && !capturedBitmaps.contains(sourceBitmap)) {
+            capturedBitmaps = capturedBitmaps + sourceBitmap
+        }
     }
 
     fun decodeBarcodesFromBitmap(bmp: Bitmap) {
@@ -237,15 +246,19 @@ fun AddDeviceScreen(
             .addOnSuccessListener { barcodes ->
                 val first = barcodes.firstOrNull { !it.rawValue.isNullOrBlank() }
                 if (first != null && !first.rawValue.isNullOrBlank()) {
-                    applyDecodedBarcode(first.rawValue!!, first.format)
+                    applyDecodedBarcode(first.rawValue!!, first.format, sourceBitmap = bmp)
                 } else {
-                    scanStatusMessage = "⚠ No 1D/2D barcode matrix detected in file — falling back to Vision OCR"
-                    triggerProgressiveAnalysis(bmp, captureSource = "gallery")
+                    scanStatusMessage = "⚠ No 1D/2D barcode matrix detected in file — saved to captures"
+                    if (!capturedBitmaps.contains(bmp)) {
+                        capturedBitmaps = capturedBitmaps + bmp
+                    }
                 }
             }
             .addOnFailureListener { e ->
-                scanStatusMessage = "⚠ ML Kit decode error (${e.localizedMessage}) — falling back to Vision OCR"
-                triggerProgressiveAnalysis(bmp, captureSource = "gallery")
+                scanStatusMessage = "⚠ ML Kit decode error (${e.localizedMessage}) — saved to captures"
+                if (!capturedBitmaps.contains(bmp)) {
+                    capturedBitmaps = capturedBitmaps + bmp
+                }
             }
     }
 
@@ -284,11 +297,11 @@ fun AddDeviceScreen(
                 }
                 "barcode", "barcode-udm-pro", "udm-pro" -> {
                     mode = EnrollmentMode.BARCODE_SCAN
-                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128)
+                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("barcode-udm-pro"))
                 }
                 "qr", "qr-ucg-ultra", "ucg-ultra" -> {
                     mode = EnrollmentMode.BARCODE_SCAN
-                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE)
+                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("qr-ucg-ultra"))
                 }
             }
         }
@@ -299,7 +312,10 @@ fun AddDeviceScreen(
         if (uri != null) {
             val bmp = decodeUriToSoftwareBitmap(uri)
             if (bmp != null) {
-                triggerProgressiveAnalysis(bmp, captureSource = "gallery")
+                currentCaptureSource = "gallery"
+                if (!capturedBitmaps.contains(bmp)) {
+                    capturedBitmaps = capturedBitmaps + bmp
+                }
             }
         }
     }
@@ -320,7 +336,10 @@ fun AddDeviceScreen(
         if (success && uri != null) {
             val bmp = decodeUriToSoftwareBitmap(uri)
             if (bmp != null) {
-                triggerProgressiveAnalysis(bmp, captureSource = "camera")
+                currentCaptureSource = "camera"
+                if (!capturedBitmaps.contains(bmp)) {
+                    capturedBitmaps = capturedBitmaps + bmp
+                }
             }
         }
     }
@@ -458,10 +477,9 @@ fun AddDeviceScreen(
                                             if (loaded.isNotEmpty()) {
                                                 currentSessionId = discoveryService.startNewSession()
                                                 currentCaptureSource = "corpus_replay"
-                                                capturedBitmaps = loaded.dropLast(1)
+                                                capturedBitmaps = loaded
                                                 accumulatedIdentifiers = ExtractedDeviceIdentifiers()
                                                 userClueNotes = emptyList()
-                                                triggerProgressiveAnalysis(loaded.last(), captureSource = "corpus_replay")
                                             }
                                         }
                                     )
@@ -510,7 +528,6 @@ fun AddDeviceScreen(
                                     currentCaptureSource = "synthetic_sample"
                                     val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
                                     capturedBitmaps = capturedBitmaps + sample
-                                    triggerIdentifierOnlyAnalysis()
                                 }
                             )
                             DropdownMenuItem(
@@ -528,8 +545,10 @@ fun AddDeviceScreen(
                                     currentCaptureSource = "synthetic_sample"
                                     val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
                                     capturedBitmaps = capturedBitmaps + sample
-                                    userClueNotes = userClueNotes + "Zigbee coordinator antenna"
-                                    triggerIdentifierOnlyAnalysis()
+                                    val note = "Zigbee coordinator antenna"
+                                    if (!userClueNotes.contains(note)) {
+                                        userClueNotes = userClueNotes + note
+                                    }
                                 }
                             )
                         }
@@ -575,7 +594,7 @@ fun AddDeviceScreen(
                                 },
                                 onClick = {
                                     showSynthMenu = false
-                                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128)
+                                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("barcode-udm-pro"))
                                 }
                             )
                             DropdownMenuItem(
@@ -593,7 +612,7 @@ fun AddDeviceScreen(
                                 },
                                 onClick = {
                                     showSynthMenu = false
-                                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE)
+                                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE, sourceBitmap = GeminiDiscoveryService.createSampleHardwareBitmap("qr-ucg-ultra"))
                                 }
                             )
                         }
@@ -811,22 +830,6 @@ fun AddDeviceScreen(
             // Tab-Specific Input Mechanism (Photo Carousel / Buttons, Scan Scanner / Upload, or Manual Device Name)
             when (mode) {
                 EnrollmentMode.PHOTO_WIZARD -> {
-                    if (capturedBitmaps.isNotEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(capturedBitmaps) { bmp ->
-                                Image(
-                                    bitmap = bmp.asImageBitmap(),
-                                    contentDescription = "Captured Device",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(width = 140.dp, height = 95.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                )
-                            }
-                        }
-                    }
-
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
@@ -872,18 +875,70 @@ fun AddDeviceScreen(
                             Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
+
+                    // Thumbnail Gallery View of Captures Under Capture Buttons
+                    if (capturedBitmaps.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "CAPTURED PHOTOS (${capturedBitmaps.size})",
+                                    color = palette.textMuted,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = "Clear All",
+                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.85f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable {
+                                        capturedBitmaps = emptyList()
+                                    }
+                                )
+                            }
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                items(capturedBitmaps) { bmp ->
+                                    Box {
+                                        Image(
+                                            bitmap = bmp.asImageBitmap(),
+                                            contentDescription = "Captured Photo",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(width = 110.dp, height = 75.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(4.dp)
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.Black.copy(alpha = 0.75f))
+                                                .clickable {
+                                                    capturedBitmaps = capturedBitmaps - bmp
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove Photo",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 EnrollmentMode.BARCODE_SCAN -> {
-                    scanStatusMessage?.let { msg ->
-                        Text(
-                            text = msg,
-                            color = if (msg.startsWith("✓")) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = { launchLiveBarcodeScanner() },
@@ -918,6 +973,127 @@ fun AddDeviceScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
+                    }
+
+                    // Thumbnail Gallery View of Captures and Decoded Barcodes Under Capture Buttons
+                    if (capturedBitmaps.isNotEmpty() || scannedBarcodesList.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "CAPTURED SCANS & BARCODES",
+                                    color = palette.textMuted,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = "Clear All",
+                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.85f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable {
+                                        capturedBitmaps = emptyList()
+                                        scannedBarcodesList = emptyList()
+                                        scanStatusMessage = null
+                                    }
+                                )
+                            }
+
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                items(capturedBitmaps) { bmp ->
+                                    Box {
+                                        Image(
+                                            bitmap = bmp.asImageBitmap(),
+                                            contentDescription = "Scanned Label",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(width = 110.dp, height = 75.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(4.dp)
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.Black.copy(alpha = 0.75f))
+                                                .clickable {
+                                                    capturedBitmaps = capturedBitmaps - bmp
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove Scan",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                items(scannedBarcodesList) { code ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 130.dp, height = 75.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.12f))
+                                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                            .padding(8.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxSize(),
+                                            verticalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.QrCodeScanner,
+                                                    contentDescription = null,
+                                                    tint = TuesdayTheme.HacsCyan,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Remove Barcode",
+                                                    tint = TuesdayTheme.HacsCyan,
+                                                    modifier = Modifier
+                                                        .size(14.dp)
+                                                        .clickable {
+                                                            scannedBarcodesList = scannedBarcodesList - code
+                                                        }
+                                                )
+                                            }
+                                            Text(
+                                                text = code,
+                                                color = palette.textPrimary,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace,
+                                                maxLines = 2
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    scanStatusMessage?.let { msg ->
+                        Text(
+                            text = msg,
+                            color = if (msg.startsWith("✓")) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
                 EnrollmentMode.MANUAL_AGENT -> {
