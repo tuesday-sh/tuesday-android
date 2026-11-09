@@ -781,23 +781,36 @@ fun AddDeviceScreen(
                 }
             }
 
-            if (mode == EnrollmentMode.PHOTO_WIZARD || mode == EnrollmentMode.BARCODE_SCAN) {
-                if (mode == EnrollmentMode.PHOTO_WIZARD) {
-                    Text(
-                        text = if (isStn) "Identify Device by Photo" else "Inventory Device by Photo",
-                        color = palette.textPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            // Clue Collection Section (Unified 3-Mode Architecture)
+            Text(
+                text = when (mode) {
+                    EnrollmentMode.PHOTO_WIZARD -> if (isStn) "Identify Device by Photo" else "Inventory Device by Photo"
+                    EnrollmentMode.BARCODE_SCAN -> "Scan Barcode or QR Code"
+                    EnrollmentMode.MANUAL_AGENT -> "Add Inventory Device Manually"
+                },
+                color = palette.textPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
 
-                    Text(
-                        text = "Capture a photo of a device chassis, bottom label, or retail box. Tuesday AI will analyze the hardware and progressively narrow candidate models.",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp
-                    )
+            Text(
+                text = when (mode) {
+                    EnrollmentMode.PHOTO_WIZARD -> "Snap or upload photos of chassis labels, or add known clues below, then search to discover candidates."
+                    EnrollmentMode.BARCODE_SCAN -> "Scan 1D/2D barcodes for deterministic Gold lookup, or add known clues below to search."
+                    EnrollmentMode.MANUAL_AGENT -> "Enter device name and known clues (Model, MAC, S/N, Barcode, QR) to search or directly add to fleet."
+                },
+                color = palette.textMuted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
 
-                    // Photo Capture Components (Unboxed)
+            manualError?.let {
+                Text(it, color = TuesdayTheme.CriticalRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            // Tab-Specific Input Mechanism (Photo Carousel / Buttons, Scan Scanner / Upload, or Manual Device Name)
+            when (mode) {
+                EnrollmentMode.PHOTO_WIZARD -> {
                     if (capturedBitmaps.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(capturedBitmaps) { bmp ->
@@ -859,155 +872,8 @@ fun AddDeviceScreen(
                             Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
-
-                    // Pre-capture Clues & Hardware Identifiers Input (Unboxed)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("pre-capture-clues"),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            "OPTIONAL HARDWARE CLUES (BEFORE CAPTURE)",
-                            color = palette.textMuted,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-
-                        // Active Clues Chips
-                        if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(userClueNotes) { note ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
-                                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = note,
-                                                color = TuesdayTheme.HacsCyan,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Remove clue",
-                                                tint = TuesdayTheme.HacsCyan,
-                                                modifier = Modifier
-                                                    .size(12.dp)
-                                                    .clickable {
-                                                        userClueNotes = userClueNotes - note
-                                                    }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Clue Type Chips
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(DeviceClueType.entries) { clue ->
-                                val isSelected = selectedClueType == clue
-                                Box(
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(if (isSelected) TuesdayTheme.HacsCyan else TuesdayTheme.ElevatedPill)
-                                        .clickable { selectedClueType = clue }
-                                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                                    ) {
-                                    Text(
-                                        text = clue.rawValue,
-                                        color = if (isSelected) Color.Black else Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = clueInputText,
-                                onValueChange = { clueInputText = it },
-                                placeholder = { Text(selectedClueType.placeholder, fontSize = 12.sp) },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                                )
-                            )
-
-                            Button(
-                                onClick = {
-                                    val trimmed = clueInputText.trim()
-                                    if (trimmed.isNotBlank()) {
-                                        when (selectedClueType) {
-                                            DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
-                                            DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
-                                            DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
-                                            DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
-                                            DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
-                                        }
-                                        userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
-                                        clueInputText = ""
-                                        if (capturedBitmaps.isNotEmpty()) {
-                                            scope.launch {
-                                                isAnalyzing = true
-                                                val res = discoveryService.analyzeDeviceProgressive(
-                                                    bitmaps = capturedBitmaps,
-                                                    accumulatedIdentifiers = accumulatedIdentifiers,
-                                                    userClueNotes = userClueNotes,
-                                                    aiProvider = hacsConfig.aiProvider,
-                                                    elastixApiKeyOverride = hacsConfig.elastixApiKey,
-                                                    elastixModelName = hacsConfig.elastixModel,
-                                                    apiKeyOverride = hacsConfig.geminiApiKey,
-                                                    modelName = hacsConfig.geminiModel,
-                                                    serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
-                                                    debugEnabled = showVisionDebug
-                                                )
-                                                accumulatedIdentifiers.merge(res.extractedIdentifiers)
-                                                discoveryResult = res
-                                                res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
-                                                    debugLogHistory = debugLogHistory + logEntry
-                                                }
-                                                isAnalyzing = false
-                                            }
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.uiAction("addPreCaptureClue")
-                            ) {
-                                Text("Add", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    if (isDeveloperMode) {
-                        DevPresetsAndControlsRow(includePhotoSamples = true)
-                    }
-                } else {
-                    Text(
-                        text = "Scan Barcode or QR Code",
-                        color = palette.textPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Deterministic Barcode / QR Scan Box (Unboxed)
+                }
+                EnrollmentMode.BARCODE_SCAN -> {
                     scanStatusMessage?.let { msg ->
                         Text(
                             text = msg,
@@ -1053,18 +919,236 @@ fun AddDeviceScreen(
                             Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
-
-                    Text(
-                        text = "Deterministically decode 1D retail UPC/EAN barcodes, Code-128 serial stickers, or 2D QR / DataMatrix codes for $0.00 Gold Catalog lookup.",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp
+                }
+                EnrollmentMode.MANUAL_AGENT -> {
+                    OutlinedTextField(
+                        value = manualHostname,
+                        onValueChange = {
+                            manualHostname = it
+                            if (manualError != null) manualError = null
+                        },
+                        label = { Text("DEVICE NAME", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        placeholder = { Text("e.g. Living Room Router, Synology NAS, Kitchen Hub") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TuesdayTheme.HealthyGreen,
+                            unfocusedBorderColor = palette.border
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     )
+                }
+            }
 
-                    if (isDeveloperMode) {
-                        DevPresetsAndControlsRow(includePhotoSamples = false)
+            // Shared Clues Component (Common Across Photo, Scan, Manual)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiSlot("shared-hardware-clues"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "HARDWARE CLUES & IDENTIFIERS",
+                    color = palette.textMuted,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+
+                // Active Clues Chips
+                if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(userClueNotes) { note ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
+                                    .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = note,
+                                        color = TuesdayTheme.HacsCyan,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Remove clue",
+                                        tint = TuesdayTheme.HacsCyan,
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .clickable {
+                                                userClueNotes = userClueNotes - note
+                                            }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
+
+                // Clue Type Chips
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(DeviceClueType.entries) { clue ->
+                        val isSelected = selectedClueType == clue
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isSelected) TuesdayTheme.HacsCyan else TuesdayTheme.ElevatedPill)
+                                .clickable { selectedClueType = clue }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = clue.rawValue,
+                                color = if (isSelected) Color.Black else Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = clueInputText,
+                        onValueChange = { clueInputText = it },
+                        placeholder = { Text(selectedClueType.placeholder, fontSize = 12.sp) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TuesdayTheme.HacsCyan,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
+                        )
+                    )
+
+                    Button(
+                        onClick = {
+                            val trimmed = clueInputText.trim()
+                            if (trimmed.isNotBlank()) {
+                                when (selectedClueType) {
+                                    DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
+                                    DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
+                                    DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
+                                    DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
+                                    DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
+                                }
+                                userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
+                                clueInputText = ""
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.uiAction("addClue")
+                    ) {
+                        Text("Add", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Shared Action Row: Search Button (+ Add Directly for Manual)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Shared Search Button
+                Button(
+                    onClick = {
+                        // If user typed into textfield without hitting Add first, commit it
+                        val trimmed = clueInputText.trim()
+                        if (trimmed.isNotBlank()) {
+                            when (selectedClueType) {
+                                DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
+                                DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
+                                DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
+                                DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
+                                DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
+                            }
+                            userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
+                            clueInputText = ""
+                        }
+
+                        if (capturedBitmaps.isNotEmpty()) {
+                            triggerProgressiveAnalysis(capturedBitmaps.last(), captureSource = currentCaptureSource)
+                        } else {
+                            triggerIdentifierOnlyAnalysis()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = TuesdayTheme.HacsCyan,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .uiAction("searchDeviceCandidates")
+                ) {
+                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Search", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+
+                // If on Manual tab, also provide direct "Add Device" button
+                if (mode == EnrollmentMode.MANUAL_AGENT) {
+                    Button(
+                        onClick = {
+                            val name = manualHostname.trim()
+                            if (name.isBlank()) {
+                                manualError = "Device Name is required."
+                                return@Button
+                            }
+                            scope.launch {
+                                isSaving = true
+                                val model = accumulatedIdentifiers.modelNumber ?: userClueNotes.find { it.startsWith("Model=") }?.removePrefix("Model=")
+                                val mac = accumulatedIdentifiers.macAddress ?: userClueNotes.find { it.startsWith("MAC=") }?.removePrefix("MAC=")
+                                val serial = accumulatedIdentifiers.serialNumber ?: userClueNotes.find { it.startsWith("Serial=") }?.removePrefix("Serial=")
+                                val barcode = accumulatedIdentifiers.barcode ?: userClueNotes.find { it.startsWith("Barcode=") }?.removePrefix("Barcode=")
+
+                                val meta = DiscoveredDeviceMetadata(
+                                    manufacturer = model?.split(" ")?.firstOrNull() ?: "Manual",
+                                    modelNumber = model ?: name,
+                                    macAddress = mac,
+                                    serialNumber = serial,
+                                    barcodeOrQr = barcode
+                                )
+
+                                repository.enrollDevice(
+                                    hostname = name,
+                                    osDetails = if (!model.isNullOrBlank()) "Manual Entry • $model" else "Manual Entry",
+                                    packageManager = PackageManagerType.FIRMWARE,
+                                    agentToken = "manual_entry_${System.currentTimeMillis()}",
+                                    inventoryState = if (!model.isNullOrBlank()) InventoryConfidenceState.ENROLLED else InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
+                                    discoveredMetadata = meta
+                                )
+                                isSaving = false
+                                onNavigateBack()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TuesdayTheme.HealthyGreen,
+                            contentColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("enrollManualDevice")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Device", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            if (isDeveloperMode) {
+                DevPresetsAndControlsRow(includePhotoSamples = mode == EnrollmentMode.PHOTO_WIZARD)
+            }
 
                 if (isAnalyzing) {
                     Row(
@@ -1824,201 +1908,6 @@ fun AddDeviceScreen(
                         }
                     }
                 }
-            } else {
-                // Manual Inventory Device Enrollment Mode (Unboxed)
-                Text(
-                    text = "Add Inventory Device Manually",
-                    color = palette.textPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Enter the device name and any known hardware identifiers (Model, MAC, Serial, Barcode, or QR Code) to enroll it into your fleet.",
-                    color = palette.textMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-
-                manualError?.let {
-                    Text(it, color = TuesdayTheme.CriticalRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                // Device Name Field
-                OutlinedTextField(
-                    value = manualHostname,
-                    onValueChange = {
-                        manualHostname = it
-                        if (manualError != null) manualError = null
-                    },
-                    label = { Text("DEVICE NAME", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    placeholder = { Text("e.g. Living Room Router, Synology NAS, Kitchen Hub") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = TuesdayTheme.HealthyGreen,
-                        unfocusedBorderColor = palette.border
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Hardware Clues & Identifiers Section (Unboxed)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("manual-hardware-clues"),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "HARDWARE CLUES & IDENTIFIERS",
-                        color = palette.textMuted,
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-
-                    // Active Clues Chips
-                    if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(userClueNotes) { note ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
-                                        .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = note,
-                                            color = TuesdayTheme.HacsCyan,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Remove clue",
-                                            tint = TuesdayTheme.HacsCyan,
-                                            modifier = Modifier
-                                                .size(12.dp)
-                                                .clickable {
-                                                    userClueNotes = userClueNotes - note
-                                                }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Clue Type Selector Chips
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(DeviceClueType.entries) { clue ->
-                            val isSelected = selectedClueType == clue
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(if (isSelected) TuesdayTheme.HacsCyan else TuesdayTheme.ElevatedPill)
-                                    .clickable { selectedClueType = clue }
-                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                            ) {
-                                Text(
-                                    text = clue.rawValue,
-                                    color = if (isSelected) Color.Black else Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = clueInputText,
-                            onValueChange = { clueInputText = it },
-                            placeholder = { Text(selectedClueType.placeholder, fontSize = 12.sp) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TuesdayTheme.HacsCyan,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
-                            )
-                        )
-
-                        Button(
-                            onClick = {
-                                val trimmed = clueInputText.trim()
-                                if (trimmed.isNotBlank()) {
-                                    when (selectedClueType) {
-                                        DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
-                                        DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
-                                        DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
-                                        DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
-                                        DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
-                                    }
-                                    userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
-                                    clueInputText = ""
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.uiAction("addManualClue")
-                        ) {
-                            Text("Add", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        val name = manualHostname.trim()
-                        if (name.isBlank()) {
-                            manualError = "Device Name is required."
-                            return@Button
-                        }
-                        scope.launch {
-                            isSaving = true
-                            val model = accumulatedIdentifiers.modelNumber ?: userClueNotes.find { it.startsWith("Model=") }?.removePrefix("Model=")
-                            val mac = accumulatedIdentifiers.macAddress ?: userClueNotes.find { it.startsWith("MAC=") }?.removePrefix("MAC=")
-                            val serial = accumulatedIdentifiers.serialNumber ?: userClueNotes.find { it.startsWith("Serial=") }?.removePrefix("Serial=")
-                            val barcode = accumulatedIdentifiers.barcode ?: userClueNotes.find { it.startsWith("Barcode=") }?.removePrefix("Barcode=")
-
-                            val meta = DiscoveredDeviceMetadata(
-                                manufacturer = model?.split(" ")?.firstOrNull() ?: "Manual",
-                                modelNumber = model ?: name,
-                                macAddress = mac,
-                                serialNumber = serial,
-                                barcodeOrQr = barcode
-                            )
-
-                            repository.enrollDevice(
-                                hostname = name,
-                                osDetails = if (!model.isNullOrBlank()) "Manual Entry • $model" else "Manual Entry",
-                                packageManager = PackageManagerType.FIRMWARE,
-                                agentToken = "manual_entry_${System.currentTimeMillis()}",
-                                inventoryState = if (!model.isNullOrBlank()) InventoryConfidenceState.ENROLLED else InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
-                                discoveredMetadata = meta
-                            )
-                            isSaving = false
-                            onNavigateBack()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HealthyGreen, contentColor = Color.Black),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiAction("enrollManualDevice")
-                ) {
-                    Text("Add Device to Fleet", fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                }
-            }
-
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
