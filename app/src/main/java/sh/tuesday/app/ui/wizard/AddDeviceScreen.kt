@@ -1825,81 +1825,185 @@ fun AddDeviceScreen(
                     }
                 }
             } else {
-                // Manual Agent Enrollment Mode
-                Text("Enroll Tuesday.sh Agent Device", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Enter the device metadata manually or scan an enrollment QR code.", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+                // Manual Inventory Device Enrollment Mode (Unboxed)
+                Text(
+                    text = "Add Inventory Device Manually",
+                    color = palette.textPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Enter the device name and any known hardware identifiers (Model, MAC, Serial, Barcode, or QR Code) to enroll it into your fleet.",
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
 
                 manualError?.let {
                     Text(it, color = TuesdayTheme.CriticalRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
 
+                // Device Name Field
                 OutlinedTextField(
                     value = manualHostname,
-                    onValueChange = { manualHostname = it },
-                    label = { Text("HOSTNAME / NODE ALIAS", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    placeholder = { Text("e.g. unifi-gateway, surface95") },
+                    onValueChange = {
+                        manualHostname = it
+                        if (manualError != null) manualError = null
+                    },
+                    label = { Text("DEVICE NAME", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                    placeholder = { Text("e.g. Living Room Router, Synology NAS, Kitchen Hub") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TuesdayTheme.HealthyGreen,
+                        unfocusedBorderColor = palette.border
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
-                    value = manualOsDetails,
-                    onValueChange = { manualOsDetails = it },
-                    label = { Text("OS / PLATFORM DETAILS", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    placeholder = { Text("e.g. Debian 12 Bookworm (aarch64)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Hardware Clues & Identifiers Section (Unboxed)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiSlot("manual-hardware-clues"),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "HARDWARE CLUES & IDENTIFIERS",
+                        color = palette.textMuted,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
 
-                OutlinedTextField(
-                    value = manualToken,
-                    onValueChange = { manualToken = it },
-                    label = { Text("AGENT TOKEN / WEBHOOK ID", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                    placeholder = { Text("e.g. tuesday_tok_8821") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    // Active Clues Chips
+                    if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(userClueNotes) { note ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
+                                        .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = note,
+                                            color = TuesdayTheme.HacsCyan,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove clue",
+                                            tint = TuesdayTheme.HacsCyan,
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .clickable {
+                                                    userClueNotes = userClueNotes - note
+                                                }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Clue Type Selector Chips
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(DeviceClueType.entries) { clue ->
+                            val isSelected = selectedClueType == clue
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) TuesdayTheme.HacsCyan else TuesdayTheme.ElevatedPill)
+                                    .clickable { selectedClueType = clue }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = clue.rawValue,
+                                    color = if (isSelected) Color.Black else Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = clueInputText,
+                            onValueChange = { clueInputText = it },
+                            placeholder = { Text(selectedClueType.placeholder, fontSize = 12.sp) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TuesdayTheme.HacsCyan,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
+                            )
+                        )
+
+                        Button(
+                            onClick = {
+                                val trimmed = clueInputText.trim()
+                                if (trimmed.isNotBlank()) {
+                                    when (selectedClueType) {
+                                        DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
+                                        DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
+                                        DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
+                                        DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
+                                        DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
+                                    }
+                                    userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
+                                    clueInputText = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.uiAction("addManualClue")
+                        ) {
+                            Text("Add", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
                     onClick = {
-                        val host = manualHostname.trim()
-                        if (host.isBlank()) {
-                            manualError = "Hostname is required."
+                        val name = manualHostname.trim()
+                        if (name.isBlank()) {
+                            manualError = "Device Name is required."
                             return@Button
                         }
                         scope.launch {
                             isSaving = true
-                            val topCand = discoveryResult?.candidates?.firstOrNull()
-                            val cleanOs = manualOsDetails.trim().ifBlank { "Linux (${manualPkgManager.rawValue})" }
-                            if (capturedBitmaps.isNotEmpty() && discoveryResult != null) {
-                                GoldenCorpusRecorder.saveCaptureSession(
-                                    context = context,
-                                    sessionId = currentSessionId,
-                                    bitmaps = capturedBitmaps,
-                                    result = discoveryResult!!,
-                                    accumulatedIdentifiers = accumulatedIdentifiers,
-                                    userClueNotes = userClueNotes + listOf("ManualHost=$host", "ManualOS=$cleanOs"),
-                                    confirmedCandidate = topCand,
-                                    status = "pivoted_to_manual",
-                                    captureSource = currentCaptureSource
-                                )
-                            }
-                            discoveryService.confirmDeviceDiscovery(
-                                inferredVendor = topCand?.manufacturer,
-                                inferredModel = topCand?.modelNumber,
-                                confirmedVendor = topCand?.manufacturer ?: "Manual Entry",
-                                confirmedModel = host,
-                                wasEdited = true,
-                                accumulatedIdentifiers = accumulatedIdentifiers,
-                                userClueNotes = userClueNotes + listOf("ManualHost=$host", "ManualOS=$cleanOs"),
-                                selectedCandidateRank = null,
-                                resolutionStatus = "pivoted_to_manual",
-                                initialMode = if (capturedBitmaps.isNotEmpty()) "photo_wizard" else "manual_agent",
-                                finalMode = "manual_agent",
-                                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
+                            val model = accumulatedIdentifiers.modelNumber ?: userClueNotes.find { it.startsWith("Model=") }?.removePrefix("Model=")
+                            val mac = accumulatedIdentifiers.macAddress ?: userClueNotes.find { it.startsWith("MAC=") }?.removePrefix("MAC=")
+                            val serial = accumulatedIdentifiers.serialNumber ?: userClueNotes.find { it.startsWith("Serial=") }?.removePrefix("Serial=")
+                            val barcode = accumulatedIdentifiers.barcode ?: userClueNotes.find { it.startsWith("Barcode=") }?.removePrefix("Barcode=")
+
+                            val meta = DiscoveredDeviceMetadata(
+                                manufacturer = model?.split(" ")?.firstOrNull() ?: "Manual",
+                                modelNumber = model ?: name,
+                                macAddress = mac,
+                                serialNumber = serial,
+                                barcodeOrQr = barcode
                             )
+
                             repository.enrollDevice(
-                                hostname = host,
-                                osDetails = cleanOs,
-                                packageManager = manualPkgManager,
-                                agentToken = manualToken.trim().ifBlank { "tuesday_tok_auto" }
+                                hostname = name,
+                                osDetails = if (!model.isNullOrBlank()) "Manual Entry • $model" else "Manual Entry",
+                                packageManager = PackageManagerType.FIRMWARE,
+                                agentToken = "manual_entry_${System.currentTimeMillis()}",
+                                inventoryState = if (!model.isNullOrBlank()) InventoryConfidenceState.ENROLLED else InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
+                                discoveredMetadata = meta
                             )
                             isSaving = false
                             onNavigateBack()
@@ -1907,9 +2011,11 @@ fun AddDeviceScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HealthyGreen, contentColor = Color.Black),
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiAction("enrollManualDevice")
                 ) {
-                    Text("Save & Register in HACS", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Add Device to Fleet", fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
                 }
             }
 
