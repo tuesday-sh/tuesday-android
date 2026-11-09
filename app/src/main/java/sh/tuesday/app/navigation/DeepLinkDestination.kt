@@ -3,7 +3,7 @@ package sh.tuesday.app.navigation
 sealed interface DeepLinkDestination {
     data class Tab(val tab: String) : DeepLinkDestination
     data class Device(val deviceId: String) : DeepLinkDestination
-    data object AddDevice : DeepLinkDestination
+    data class AddDevice(val mode: String? = null) : DeepLinkDestination
     data object HacsSettings : DeepLinkDestination
     data object NetworkPicker : DeepLinkDestination
     data object ReferenceGuide : DeepLinkDestination
@@ -35,7 +35,15 @@ sealed interface DeepLinkDestination {
                     val sub = parts.getOrNull(1)?.lowercase()
                     if (sub == "dev") Tab("account-dev") else Tab("account")
                 }
-                "add-device", "add_device", "intake", "wizard" -> AddDevice
+                "add-device", "add_device", "intake", "wizard" -> {
+                    val sub = parts.getOrNull(1)?.lowercase()
+                    val modeParam = when {
+                        clean.contains("mode=scan", ignoreCase = true) || sub == "scan" || sub == "barcode" -> "scan"
+                        clean.contains("mode=manual", ignoreCase = true) || sub == "manual" -> "manual"
+                        else -> "photo"
+                    }
+                    AddDevice(modeParam)
+                }
                 "hacs", "hacs-settings" -> HacsSettings
                 "network-picker", "networks", "sites" -> NetworkPicker
                 "reference-guide", "reference", "standards" -> ReferenceGuide

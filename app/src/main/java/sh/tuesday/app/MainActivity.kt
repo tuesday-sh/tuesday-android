@@ -112,17 +112,31 @@ fun AppNavigation(
                 repository = repository,
                 connectivity = connectivity,
                 notificationManager = notificationManager,
-                onNavigateToAddDevice = {
-                    navController.navigate("add_device")
+                onNavigateToAddDevice = { mode ->
+                    val route = if (mode != null) "add_device?mode=$mode" else "add_device"
+                    navController.navigate(route)
                 },
                 pendingDestination = pendingDestination,
                 onConsumePendingDestination = onConsumePendingDestination
             )
         }
-        composable("add_device") {
+        composable(
+            "add_device?mode={mode}",
+            arguments = listOf(androidx.navigation.navArgument("mode") {
+                nullable = true
+                defaultValue = null
+            })
+        ) { backStackEntry ->
+            val modeArg = backStackEntry.arguments?.getString("mode")
+            val initialMode = when (modeArg) {
+                "scan" -> sh.tuesday.app.ui.wizard.EnrollmentMode.BARCODE_SCAN
+                "manual" -> sh.tuesday.app.ui.wizard.EnrollmentMode.MANUAL_AGENT
+                else -> sh.tuesday.app.ui.wizard.EnrollmentMode.PHOTO_WIZARD
+            }
             AddDeviceScreen(
                 repository = repository,
                 discoveryService = discoveryService,
+                initialEnrollmentMode = initialMode,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

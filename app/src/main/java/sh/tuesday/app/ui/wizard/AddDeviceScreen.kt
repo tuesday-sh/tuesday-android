@@ -70,9 +70,10 @@ enum class EnrollmentMode(val title: String) {
 fun AddDeviceScreen(
     repository: TuesdayRepository,
     discoveryService: GeminiDiscoveryService,
+    initialEnrollmentMode: EnrollmentMode = EnrollmentMode.PHOTO_WIZARD,
     onNavigateBack: () -> Unit
 ) {
-    var mode by remember { mutableStateOf(EnrollmentMode.PHOTO_WIZARD) }
+    var mode by remember { mutableStateOf(initialEnrollmentMode) }
     val hacsConfig by repository.hacsConfig.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
@@ -502,37 +503,67 @@ fun AddDeviceScreen(
                         }
                     }
                 } else {
-                    Surface(
-                        onClick = {
-                            applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128)
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                    // Synthesize... Native Picker Button for Barcode / QR Scan Tab
+                    Box {
+                        OutlinedButton(
+                            onClick = { showSynthMenu = true },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.12f),
+                                contentColor = TuesdayTheme.HacsCyan
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 36.dp)
                         ) {
-                            Icon(Icons.Default.QrCode, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(12.dp))
-                            Text("Sample Barcode (UDM-Pro)", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(16.dp))
                         }
-                    }
 
-                    Surface(
-                        onClick = {
-                            applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE)
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = TuesdayTheme.WarningAmber.copy(alpha = 0.15f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        DropdownMenu(
+                            expanded = showSynthMenu,
+                            onDismissRequest = { showSynthMenu = false },
+                            modifier = Modifier.background(palette.elevated)
                         ) {
-                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(12.dp))
-                            Text("Sample QR (UCG-Ultra)", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.QrCode, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
+                                        Column {
+                                            Text("Sample Barcode (UDM-Pro)", color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                            Text("Code-128 • Gateway/Router", color = palette.textMuted, fontSize = 10.sp)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    showSynthMenu = false
+                                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(14.dp))
+                                        Column {
+                                            Text("Sample QR (UCG-Ultra)", color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                            Text("QR Code • Gateway/Router", color = palette.textMuted, fontSize = 10.sp)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    showSynthMenu = false
+                                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE)
+                                }
+                            )
                         }
                     }
                 }
