@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -315,14 +316,51 @@ fun AddDeviceScreen(
         val isElastix = hacsConfig.aiProvider == AiProviderType.ELASTIX
         val activeAiColor = if (isElastix) TuesdayTheme.HealthyGreen else TuesdayTheme.LedUpdateBlue
         val debugActiveColor = if (showVisionDebug) TuesdayTheme.WarningAmber else palette.textMuted
+        val highlightBorderColor = TuesdayTheme.WarningAmber
 
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = "QUICK PILOT PRESETS & DEV CONTROLS",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold
-            )
+        // Left-side highlight card container for dev controls
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(palette.elevated.copy(alpha = 0.6f))
+                .drawBehind {
+                    // 1px subtle full perimeter border
+                    drawRoundRect(
+                        color = palette.border.copy(alpha = 0.5f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx(), 8.dp.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                    )
+                    // 3.5px prominent left-side highlight bar
+                    drawRoundRect(
+                        color = highlightBorderColor,
+                        topLeft = androidx.compose.ui.geometry.Offset.Zero,
+                        size = androidx.compose.ui.geometry.Size(3.5.dp.toPx(), size.height),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                    )
+                }
+                .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(highlightBorderColor)
+                )
+                Text(
+                    text = "DEV CONTROLS & QUICK PILOT PRESETS",
+                    color = highlightBorderColor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
+                )
+            }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -683,7 +721,9 @@ fun AddDeviceScreen(
                             }
                         }
 
-                        DevPresetsAndControlsRow(includePhotoSamples = true)
+                        if (isDeveloperMode) {
+                            DevPresetsAndControlsRow(includePhotoSamples = true)
+                        }
                     }
                 } else {
                     Text(
@@ -757,7 +797,9 @@ fun AddDeviceScreen(
                             }
                         }
 
-                        DevPresetsAndControlsRow(includePhotoSamples = false)
+                        if (isDeveloperMode) {
+                            DevPresetsAndControlsRow(includePhotoSamples = false)
+                        }
                     }
                 }
 
