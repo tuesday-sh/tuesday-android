@@ -3,7 +3,7 @@ package sh.tuesday.app.navigation
 sealed interface DeepLinkDestination {
     data class Tab(val tab: String) : DeepLinkDestination
     data class Device(val deviceId: String) : DeepLinkDestination
-    data class AddDevice(val mode: String? = null) : DeepLinkDestination
+    data class AddDevice(val mode: String? = null, val synthPreset: String? = null) : DeepLinkDestination
     data object HacsSettings : DeepLinkDestination
     data object NetworkPicker : DeepLinkDestination
     data object ReferenceGuide : DeepLinkDestination
@@ -42,7 +42,23 @@ sealed interface DeepLinkDestination {
                         clean.contains("mode=manual", ignoreCase = true) || sub == "manual" -> "manual"
                         else -> "photo"
                     }
-                    AddDevice(modeParam)
+                    val synthPreset = when {
+                        clean.contains("synth=router", ignoreCase = true) || sub == "router" -> "router"
+                        clean.contains("synth=iot", ignoreCase = true) || sub == "iot" || sub == "zigbee" -> "iot-zigbee"
+                        clean.contains("synth=barcode", ignoreCase = true) || clean.contains("barcode=udm-pro", ignoreCase = true) -> "barcode-udm-pro"
+                        clean.contains("synth=qr", ignoreCase = true) || clean.contains("qr=ucg-ultra", ignoreCase = true) -> "qr-ucg-ultra"
+                        else -> null
+                    }
+                    AddDevice(modeParam, synthPreset)
+                }
+                "synth", "synthesize" -> {
+                    val target = parts.getOrNull(1)?.lowercase() ?: "router"
+                    when (target) {
+                        "barcode", "barcode-udm-pro", "udm-pro" -> AddDevice(mode = "scan", synthPreset = "barcode-udm-pro")
+                        "qr", "qr-ucg-ultra", "ucg-ultra" -> AddDevice(mode = "scan", synthPreset = "qr-ucg-ultra")
+                        "iot", "iot-zigbee", "zigbee" -> AddDevice(mode = "photo", synthPreset = "iot-zigbee")
+                        else -> AddDevice(mode = "photo", synthPreset = "router")
+                    }
                 }
                 "hacs", "hacs-settings" -> HacsSettings
                 "network-picker", "networks", "sites" -> NetworkPicker

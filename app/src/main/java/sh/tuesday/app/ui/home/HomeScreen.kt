@@ -71,7 +71,7 @@ fun HomeScreen(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
     notificationManager: TuesdayNotificationManager? = null,
-    onNavigateToAddDevice: (String?) -> Unit,
+    onNavigateToAddDevice: (String?, String?) -> Unit,
     pendingDestination: sh.tuesday.app.navigation.DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
 ) {
@@ -133,7 +133,7 @@ fun HomeScreen(
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.AddDevice -> {
-                onNavigateToAddDevice(pendingDestination.mode)
+                onNavigateToAddDevice(pendingDestination.mode, pendingDestination.synthPreset)
                 onConsumePendingDestination()
             }
             sh.tuesday.app.navigation.DeepLinkDestination.HacsSettings -> {
@@ -171,7 +171,7 @@ fun HomeScreen(
                 repository.toggleDeveloperMode(true)
                 repository.toggleVisionDebugMode(pendingDestination.enabled)
                 if (pendingDestination.openWizard) {
-                    onNavigateToAddDevice(null)
+                    onNavigateToAddDevice(null, null)
                 }
                 onConsumePendingDestination()
             }
@@ -446,7 +446,7 @@ fun HomeScreen(
                     onSelectPortState = { repository.setPortStateFilter(it) },
                     onToggleIncludeOk = { repository.toggleIncludeOkDevices() },
                     onOpenReferenceGuide = { showReferenceGuide = true },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null) },
+                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null) },
                     onNavigateToBulletins = { activeTab = MainNavTab.BULLETINS },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
                     remindersEnabled = remindersEnabled,
@@ -474,7 +474,7 @@ fun HomeScreen(
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
                     },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null) },
+                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null) },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
                     remindersEnabled = remindersEnabled,
                     dispatchSubscribed = dispatchSubscribed,

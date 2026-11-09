@@ -71,6 +71,7 @@ fun AddDeviceScreen(
     repository: TuesdayRepository,
     discoveryService: GeminiDiscoveryService,
     initialEnrollmentMode: EnrollmentMode = EnrollmentMode.PHOTO_WIZARD,
+    initialSynthPreset: String? = null,
     onNavigateBack: () -> Unit
 ) {
     var mode by remember { mutableStateOf(initialEnrollmentMode) }
@@ -260,6 +261,37 @@ fun AddDeviceScreen(
             .addOnFailureListener { e ->
                 scanStatusMessage = "Scanner canceled or unavailable: ${e.localizedMessage ?: "try Upload File"}"
             }
+    }
+
+    // Auto-execute synthetic pre-seeded artifact intent if specified
+    LaunchedEffect(initialSynthPreset) {
+        if (!initialSynthPreset.isNullOrBlank()) {
+            when (initialSynthPreset) {
+                "router" -> {
+                    mode = EnrollmentMode.PHOTO_WIZARD
+                    currentCaptureSource = "synthetic_sample"
+                    val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
+                    capturedBitmaps = capturedBitmaps + sample
+                    triggerIdentifierOnlyAnalysis()
+                }
+                "iot", "iot-zigbee", "zigbee" -> {
+                    mode = EnrollmentMode.PHOTO_WIZARD
+                    currentCaptureSource = "synthetic_sample"
+                    val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
+                    capturedBitmaps = capturedBitmaps + sample
+                    userClueNotes = userClueNotes + "Zigbee coordinator antenna"
+                    triggerIdentifierOnlyAnalysis()
+                }
+                "barcode", "barcode-udm-pro", "udm-pro" -> {
+                    mode = EnrollmentMode.BARCODE_SCAN
+                    applyDecodedBarcode("UDM-Pro", Barcode.FORMAT_CODE_128)
+                }
+                "qr", "qr-ucg-ultra", "ucg-ultra" -> {
+                    mode = EnrollmentMode.BARCODE_SCAN
+                    applyDecodedBarcode("UCG-Ultra", Barcode.FORMAT_QR_CODE)
+                }
+            }
+        }
     }
 
     // Upload File Picker (Photo Mode)

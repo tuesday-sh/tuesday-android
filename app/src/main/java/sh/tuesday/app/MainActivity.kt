@@ -112,8 +112,13 @@ fun AppNavigation(
                 repository = repository,
                 connectivity = connectivity,
                 notificationManager = notificationManager,
-                onNavigateToAddDevice = { mode ->
-                    val route = if (mode != null) "add_device?mode=$mode" else "add_device"
+                onNavigateToAddDevice = { mode, synth ->
+                    val route = when {
+                        mode != null && synth != null -> "add_device?mode=$mode&synth=$synth"
+                        mode != null -> "add_device?mode=$mode"
+                        synth != null -> "add_device?synth=$synth"
+                        else -> "add_device"
+                    }
                     navController.navigate(route)
                 },
                 pendingDestination = pendingDestination,
@@ -121,13 +126,20 @@ fun AppNavigation(
             )
         }
         composable(
-            "add_device?mode={mode}",
-            arguments = listOf(androidx.navigation.navArgument("mode") {
-                nullable = true
-                defaultValue = null
-            })
+            "add_device?mode={mode}&synth={synth}",
+            arguments = listOf(
+                androidx.navigation.navArgument("mode") {
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("synth") {
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ) { backStackEntry ->
             val modeArg = backStackEntry.arguments?.getString("mode")
+            val synthArg = backStackEntry.arguments?.getString("synth")
             val initialMode = when (modeArg) {
                 "scan" -> sh.tuesday.app.ui.wizard.EnrollmentMode.BARCODE_SCAN
                 "manual" -> sh.tuesday.app.ui.wizard.EnrollmentMode.MANUAL_AGENT
@@ -137,6 +149,7 @@ fun AppNavigation(
                 repository = repository,
                 discoveryService = discoveryService,
                 initialEnrollmentMode = initialMode,
+                initialSynthPreset = synthArg,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
