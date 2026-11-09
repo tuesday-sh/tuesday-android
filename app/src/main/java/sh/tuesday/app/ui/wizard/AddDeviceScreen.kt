@@ -975,6 +975,53 @@ fun AddDeviceScreen(
                         fontWeight = FontWeight.Bold
                     )
 
+                    // Deterministic Barcode / QR Scan Box (Unboxed)
+                    scanStatusMessage?.let { msg ->
+                        Text(
+                            text = msg,
+                            color = if (msg.startsWith("✓")) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { launchLiveBarcodeScanner() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TuesdayTheme.HealthyGreen,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .uiAction("scanBarcodeOrQr")
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Scan Barcode / QR",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+
+                        Button(
+                            onClick = { scanFileLauncher.launch("image/*") },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TuesdayTheme.ElevatedPill,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.uiAction("uploadBarcodeImage")
+                        ) {
+                            Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+
                     Text(
                         text = "Deterministically decode 1D retail UPC/EAN barcodes, Code-128 serial stickers, or 2D QR / DataMatrix codes for $0.00 Gold Catalog lookup.",
                         color = palette.textMuted,
@@ -982,66 +1029,8 @@ fun AddDeviceScreen(
                         lineHeight = 17.sp
                     )
 
-                    // Deterministic Barcode / QR Scan Box
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("barcode-scan-card")
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        scanStatusMessage?.let { msg ->
-                            Text(
-                                text = msg,
-                                color = if (msg.startsWith("✓")) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(
-                                onClick = { launchLiveBarcodeScanner() },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = TuesdayTheme.HealthyGreen,
-                                    contentColor = Color.Black
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .uiAction("scanBarcodeOrQr")
-                            ) {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Scan Barcode / QR",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-
-                            Button(
-                                onClick = { scanFileLauncher.launch("image/*") },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = TuesdayTheme.ElevatedPill,
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.uiAction("uploadBarcodeImage")
-                            ) {
-                                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            }
-                        }
-
-                        if (isDeveloperMode) {
-                            DevPresetsAndControlsRow(includePhotoSamples = false)
-                        }
+                    if (isDeveloperMode) {
+                        DevPresetsAndControlsRow(includePhotoSamples = false)
                     }
                 }
 
