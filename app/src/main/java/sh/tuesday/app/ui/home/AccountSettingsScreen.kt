@@ -48,7 +48,9 @@ data class AccountSettingsParams(
     val tuesdayApiBaseUrl: String = "http://100.108.40.3:3000",
     val onSetTuesdayApiBaseUrl: (String) -> Unit = {},
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
-    val onSwitchToFleetTab: () -> Unit = {}
+    val onSwitchToFleetTab: () -> Unit = {},
+    val onResendInventoryNotifications: suspend () -> Int = { 0 },
+    val onTriggerMockPatchTuesday: () -> Boolean = { false }
 )
 
 data class ReminderCategoryDef(
@@ -113,10 +115,12 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     val scope = rememberCoroutineScope()
     var savedCorpusCount by remember { mutableStateOf(GoldenCorpusRecorder.getSavedSessionCount(context)) }
     var purgeFeedback by remember { mutableStateOf<String?>(null) }
+    var pushSimFeedback by remember { mutableStateOf<String?>(null) }
+    var isResendingNotifs by remember { mutableStateOf(false) }
 
     // Accordion Expansion States
     var isNetworkOpen by remember { mutableStateOf(false) }
-    var isDevModeOpen by remember { mutableStateOf(false) }
+    var isDevModeOpen by remember(isDeveloperMode) { mutableStateOf(isDeveloperMode) }
     var isRemindersOpen by remember { mutableStateOf(false) }
     var isFeedsOpen by remember { mutableStateOf(false) }
 
@@ -492,6 +496,91 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             ) {
                                                 Text("Set", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
                                             }
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+
+                                    // Push Notification & Patch Tuesday Simulator
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .uiSlot("dev-push-notification-simulator"),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "PUSH NOTIFICATIONS & PATCH TUESDAY SIMULATOR:",
+                                            color = palette.textMuted,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .uiAction("resendInventoryNotifications")
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(palette.accent.copy(alpha = 0.16f))
+                                                .border(1.dp, palette.accent.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                                                .clickable(enabled = !isResendingNotifs) {
+                                                    scope.launch {
+                                                        isResendingNotifs = true
+                                                        pushSimFeedback = "Dispatching notifications for enrolled inventory..."
+                                                        val sent = params.onResendInventoryNotifications()
+                                                        isResendingNotifs = false
+                                                        pushSimFeedback = "✓ Resent $sent notification(s) for enrolled inventory"
+                                                    }
+                                                }
+                                                .padding(vertical = 9.dp, horizontal = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (isResendingNotifs) {
+                                                    "⏳ Resending Inventory Notifications..."
+                                                } else {
+                                                    "🔔 Resend Inventory Notifications (Force Dispatch)"
+                                                },
+                                                color = palette.accent,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .uiAction("triggerMockPatchTuesday")
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.14f))
+                                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                                .clickable {
+                                                    val shown = params.onTriggerMockPatchTuesday()
+                                                    pushSimFeedback = if (shown) {
+                                                        "✓ Sent Mock Patch Tuesday Bulletin & restored Rhythm card"
+                                                    } else {
+                                                        "⚠ Notification permission not granted (Rhythm card restored)"
+                                                    }
+                                                }
+                                                .padding(vertical = 9.dp, horizontal = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "📅 Send Mock Patch Tuesday Bulletin",
+                                                color = TuesdayTheme.HealthyGreen,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        if (pushSimFeedback != null) {
+                                            Text(
+                                                text = pushSimFeedback!!,
+                                                color = palette.textPrimary,
+                                                fontSize = 10.5.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
                                         }
                                     }
 

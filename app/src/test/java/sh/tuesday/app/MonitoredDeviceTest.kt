@@ -224,4 +224,135 @@ class MonitoredDeviceTest {
         assertTrue(res.debugLogText!!.contains("[✓ GOLD ALIGNED]"))
         assertTrue(res.debugLogText!!.contains("[⚠ UNALIGNED RAW]"))
     }
+
+    @Test
+    fun testEnrolledInventoryBulletinsAndNotificationSyncDeepLink() {
+        val syncDest = sh.tuesday.app.navigation.DeepLinkDestination.fromUri("tuesday://sync-notifications")
+        assertTrue(syncDest is sh.tuesday.app.navigation.DeepLinkDestination.SyncNotifications)
+        assertTrue((syncDest as sh.tuesday.app.navigation.DeepLinkDestination.SyncNotifications).forceResend)
+
+        val enrolledLabDevices = listOf(
+            RackPortDevice(
+                id = "dev-cisco",
+                portIndex = 20,
+                category = StnHardwareCategory.C2_SWITCH,
+                portState = PortLifecycleState.EOL,
+                trustZone = TrustZone.Z0_CORE,
+                assetTag = "STN-LAB-20",
+                shortLabel = "WS-C2960",
+                name = "Cisco WS-C2960-8TC-L",
+                roomLocation = "Lab",
+                version = "15.0(2)SE11",
+                targetVersion = "EOL",
+                lifecycleTier = "End of Life",
+                purls = listOf("pkg:generic/cisco/ws-c2960-8tc-l@1.0.0"),
+                confidenceTier = DeviceConfidenceTier.CONFIRMED,
+                proHeadline = "Cisco 2960 EOL",
+                stnHeadline = "Cisco 2960 EOL",
+                s0Identity = "STN-LAB-20",
+                s1Hardware = "Cisco",
+                s2Software = "IOS",
+                s3Lifecycle = "EOL",
+                s4Advisories = "1 EOL",
+                s5Topology = "Z1",
+                s6Remediation = "Replace"
+            ),
+            RackPortDevice(
+                id = "dev-synology",
+                portIndex = 21,
+                category = StnHardwareCategory.C4_SERVER,
+                portState = PortLifecycleState.GUESSED,
+                trustZone = TrustZone.Z2_LAB,
+                assetTag = "STN-LAB-21",
+                shortLabel = "DS220+",
+                name = "Synology DS220+",
+                roomLocation = "Lab",
+                version = "unverified",
+                targetVersion = "7.2.2",
+                lifecycleTier = "Provisional Guess",
+                purls = listOf("pkg:generic/synology/ds220-plus@1.0.0"),
+                confidenceTier = DeviceConfidenceTier.PROVISIONAL_GUESS,
+                candidateModels = listOf("DS220+", "DS218+", "DS720+"),
+                proHeadline = "Synology Guess",
+                stnHeadline = "Synology Guess",
+                s0Identity = "STN-LAB-21",
+                s1Hardware = "Synology",
+                s2Software = "DSM",
+                s3Lifecycle = "Guess",
+                s4Advisories = "1 CVE",
+                s5Topology = "Z1",
+                s6Remediation = "Verify sticker"
+            ),
+            RackPortDevice(
+                id = "dev-esp",
+                portIndex = 22,
+                category = StnHardwareCategory.C6_IOT,
+                portState = PortLifecycleState.CVE_KEV,
+                trustZone = TrustZone.Z3_IOT,
+                assetTag = "STN-LAB-22",
+                shortLabel = "ESP8266MOD",
+                name = "ESP8266MOD",
+                roomLocation = "Lab",
+                version = "2026.9.0",
+                targetVersion = "2026.10.2",
+                lifecycleTier = "Active",
+                purls = listOf("pkg:generic/espressif/esp8266mod@1.0.0"),
+                confidenceTier = DeviceConfidenceTier.CONFIRMED,
+                proHeadline = "ESP8266",
+                stnHeadline = "ESP8266",
+                s0Identity = "STN-LAB-22",
+                s1Hardware = "AI-Thinker",
+                s2Software = "ESPHome",
+                s3Lifecycle = "Active",
+                s4Advisories = "1 CVE",
+                s5Topology = "Z3",
+                s6Remediation = "Flash"
+            ),
+            RackPortDevice(
+                id = "dev-sonoff",
+                portIndex = 23,
+                category = StnHardwareCategory.C6_IOT,
+                portState = PortLifecycleState.UPDATE,
+                trustZone = TrustZone.Z3_IOT,
+                assetTag = "STN-LAB-23",
+                shortLabel = "ZBDongle-E",
+                name = "SONOFF ZBDongle-E",
+                roomLocation = "Lab",
+                version = "7.4.1",
+                targetVersion = "7.4.4",
+                lifecycleTier = "Active",
+                purls = listOf("pkg:generic/sonoff/zbdongle-e@1.0.0"),
+                confidenceTier = DeviceConfidenceTier.CONFIRMED,
+                proHeadline = "ZBDongle-E",
+                stnHeadline = "ZBDongle-E",
+                s0Identity = "STN-LAB-23",
+                s1Hardware = "SONOFF",
+                s2Software = "EmberZNet",
+                s3Lifecycle = "Active",
+                s4Advisories = "1 Release",
+                s5Topology = "Z3",
+                s6Remediation = "Update"
+            )
+        )
+
+        val payload = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = enrolledLabDevices,
+            mutedFeedSlugs = setOf("lg-esphome-iot")
+        )
+
+        // Cisco EOL (confirmed), Synology CVE (guess), ESP8266 CVE (muted breakthrough), Sonoff Release (confirmed)
+        // Synology routine release is suppressed because dev-synology is PROVISIONAL_GUESS!
+        assertNotNull(payload.inbox.find { it.externalId == "EOL-cisco-ws-c2960-8tc-l" })
+        val synologyCve = payload.inbox.find { it.externalId == "CVE-2024-10443-synology-ds220-plus" }
+        assertNotNull(synologyCve)
+        assertTrue(synologyCve!!.matchedByGuess)
+        assertNull(payload.inbox.find { it.externalId == "REL-synology-dsm-7.2.2-routine" })
+
+        val espCve = payload.inbox.find { it.externalId == "CVE-2026-39104-esp8266-sdk" }
+        assertNotNull(espCve)
+        assertTrue(espCve!!.brokeThroughMute)
+
+        assertNotNull(payload.inbox.find { it.externalId == "REL-sonoff-zbdongle-e-7.4.4" })
+    }
 }

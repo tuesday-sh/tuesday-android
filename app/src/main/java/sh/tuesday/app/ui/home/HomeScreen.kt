@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import sh.tuesday.app.R
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.ConnectivityMonitor
+import sh.tuesday.app.services.TuesdayNotificationManager
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
@@ -69,6 +70,7 @@ enum class MainNavTab(val labelPro: String, val labelStn: String) {
 fun HomeScreen(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
+    notificationManager: TuesdayNotificationManager? = null,
     onNavigateToAddDevice: () -> Unit,
     pendingDestination: sh.tuesday.app.navigation.DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
@@ -100,6 +102,12 @@ fun HomeScreen(
     var showNetworkPicker by remember { mutableStateOf(false) }
     var showReferenceGuide by remember { mutableStateOf(false) }
 
+    LaunchedEffect(notificationManager) {
+        if (notificationManager != null) {
+            repository.syncPendingNotifications(notificationManager, forceResend = false)
+        }
+    }
+
     LaunchedEffect(pendingDestination) {
         when (pendingDestination) {
             is sh.tuesday.app.navigation.DeepLinkDestination.Tab -> {
@@ -109,6 +117,10 @@ fun HomeScreen(
                     "timeline" -> activeTab = MainNavTab.TIMELINE
                     "checkup" -> activeTab = MainNavTab.CHECKUP
                     "account" -> activeTab = MainNavTab.ACCOUNT
+                    "account-dev" -> {
+                        repository.toggleDeveloperMode(true)
+                        activeTab = MainNavTab.ACCOUNT
+                    }
                 }
                 onConsumePendingDestination()
             }
@@ -160,6 +172,24 @@ fun HomeScreen(
             is sh.tuesday.app.navigation.DeepLinkDestination.SetApiEndpoint -> {
                 repository.toggleDeveloperMode(true)
                 repository.setTuesdayApiBaseUrl(pendingDestination.url)
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.SyncNotifications -> {
+                if (notificationManager != null) {
+                    repository.syncPendingNotifications(
+                        notificationManager = notificationManager,
+                        forceResend = pendingDestination.forceResend
+                    )
+                }
+                activeTab = MainNavTab.BULLETINS
+                onConsumePendingDestination()
+            }
+            sh.tuesday.app.navigation.DeepLinkDestination.TriggerMockPatchTuesday -> {
+                repository.toggleDeveloperMode(true)
+                if (notificationManager != null) {
+                    repository.triggerMockPatchTuesdayBulletin(notificationManager)
+                }
+                activeTab = MainNavTab.BULLETINS
                 onConsumePendingDestination()
             }
             null -> {}
@@ -471,7 +501,25 @@ fun HomeScreen(
                         tuesdayApiBaseUrl = hacsConfig.tuesdayApiBaseUrl,
                         onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
-                        onSwitchToFleetTab = { activeTab = MainNavTab.STATUS }
+                        onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
+                        onResendInventoryNotifications = {
+                            if (notificationManager != null) {
+                                repository.syncPendingNotifications(
+                                    notificationManager = notificationManager,
+                                    forceResend = true,
+                                    includeAllSites = true
+                                )
+                            } else {
+                                0
+                            }
+                        },
+                        onTriggerMockPatchTuesday = {
+                            if (notificationManager != null) {
+                                repository.triggerMockPatchTuesdayBulletin(notificationManager)
+                            } else {
+                                false
+                            }
+                        }
                     )
                 )
             }

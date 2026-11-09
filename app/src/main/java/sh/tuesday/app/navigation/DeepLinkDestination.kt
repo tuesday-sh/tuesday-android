@@ -12,6 +12,8 @@ sealed interface DeepLinkDestination {
     data object ResetDemo : DeepLinkDestination
     data class VisionDebug(val enabled: Boolean, val openWizard: Boolean = true) : DeepLinkDestination
     data class SetApiEndpoint(val url: String) : DeepLinkDestination
+    data class SyncNotifications(val forceResend: Boolean = true) : DeepLinkDestination
+    data object TriggerMockPatchTuesday : DeepLinkDestination
 
     companion object {
         fun fromUri(uriString: String?): DeepLinkDestination? {
@@ -29,7 +31,10 @@ sealed interface DeepLinkDestination {
                 "bulletins", "inbox" -> Tab("bulletins")
                 "timeline", "lifespan", "swimlane" -> Tab("timeline")
                 "checkup", "audit" -> Tab("checkup")
-                "account", "settings" -> Tab("account")
+                "account", "settings" -> {
+                    val sub = parts.getOrNull(1)?.lowercase()
+                    if (sub == "dev") Tab("account-dev") else Tab("account")
+                }
                 "add-device", "add_device", "intake", "wizard" -> AddDevice
                 "hacs", "hacs-settings" -> HacsSettings
                 "network-picker", "networks", "sites" -> NetworkPicker
@@ -58,6 +63,12 @@ sealed interface DeepLinkDestination {
                     }
                     SetApiEndpoint(resolvedUrl)
                 }
+                "sync-notifications", "notifications", "push-test" -> {
+                    val sub = parts.getOrNull(1)?.lowercase()
+                    val force = sub != "pending" && !clean.contains("force=false", ignoreCase = true)
+                    SyncNotifications(forceResend = force)
+                }
+                "patch-tuesday", "mock-patch-tuesday" -> TriggerMockPatchTuesday
                 else -> null
             }
         }

@@ -1,9 +1,14 @@
 package sh.tuesday.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -13,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import sh.tuesday.app.navigation.DeepLinkDestination
 import sh.tuesday.app.services.ConnectivityMonitor
 import sh.tuesday.app.services.GeminiDiscoveryService
+import sh.tuesday.app.services.TuesdayNotificationManager
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.TuesdayAppTheme
 import sh.tuesday.app.ui.home.HomeScreen
@@ -22,6 +28,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var repository: TuesdayRepository
     private lateinit var connectivity: ConnectivityMonitor
     private lateinit var discoveryService: GeminiDiscoveryService
+    private lateinit var notificationManager: TuesdayNotificationManager
 
     private val _pendingDestination = MutableStateFlow<DeepLinkDestination?>(null)
     val pendingDestination = _pendingDestination.asStateFlow()
@@ -31,7 +38,9 @@ class MainActivity : ComponentActivity() {
         repository = TuesdayRepository(applicationContext)
         connectivity = ConnectivityMonitor(applicationContext)
         discoveryService = GeminiDiscoveryService(applicationContext)
+        notificationManager = TuesdayNotificationManager(applicationContext)
 
+        requestNotificationPermissionIfNeeded()
         handleIntent(intent)
 
         setContent {
@@ -41,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     repository = repository,
                     connectivity = connectivity,
                     discoveryService = discoveryService,
+                    notificationManager = notificationManager,
                     pendingDestination = dest,
                     onConsumePendingDestination = {
                         _pendingDestination.value = null
@@ -56,7 +66,27 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    1001
+                )
+            }
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
+        val deliveryId = intent?.getIntExtra(TuesdayNotificationManager.EXTRA_NOTIFICATION_DELIVERY_ID, -1) ?: -1
+        if (deliveryId > 0) {
+            repository.acknowledgeNotificationAsync(deliveryId, "opened")
+        }
         val dataUri = intent?.dataString ?: return
         val destination = DeepLinkDestination.fromUri(dataUri)
         if (destination != null) {
@@ -70,6 +100,7 @@ fun AppNavigation(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
     discoveryService: GeminiDiscoveryService,
+    notificationManager: TuesdayNotificationManager? = null,
     pendingDestination: DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
 ) {
@@ -80,6 +111,7 @@ fun AppNavigation(
             HomeScreen(
                 repository = repository,
                 connectivity = connectivity,
+                notificationManager = notificationManager,
                 onNavigateToAddDevice = {
                     navController.navigate("add_device")
                 },

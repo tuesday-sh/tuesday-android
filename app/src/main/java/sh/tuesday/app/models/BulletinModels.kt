@@ -209,6 +209,26 @@ data class AssembledBulletinsPayload(
     val inbox: List<BulletinInboxView>
 )
 
+@Serializable
+data class PendingPushNotification(
+    val id: Int,
+    val bulletinExternalId: String,
+    val feedSlug: String? = null,
+    val bulletinType: String = "advisory",
+    val isHighSev: Boolean = false,
+    val brokeThroughMute: Boolean = false,
+    val matchedByGuess: Boolean = false,
+    val deliveryChannel: String = "tuesday_critical_bulletins",
+    val deliveryStatus: String = "pending",
+    val title: String,
+    val body: String,
+    val deepLinkUri: String,
+    val deviceDeepLinkUri: String? = null,
+    val monitoredDeviceId: String? = null,
+    val monitoredDeviceLabel: String? = null,
+    val categoryCode: String? = null
+)
+
 object BulletinsAndInventoryEngine {
 
     fun build128LedMatrix(
@@ -855,7 +875,7 @@ object BulletinsAndInventoryEngine {
             slug = "lg-esphome-iot",
             proName = "LG webOS TV & ESPHome Firmware",
             stnName = "Smart TV & Garage Sensor Updates",
-            purlPrefixes = listOf("pkg:generic/lg/webos", "pkg:generic/esphome/firmware")
+            purlPrefixes = listOf("pkg:generic/lg/webos", "pkg:generic/esphome/firmware", "pkg:generic/espressif/", "pkg:generic/ai-thinker/", "pkg:generic/nodemcu/")
         ),
         CanonicalFeedItem(
             id = "f-07",
@@ -869,7 +889,28 @@ object BulletinsAndInventoryEngine {
             slug = "synology-dsm",
             proName = "Synology DSM Advisories",
             stnName = "Synology NAS Updates",
-            purlPrefixes = listOf("pkg:generic/synology/dsm")
+            purlPrefixes = listOf("pkg:generic/synology/dsm", "pkg:generic/synology/")
+        ),
+        CanonicalFeedItem(
+            id = "f-09",
+            slug = "cisco-ios-xe-enterprise",
+            proName = "Cisco Catalyst IOS-XE Enterprise Advisories",
+            stnName = "Cisco Enterprise Routers & Switches",
+            purlPrefixes = listOf("pkg:generic/cisco/")
+        ),
+        CanonicalFeedItem(
+            id = "f-10",
+            slug = "smart-home-zigbee-matter-iot",
+            proName = "Home Assistant OS, SONOFF Zigbee & Matter Hubs",
+            stnName = "Smart Home Hub, Zigbee Dongle & Sensor Updates",
+            purlPrefixes = listOf("pkg:generic/sonoff/", "pkg:generic/home-assistant/", "pkg:generic/smlight/")
+        ),
+        CanonicalFeedItem(
+            id = "f-11",
+            slug = "isp-docsis-fiber-managed",
+            proName = "US ISP Broadband, DOCSIS 3.1 & Fiber ONT Provisioning",
+            stnName = "Internet Provider Modem & Gateway Auto-Updates",
+            purlPrefixes = listOf("pkg:generic/motorola/", "pkg:generic/arris/", "pkg:generic/netgear/cm")
         )
     )
 
@@ -985,6 +1026,90 @@ object BulletinsAndInventoryEngine {
             aiProBullet = "1 Thermostat Release (Port #12): Ecobee 4.8.7.220 available.",
             aiStnBullet = "1 Thermostat Update: Routine sensor tuning for Hallway Ecobee.",
             publishedAt = "4d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "EOL-cisco-ws-c2960-8tc-l",
+            canonicalFeedSlug = "cisco-ios-xe-enterprise",
+            bulletinType = "eol",
+            isHighSev = true,
+            purlBase = "pkg:generic/cisco/ws-c2960-8tc-l",
+            proTitle = "Cisco PSIRT / EOL: Catalyst 2960-8TC-L Passed Support Cutoff & Smart Install Advisory",
+            proBody = "Cisco Catalyst WS-C2960-8TC-L reached End-of-Vulnerability-Support. Disable Cisco Smart Install (`no vstack` on TCP/4786) and isolate management VLAN.",
+            stnTitle = "Retired Switch Security Notice: Cisco Catalyst 2960-8TC-L",
+            stnBody = "Cisco no longer releases security updates for your Catalyst 2960 8-port switch. Keep it on a private home VLAN and disable Smart Install.",
+            aiProBullet = "1 Switch EOL & Hardening Notice: Cisco WS-C2960-8TC-L requires `no vstack` hardening.",
+            aiStnBullet = "Retired Switch Notice (Cisco Catalyst 2960): End of manufacturer security updates.",
+            publishedAt = "1h ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2024-10443-synology-ds220-plus",
+            canonicalFeedSlug = "synology-dsm",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/synology/ds220-plus",
+            proTitle = "Synology-SA-24:20 (CVE-2024-10443): DiskStation DS220+ DSM / Synology Photos RCE",
+            proBody = "Critical zero-click command injection affecting Synology Photos and DSM on DiskStation DS220+. Upgrade DSM to 7.2.2-72806-1 and Synology Photos to 1.7.0-0795.",
+            stnTitle = "Critical Security Update: Synology DiskStation NAS (DS220+)",
+            stnBody = "Synology fixed a critical security flaw in Synology Photos and DSM on the DS220+ series. Open DSM Control Panel -> Update & Restore to install the latest update.",
+            aiProBullet = "1 NAS Critical CVE: Synology DS220+ DSM 7.2.2-72806-1 security patch required.",
+            aiStnBullet = "Critical NAS Update (Synology DS220+): Install the latest DSM and Synology Photos security fix.",
+            publishedAt = "1h ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "REL-synology-dsm-7.2.2-routine",
+            canonicalFeedSlug = "synology-dsm",
+            bulletinType = "release",
+            isHighSev = false,
+            purlBase = "pkg:generic/synology/ds220-plus",
+            proTitle = "Synology DSM 7.2.2-72806 Update 2 Storage Pool SMART Telemetry",
+            proBody = "Routine Btrfs scrub scheduling and NVMe cache telemetry update for DiskStation DS220+ (suppressed while device is an unconfirmed guess).",
+            stnTitle = "Routine Storage Update: Synology DS220+",
+            stnBody = "Minor drive health reporting update for Synology DiskStation DS220+.",
+            aiProBullet = "1 Routine NAS Release: Synology DS220+ DSM 7.2.2 Update 2.",
+            aiStnBullet = "1 Routine NAS Update: Minor drive health update for Synology DS220+.",
+            publishedAt = "3h ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2026-39104-esp8266-sdk",
+            canonicalFeedSlug = "lg-esphome-iot",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/espressif/esp8266mod",
+            proTitle = "CVE-2026-39104: Espressif ESP8266MOD / NodeMCU WPA2 Beacon Buffer Overflow",
+            proBody = "High-severity Wi-Fi beacon frame overflow in legacy ESP8266 NONOS/RTOS SDK on NodeMCU / AI-Thinker ESP8266MOD boards. Reflash OTA with ESPHome 2026.10.2+.",
+            stnTitle = "Security Update Needed: ESP8266 / NodeMCU Smart Home Board",
+            stnBody = "A Wi-Fi security flaw affects older firmware on your ESP8266 / NodeMCU board. Update it from your ESPHome or Home Assistant dashboard.",
+            aiProBullet = "1 IoT High-Sev CVE: ESP8266MOD / NodeMCU WPA2 beacon overflow; reflash ESPHome 2026.10.2+.",
+            aiStnBullet = "Smart Home Board Security Fix (ESP8266 / NodeMCU): Update wireless firmware via Home Assistant.",
+            publishedAt = "30m ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "REL-sonoff-zbdongle-e-7.4.4",
+            canonicalFeedSlug = "smart-home-zigbee-matter-iot",
+            bulletinType = "release",
+            isHighSev = false,
+            purlBase = "pkg:generic/sonoff/zbdongle-e",
+            proTitle = "SONOFF ZBDongle-E EmberZNet 7.4.4.0 Zigbee Coordinator Firmware",
+            proBody = "Recommended Silicon Labs EFR32MG21 EmberZNet 7.4.4.0 NCP firmware for SONOFF ZBDongle-E improving ZHA / Zigbee2MQTT mesh routing table stability.",
+            stnTitle = "New Coordinator Update: SONOFF Zigbee 3.0 USB Dongle Plus-E",
+            stnBody = "Firmware 7.4.4.0 is available for your SONOFF Zigbee USB stick with improved smart home sensor range and reliability.",
+            aiProBullet = "1 Zigbee Coordinator Release: SONOFF ZBDongle-E EmberZNet 7.4.4.0 available.",
+            aiStnBullet = "1 Smart Home Dongle Update: Firmware 7.4.4.0 available for SONOFF Zigbee USB Dongle.",
+            publishedAt = "2h ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "REL-docsis-cm1100-mb8600",
+            canonicalFeedSlug = "isp-docsis-fiber-managed",
+            bulletinType = "release",
+            isHighSev = false,
+            purlBase = "pkg:generic/motorola/mb8600",
+            proTitle = "DOCSIS 3.1 OFDM Profile Update: Motorola MB8600 / MB7621 & Netgear CM1100",
+            proBody = "ISP-pushed DOCSIS 3.1 downstream OFDM profile update (8600-19.3.18). Firmware is provisioned automatically via coaxial TFTP by your cable provider.",
+            stnTitle = "Cable Modem Update: Motorola SURFboard / MB Series",
+            stnBody = "Your internet provider automatically delivers software updates to your Motorola cable modem overnight. No manual download is required.",
+            aiProBullet = "1 DOCSIS Modem Lifecycle Notice: Motorola MB8600 / MB7621 ISP-provisioned update.",
+            aiStnBullet = "1 Cable Modem Notice (Motorola): Updates are managed automatically by your internet provider.",
+            publishedAt = "4h ago"
         )
     )
 }

@@ -407,9 +407,12 @@ class TuesdayRepository(context: Context) {
         // Also add to rackDevices so it reflects in the 128-LED Matrix & Action-First list
         val nextPort = (_rackDevices.value.maxOfOrNull { it.portIndex } ?: 12) + 1
         val isGuessed = inventoryState == InventoryConfidenceState.INCOMPLETE_OR_GUESSED
+        val canonicalPurls = buildCanonicalPurls(hostname, discoveredMetadata)
+        val inferredCategory = inferRackCategory(discoveredMetadata)
         val newRackDev = RackPortDevice(
             id = newDevice.id,
             portIndex = nextPort,
+            category = inferredCategory,
             portState = if (isGuessed) PortLifecycleState.GUESSED else PortLifecycleState.OK,
             trustZone = TrustZone.Z3_IOT,
             assetTag = "STN-NEW-$nextPort",
@@ -419,7 +422,7 @@ class TuesdayRepository(context: Context) {
             version = if (isGuessed) "unverified" else "2026.10.1",
             targetVersion = "2026.10.1",
             lifecycleTier = if (isGuessed) "Provisional Guess" else "Active",
-            purls = listOf("pkg:generic/enrolled/${hostname.lowercase()}"),
+            purls = canonicalPurls,
             confidenceTier = if (isGuessed) DeviceConfidenceTier.PROVISIONAL_GUESS else DeviceConfidenceTier.CONFIRMED,
             candidateModels = if (isGuessed) listOf(discoveredMetadata?.modelNumber ?: "Generic IoT Node") else emptyList(),
             proHeadline = osDetails,
@@ -592,6 +595,299 @@ class TuesdayRepository(context: Context) {
                 Log.w("TuesdayRepoSync", "Inventory patch queued offline: ${e.message}")
             }
         }
+    }
+
+    private fun buildCanonicalPurls(hostname: String, meta: DiscoveredDeviceMetadata?): List<String> {
+        val rawVendor = meta?.manufacturer?.trim().orEmpty()
+        val rawModel = meta?.modelNumber?.trim().orEmpty()
+        if (rawVendor.isEmpty() && rawModel.isEmpty()) {
+            return listOf("pkg:generic/enrolled/${hostname.lowercase().replace(Regex("[^a-z0-9-]+"), "-")}")
+        }
+        val vendorSlug = when {
+            rawVendor.contains("espressif", ignoreCase = true) || rawVendor.contains("ai-thinker", ignoreCase = true) -> "espressif"
+            rawVendor.contains("itead", ignoreCase = true) || rawVendor.contains("sonoff", ignoreCase = true) -> "sonoff"
+            rawVendor.contains("ubiquiti", ignoreCase = true) -> "ubiquiti"
+            rawVendor.contains("cisco", ignoreCase = true) -> "cisco"
+            rawVendor.contains("synology", ignoreCase = true) -> "synology"
+            rawVendor.contains("motorola", ignoreCase = true) -> "motorola"
+            else -> rawVendor.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        }.ifBlank { "generic" }
+
+        val parts = rawModel.split(Regex("\\s*[/|,]\\s*")).map { it.trim() }.filter { it.isNotEmpty() }
+        val purls = parts.mapNotNull { part ->
+            val slug = part.replace("+", "-plus").lowercase().replace(Regex("[^a-z0-9.-]+"), "-").trim('-')
+            if (slug.isNotEmpty()) "pkg:generic/$vendorSlug/$slug@1.0.0" else null
+        }.distinct().toMutableList()
+
+        if (purls.isEmpty()) {
+            val fallbackSlug = hostname.lowercase().replace("+", "-plus").replace(Regex("[^a-z0-9.-]+"), "-").trim('-')
+            purls.add("pkg:generic/$vendorSlug/$fallbackSlug@1.0.0")
+        }
+        return purls
+    }
+
+    private fun inferRackCategory(meta: DiscoveredDeviceMetadata?): StnHardwareCategory {
+        val combined = "${meta?.deviceCategory.orEmpty()} ${meta?.modelNumber.orEmpty()} ${meta?.manufacturer.orEmpty()}".lowercase()
+        return when {
+            combined.contains("router") || combined.contains("gateway") || combined.contains("modem") || combined.contains("docsis") || combined.contains("ucg") || combined.contains("uxg") || combined.contains("mb8600") -> StnHardwareCategory.C1_GATEWAY
+            combined.contains("switch") || combined.contains("2960") || combined.contains("usw") -> StnHardwareCategory.C2_SWITCH
+            combined.contains("wireless") || combined.contains("access point") || combined.contains("u6-") || combined.contains("u7-") -> StnHardwareCategory.C3_AP
+            combined.contains("nas") || combined.contains("synology") || combined.contains("server") || combined.contains("ups") || combined.contains("power") -> StnHardwareCategory.C4_SERVER
+            combined.contains("camera") || combined.contains("protect") -> StnHardwareCategory.C5_CAMERA
+            combined.contains("workstation") || combined.contains("macbook") || combined.contains("laptop") -> StnHardwareCategory.C7_CLIENT
+            else -> StnHardwareCategory.C6_IOT
+        }
+    }
+
+    fun registerPushTokenAsync(pushToken: String = "fcm-local-$clientDeviceId") {
+        ioScope.launch {
+            try {
+                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val payload = JSONObject().apply {
+                    put("client_device_id", clientDeviceId)
+                    put("platform", "android")
+                    put("push_token", pushToken)
+                    put("app_flavor", if (_brandFlavor.value == AppBrandFlavor.SURETHING_HOME) "surething" else "tuesday")
+                    put("notifications_enabled", true)
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/v1/notifications/register_token")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().close()
+            } catch (e: Exception) {
+                Log.w("TuesdayRepoPush", "Push token registration skipped: ${e.message}")
+            }
+        }
+    }
+
+    fun acknowledgeNotificationAsync(deliveryId: Int, actionType: String = "opened") {
+        if (deliveryId <= 0) return
+        ioScope.launch {
+            try {
+                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val payload = JSONObject().apply {
+                    put("action_type", actionType)
+                }
+                val req = Request.Builder()
+                    .url("$baseUrl/api/v1/notifications/$deliveryId/ack")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().close()
+            } catch (e: Exception) {
+                Log.w("TuesdayRepoPush", "Notification ack skipped: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun syncPendingNotifications(
+        notificationManager: TuesdayNotificationManager,
+        forceResend: Boolean = false,
+        includeAllSites: Boolean = true
+    ): Int = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+
+            // 1. Register push token
+            val regPayload = JSONObject().apply {
+                put("client_device_id", clientDeviceId)
+                put("platform", "android")
+                put("push_token", "fcm-local-$clientDeviceId")
+                put("app_flavor", if (_brandFlavor.value == AppBrandFlavor.SURETHING_HOME) "surething" else "tuesday")
+                put("notifications_enabled", true)
+            }
+            val regReq = Request.Builder()
+                .url("$baseUrl/api/v1/notifications/register_token")
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .post(regPayload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            httpClient.newCall(regReq).execute().close()
+
+            // 2. Optionally force dispatch evaluation across enrolled sites
+            if (forceResend) {
+                val dispPayload = JSONObject().apply {
+                    put("force_resend", true)
+                    put("all_sites", includeAllSites)
+                }
+                val dispReq = Request.Builder()
+                    .url("$baseUrl/api/v1/notifications/dispatch")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .post(dispPayload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                httpClient.newCall(dispReq).execute().close()
+            }
+
+            // 3. Fetch pending notifications
+            val pendingUrl = "$baseUrl/api/v1/notifications/pending?all_sites=$includeAllSites"
+            val pendingReq = Request.Builder()
+                .url(pendingUrl)
+                .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .get()
+                .build()
+
+            var shownCount = 0
+            val syncedDevicesFromNotifs = mutableListOf<RackPortDevice>()
+
+            httpClient.newCall(pendingReq).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext 0
+                val bodyStr = resp.body?.string().orEmpty()
+                val root = JSONObject(bodyStr)
+                val arr = root.optJSONArray("notifications") ?: JSONArray()
+
+                for (i in 0 until arr.length()) {
+                    val item = arr.getJSONObject(i)
+                    val notif = PendingPushNotification(
+                        id = item.optInt("id"),
+                        bulletinExternalId = item.optString("bulletinExternalId", item.optString("bulletin_external_id")),
+                        feedSlug = item.optString("feedSlug", item.optString("feed_slug")).takeIf { it.isNotBlank() },
+                        bulletinType = item.optString("bulletinType", item.optString("bulletin_type", "advisory")),
+                        isHighSev = if (item.has("isHighSev")) item.optBoolean("isHighSev", false) else item.optBoolean("is_high_sev", false),
+                        brokeThroughMute = if (item.has("brokeThroughMute")) item.optBoolean("brokeThroughMute", false) else item.optBoolean("broke_through_mute", false),
+                        matchedByGuess = if (item.has("matchedByGuess")) item.optBoolean("matchedByGuess", false) else item.optBoolean("matched_by_guess", false),
+                        deliveryChannel = item.optString("deliveryChannel", item.optString("delivery_channel", TuesdayNotificationManager.CHANNEL_LIFECYCLE_DIGESTS)),
+                        deliveryStatus = item.optString("deliveryStatus", item.optString("delivery_status", "pending")),
+                        title = item.optString("title"),
+                        body = item.optString("body"),
+                        deepLinkUri = item.optString("deepLinkUri", item.optString("deep_link_uri", "tuesday://bulletins")),
+                        deviceDeepLinkUri = item.optString("deviceDeepLinkUri", item.optString("device_deep_link_uri")).takeIf { it.isNotBlank() },
+                        monitoredDeviceId = item.optString("monitoredDeviceId", item.optString("monitored_device_id")).takeIf { it.isNotBlank() },
+                        monitoredDeviceLabel = item.optString("monitoredDeviceLabel", item.optString("monitored_device_label")).takeIf { it.isNotBlank() },
+                        categoryCode = item.optString("categoryCode", item.optString("category_code")).takeIf { it.isNotBlank() }
+                    )
+
+                    if (notificationManager.showPushNotification(notif)) {
+                        shownCount++
+                    }
+
+                    // Ensure the corresponding enrolled hardware is represented in _rackDevices so deep links and Bulletins tab match it
+                    val devId = notif.monitoredDeviceId ?: "srv-${notif.bulletinExternalId}"
+                    val hostname = notif.monitoredDeviceLabel ?: notif.title
+                    val matchingBul = BulletinsAndInventoryEngine.defaultGoldBulletins()
+                        .find { it.externalId.equals(notif.bulletinExternalId, ignoreCase = true) }
+                    val purls = if (matchingBul != null) listOf("${matchingBul.purlBase}@1.0.0") else listOf("pkg:generic/enrolled/${hostname.lowercase()}")
+                    val isGuess = notif.matchedByGuess
+                    val portState = when {
+                        isGuess -> PortLifecycleState.GUESSED
+                        notif.bulletinType.equals("eol", ignoreCase = true) -> PortLifecycleState.EOL
+                        notif.isHighSev -> PortLifecycleState.CVE_KEV
+                        else -> PortLifecycleState.UPDATE
+                    }
+                    val cat = inferRackCategory(
+                        DiscoveredDeviceMetadata(
+                            deviceCategory = notif.categoryCode ?: "",
+                            manufacturer = hostname,
+                            modelNumber = hostname
+                        )
+                    )
+                    syncedDevicesFromNotifs.add(
+                        RackPortDevice(
+                            id = devId,
+                            portIndex = 20 + i,
+                            category = cat,
+                            portState = portState,
+                            trustZone = TrustZone.Z1_TRUSTED,
+                            assetTag = "STN-LAB-${20 + i}",
+                            shortLabel = hostname.take(12),
+                            name = hostname,
+                            roomLocation = "Enrolled Lab",
+                            version = if (isGuess) "unverified" else "1.0.0",
+                            targetVersion = "latest",
+                            lifecycleTier = if (isGuess) "Provisional Guess" else (if (portState == PortLifecycleState.EOL) "End of Life" else "Active"),
+                            purls = purls,
+                            confidenceTier = if (isGuess) DeviceConfidenceTier.PROVISIONAL_GUESS else DeviceConfidenceTier.CONFIRMED,
+                            candidateModels = if (isGuess) listOf(hostname) else emptyList(),
+                            proHeadline = notif.title,
+                            stnHeadline = notif.body,
+                            s0Identity = "STN-LAB-${20 + i} • Enrolled Lab • Z1 Trusted",
+                            s1Hardware = hostname,
+                            s2Software = "Matched Bulletin: ${notif.bulletinExternalId}",
+                            s3Lifecycle = if (isGuess) "Provisional Guess" else "Active Monitoring",
+                            s4Advisories = "${notif.bulletinType.uppercase()}: ${notif.bulletinExternalId}",
+                            s5Topology = "Enrolled Inventory",
+                            s6Remediation = notif.body
+                        )
+                    )
+                }
+            }
+
+            if (syncedDevicesFromNotifs.isNotEmpty()) {
+                val existingById = _rackDevices.value.associateBy { it.id }.toMutableMap()
+                for (d in syncedDevicesFromNotifs) {
+                    existingById[d.id] = d
+                }
+                val merged = syncedDevicesFromNotifs + _rackDevices.value.filter { dev ->
+                    syncedDevicesFromNotifs.none { it.id == dev.id }
+                }
+                _rackDevices.value = merged
+                if (_activeDeviceCount.value < syncedDevicesFromNotifs.size) {
+                    _activeDeviceCount.value = (syncedDevicesFromNotifs.size + 4).coerceAtMost(128)
+                }
+            }
+
+            shownCount
+        } catch (e: Exception) {
+            Log.w("TuesdayRepoPush", "Failed to sync pending notifications: ${e.message}")
+            0
+        }
+    }
+
+    fun triggerMockPatchTuesdayBulletin(notificationManager: TuesdayNotificationManager): Boolean {
+        _bulletinDismissed.value = false
+        _bulletinSnoozed.value = false
+        _bulletinMuted.value = false
+        prefs.edit()
+            .putBoolean("bulletin_dismissed", false)
+            .putBoolean("bulletin_snoozed", false)
+            .putBoolean("bulletin_muted", false)
+            .apply()
+
+        val isStn = _brandFlavor.value == AppBrandFlavor.SURETHING_HOME
+        val mockNotif = PendingPushNotification(
+            id = 9901,
+            bulletinExternalId = "bul-00-rhythm-patch-tuesday",
+            feedSlug = "patch-tuesday-rhythm",
+            bulletinType = "rhythm",
+            isHighSev = true,
+            brokeThroughMute = false,
+            matchedByGuess = false,
+            deliveryChannel = TuesdayNotificationManager.CHANNEL_CRITICAL_BULLETINS,
+            deliveryStatus = "pending",
+            title = if (isStn) {
+                "📅 Patch Tuesday Check-In: 3 Safety & Security Fixes Ready"
+            } else {
+                "📅 Patch Tuesday Triage Drop: 3 High-Sev Actions & 2 Firmware Updates"
+            },
+            body = if (isStn) {
+                "Your monthly network check-in is ready (10:00 AM PT). We found 3 priority security items and 2 routine software updates across your enrolled devices. Tap to open your Patch Tuesday checklist."
+            } else {
+                "Monthly patch window open (10:00 AM PT). Prioritized queue: 1 EOL switch (Cisco 2960-8TC-L), 1 Critical Override CVE (ESP8266MOD), 1 Provisional NAS CVE (Synology DS220+), and 2 routine coordinator/modem updates."
+            },
+            deepLinkUri = "tuesday://bulletins/bul-00-rhythm",
+            deviceDeepLinkUri = null,
+            monitoredDeviceId = null,
+            monitoredDeviceLabel = "Monthly Rhythm • 2nd Tuesday",
+            categoryCode = null
+        )
+
+        val shown = notificationManager.showPushNotification(mockNotif)
+        emitTelemetryEventAsync(
+            eventName = "notification.mock_patch_tuesday_triggered",
+            targetEntityType = "CuratedBulletin",
+            targetEntityId = mockNotif.bulletinExternalId,
+            properties = mapOf("shown" to shown)
+        )
+        return shown
     }
 
     fun resetDemoData() {
