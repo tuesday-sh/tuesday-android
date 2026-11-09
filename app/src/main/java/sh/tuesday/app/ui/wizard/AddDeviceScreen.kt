@@ -1064,6 +1064,12 @@ fun AddDeviceScreen(
 
                 // Progressive Clues & Candidates Loop
                 discoveryResult?.let { result ->
+                    HorizontalDivider(
+                        color = palette.border.copy(alpha = 0.6f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
