@@ -902,6 +902,7 @@ class TuesdayRepository(context: Context) {
         _bulletinSnoozed.value = false
         _bulletinMuted.value = false
         _hacsConfig.value = HacsConfig()
+        selectNetwork("net-default")
         prefs.edit()
             .putBoolean("bulletin_dismissed", false)
             .putBoolean("bulletin_snoozed", false)
@@ -911,9 +912,29 @@ class TuesdayRepository(context: Context) {
         persistConfig()
     }
 
+    fun enableDemoMode() {
+        val demoNet = _userNetworks.value.find { it.id == "net-demo" }
+        if (demoNet == null) {
+            val created = NetworkSite(
+                id = "net-demo",
+                name = "Demo Network",
+                devicesCount = 12,
+                role = "Evaluation Homelab (Demo Mode)"
+            )
+            _userNetworks.value = _userNetworks.value + created
+        } else {
+            _userNetworks.value = _userNetworks.value.map {
+                if (it.id == "net-demo") it.copy(devicesCount = 12) else it
+            }
+        }
+        selectNetwork("net-demo")
+        _activeDeviceCount.value = 12
+    }
+
     companion object {
         fun defaultUserNetworks(): List<NetworkSite> = listOf(
-            NetworkSite(id = "net-default", name = "", devicesCount = 0, role = "Default Site")
+            NetworkSite(id = "net-default", name = "My Network", devicesCount = 0, role = "Primary Site"),
+            NetworkSite(id = "net-demo", name = "Demo Network", devicesCount = 12, role = "Evaluation Homelab (Demo Mode)")
         )
 
         fun defaultSeedDevices(now: Long = System.currentTimeMillis()): List<MonitoredDevice> {

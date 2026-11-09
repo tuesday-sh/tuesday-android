@@ -148,7 +148,12 @@ fun HomeScreen(
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.SeedFleet -> {
-                repository.setSimulatedDeviceCount(pendingDestination.count)
+                if (pendingDestination.count > 0) {
+                    repository.enableDemoMode()
+                    repository.setSimulatedDeviceCount(pendingDestination.count)
+                } else {
+                    repository.setSimulatedDeviceCount(0)
+                }
                 activeTab = MainNavTab.STATUS
                 onConsumePendingDestination()
             }
@@ -289,10 +294,12 @@ fun HomeScreen(
                 },
                 actions = {
                     // Multi-Network Site Switcher Pill
+                    val isDemoActive = activeNetwork.id == "net-demo"
                     Surface(
                         onClick = { showNetworkPicker = true },
                         shape = RoundedCornerShape(14.dp),
                         color = palette.elevated,
+                        border = if (isDemoActive) androidx.compose.foundation.BorderStroke(1.dp, TuesdayTheme.LedOkGreen.copy(alpha = 0.5f)) else null,
                         modifier = Modifier
                             .padding(end = 6.dp)
                             .uiAction("openNetworkPicker")
@@ -302,8 +309,16 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
+                            if (isDemoActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(TuesdayTheme.LedOkGreen)
+                                )
+                            }
                             Text(
-                                text = activeNetwork.name,
+                                text = if (isDemoActive) "✨ Demo Network" else activeNetwork.name.ifBlank { "My Network" },
                                 color = palette.textPrimary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -442,7 +457,7 @@ fun HomeScreen(
                     onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
                     bulletinMuted = bulletinMuted,
                     onSetBulletinMuted = { repository.setBulletinMuted(it) },
-                    onLoadDemoFleet = { repository.setSimulatedDeviceCount(12) },
+                    onLoadDemoFleet = { repository.enableDemoMode() },
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
                     }
@@ -579,6 +594,9 @@ fun HomeScreen(
             onCreateNetwork = { name ->
                 repository.createNetwork(name)
                 showNetworkPicker = false
+            },
+            onOpenNetworkSettings = {
+                activeTab = MainNavTab.ACCOUNT
             },
             onDismiss = { showNetworkPicker = false }
         )
