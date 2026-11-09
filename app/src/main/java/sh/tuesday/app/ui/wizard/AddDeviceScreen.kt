@@ -734,222 +734,207 @@ fun AddDeviceScreen(
                         lineHeight = 17.sp
                     )
 
-                    // Photo Capture Box
+                    // Photo Capture Components (Unboxed)
+                    if (capturedBitmaps.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(capturedBitmaps) { bmp ->
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "Captured Device",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(width = 140.dp, height = 95.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                )
+                            }
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = {
+                                val hasPerm = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasPerm) {
+                                    launchCameraWithUri()
+                                } else {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TuesdayTheme.HealthyGreen,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .uiAction("captureHardwarePhoto")
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Capture Photo",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+
+                        Button(
+                            onClick = { galleryLauncher.launch("image/*") },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = TuesdayTheme.ElevatedPill,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.uiAction("uploadHardwarePhoto")
+                        ) {
+                            Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+
+                    // Pre-capture Clues & Hardware Identifiers Input (Unboxed)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .uiSlot("photo-capture-card")
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                            .uiSlot("pre-capture-clues"),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (capturedBitmaps.isNotEmpty()) {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(capturedBitmaps) { bmp ->
-                                    Image(
-                                        bitmap = bmp.asImageBitmap(),
-                                        contentDescription = "Captured Device",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(width = 140.dp, height = 95.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                    )
-                                }
-                            }
-                        }
+                        Text(
+                            "OPTIONAL HARDWARE CLUES (BEFORE CAPTURE)",
+                            color = palette.textMuted,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(
-                                onClick = {
-                                    val hasPerm = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.CAMERA
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (hasPerm) {
-                                        launchCameraWithUri()
-                                    } else {
-                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = TuesdayTheme.HealthyGreen,
-                                    contentColor = Color.Black
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .uiAction("captureHardwarePhoto")
-                            ) {
-                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Capture Photo",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-
-                            Button(
-                                onClick = { galleryLauncher.launch("image/*") },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = TuesdayTheme.ElevatedPill,
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.uiAction("uploadHardwarePhoto")
-                            ) {
-                                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            }
-                        }
-
-                        // Pre-capture Clues & Hardware Identifiers Input
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("pre-capture-clues")
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(palette.elevated.copy(alpha = 0.5f))
-                                .border(1.dp, palette.border.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                "OPTIONAL HARDWARE CLUES (BEFORE CAPTURE)",
-                                color = palette.textMuted,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
-                            )
-
-                            // Active Clues Chips
-                            if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(userClueNotes) { note ->
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
-                                                .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = note,
-                                                    color = TuesdayTheme.HacsCyan,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                                Icon(
-                                                    Icons.Default.Close,
-                                                    contentDescription = "Remove clue",
-                                                    tint = TuesdayTheme.HacsCyan,
-                                                    modifier = Modifier
-                                                        .size(12.dp)
-                                                        .clickable {
-                                                            userClueNotes = userClueNotes - note
-                                                        }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Clue Type Chips
+                        // Active Clues Chips
+                        if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(DeviceClueType.entries) { clue ->
-                                    val isSelected = selectedClueType == clue
+                                items(userClueNotes) { note ->
                                     Box(
                                         modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(if (isSelected) TuesdayTheme.HacsCyan else TuesdayTheme.ElevatedPill)
-                                            .clickable { selectedClueType = clue }
-                                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
+                                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Text(
-                                            text = clue.rawValue,
-                                            color = if (isSelected) Color.Black else Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = note,
+                                                color = TuesdayTheme.HacsCyan,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove clue",
+                                                tint = TuesdayTheme.HacsCyan,
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .clickable {
+                                                        userClueNotes = userClueNotes - note
+                                                    }
+                                            )
+                                        }
                                     }
                                 }
                             }
+                        }
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = clueInputText,
-                                    onValueChange = { clueInputText = it },
-                                    placeholder = { Text(selectedClueType.placeholder, fontSize = 12.sp) },
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = TuesdayTheme.HacsCyan,
-                                        unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
+                        // Clue Type Chips
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(DeviceClueType.entries) { clue ->
+                                val isSelected = selectedClueType == clue
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) TuesdayTheme.HacsCyan else TuesdayTheme.ElevatedPill)
+                                        .clickable { selectedClueType = clue }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                    ) {
+                                    Text(
+                                        text = clue.rawValue,
+                                        color = if (isSelected) Color.Black else Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                )
-
-                                Button(
-                                    onClick = {
-                                        val trimmed = clueInputText.trim()
-                                        if (trimmed.isNotBlank()) {
-                                            when (selectedClueType) {
-                                                DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
-                                                DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
-                                                DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
-                                                DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
-                                                DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
-                                            }
-                                            userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
-                                            clueInputText = ""
-                                            if (capturedBitmaps.isNotEmpty()) {
-                                                scope.launch {
-                                                    isAnalyzing = true
-                                                    val res = discoveryService.analyzeDeviceProgressive(
-                                                        bitmaps = capturedBitmaps,
-                                                        accumulatedIdentifiers = accumulatedIdentifiers,
-                                                        userClueNotes = userClueNotes,
-                                                        aiProvider = hacsConfig.aiProvider,
-                                                        elastixApiKeyOverride = hacsConfig.elastixApiKey,
-                                                        elastixModelName = hacsConfig.elastixModel,
-                                                        apiKeyOverride = hacsConfig.geminiApiKey,
-                                                        modelName = hacsConfig.geminiModel,
-                                                        serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
-                                                        debugEnabled = showVisionDebug
-                                                    )
-                                                    accumulatedIdentifiers.merge(res.extractedIdentifiers)
-                                                    discoveryResult = res
-                                                    res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
-                                                        debugLogHistory = debugLogHistory + logEntry
-                                                    }
-                                                    isAnalyzing = false
-                                                }
-                                            }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.uiAction("addPreCaptureClue")
-                                ) {
-                                    Text("Add", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
 
-                        if (isDeveloperMode) {
-                            DevPresetsAndControlsRow(includePhotoSamples = true)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = clueInputText,
+                                onValueChange = { clueInputText = it },
+                                placeholder = { Text(selectedClueType.placeholder, fontSize = 12.sp) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = TuesdayTheme.HacsCyan,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f)
+                                )
+                            )
+
+                            Button(
+                                onClick = {
+                                    val trimmed = clueInputText.trim()
+                                    if (trimmed.isNotBlank()) {
+                                        when (selectedClueType) {
+                                            DeviceClueType.MODEL_NUMBER -> accumulatedIdentifiers.modelNumber = trimmed
+                                            DeviceClueType.MAC_ADDRESS -> accumulatedIdentifiers.macAddress = trimmed
+                                            DeviceClueType.SERIAL_NUMBER -> accumulatedIdentifiers.serialNumber = trimmed
+                                            DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
+                                            DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
+                                        }
+                                        userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
+                                        clueInputText = ""
+                                        if (capturedBitmaps.isNotEmpty()) {
+                                            scope.launch {
+                                                isAnalyzing = true
+                                                val res = discoveryService.analyzeDeviceProgressive(
+                                                    bitmaps = capturedBitmaps,
+                                                    accumulatedIdentifiers = accumulatedIdentifiers,
+                                                    userClueNotes = userClueNotes,
+                                                    aiProvider = hacsConfig.aiProvider,
+                                                    elastixApiKeyOverride = hacsConfig.elastixApiKey,
+                                                    elastixModelName = hacsConfig.elastixModel,
+                                                    apiKeyOverride = hacsConfig.geminiApiKey,
+                                                    modelName = hacsConfig.geminiModel,
+                                                    serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
+                                                    debugEnabled = showVisionDebug
+                                                )
+                                                accumulatedIdentifiers.merge(res.extractedIdentifiers)
+                                                discoveryResult = res
+                                                res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
+                                                    debugLogHistory = debugLogHistory + logEntry
+                                                }
+                                                isAnalyzing = false
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HacsCyan, contentColor = Color.Black),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.uiAction("addPreCaptureClue")
+                            ) {
+                                Text("Add", fontWeight = FontWeight.Bold)
+                            }
                         }
+                    }
+
+                    if (isDeveloperMode) {
+                        DevPresetsAndControlsRow(includePhotoSamples = true)
                     }
                 } else {
                     Text(
