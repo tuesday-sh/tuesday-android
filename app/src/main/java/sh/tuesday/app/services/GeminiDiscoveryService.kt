@@ -463,6 +463,8 @@ class GeminiDiscoveryService(private val context: Context) {
             recommendedClueTypes = if (recommendedClues.isEmpty()) DeviceClueType.entries.map { it.rawValue } else recommendedClues,
             extractedIdentifiers = merged,
             candidates = candidatesList,
+            multipleDevicesDetected = parsed.optBoolean("multipleDevicesDetected", false),
+            multiDeviceWarning = parsed.optString("multiDeviceWarning").takeIf { it.isNotBlank() && it != "null" },
             usedLiveGeminiApi = true,
             providerUsed = providerLabel,
             latencyMs = parsed.optLong("latencyMs", 0L),

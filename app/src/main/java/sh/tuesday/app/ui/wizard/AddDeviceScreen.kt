@@ -1061,6 +1061,39 @@ fun AddDeviceScreen(
                         }
                     }
 
+                    // Multi-Device Confidence Warning Banner
+                    if (result.multipleDevicesDetected || !result.multiDeviceWarning.isNullOrBlank()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .uiSlot("multi-device-warning-banner")
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(TuesdayTheme.WarningAmber.copy(alpha = 0.12f))
+                                .border(
+                                    1.dp,
+                                    TuesdayTheme.WarningAmber.copy(alpha = 0.45f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "⚠ MULTIPLE DEVICES IN PHOTO — LOWER CONFIDENCE",
+                                color = TuesdayTheme.WarningAmber,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = result.multiDeviceWarning
+                                    ?: "Multiple devices detected in this photo. Confidence can be lower when neighboring chassis appear in frame — for best results, snap a new photo framed around a single device.",
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 13.5.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
+                    }
+
                     // Candidate Cards
                     Text(
                         text = "CANDIDATE DEVICE MATCHES (${result.candidates.size})",

@@ -113,6 +113,8 @@ data class GeminiDiscoveryTurnResult(
     val recommendedClueTypes: List<String>,
     val extractedIdentifiers: ExtractedDeviceIdentifiers,
     val candidates: List<DeviceCandidateMatch>,
+    val multipleDevicesDetected: Boolean = false,
+    val multiDeviceWarning: String? = null,
     val usedLiveGeminiApi: Boolean = true,
     val providerUsed: String = "Elastix.ai FPGA (qwen3.8-27b)",
     val latencyMs: Long = 0,
