@@ -220,17 +220,10 @@ fun AddDeviceScreen(
         } else {
             cleaned
         }
-        val prefix = if (is2D) "QR Code" else "Barcode"
         if (is2D) {
             accumulatedIdentifiers.qrCode = normalized
-            scanStatusMessage = "✓ Decoded 2D QR/Matrix: $normalized"
         } else {
             accumulatedIdentifiers.barcode = normalized
-            scanStatusMessage = "✓ Decoded 1D Barcode: $normalized"
-        }
-        val entry = "$prefix=$normalized"
-        if (!userClueNotes.contains(entry)) {
-            userClueNotes = userClueNotes + entry
         }
         if (!scannedBarcodesList.contains(normalized)) {
             scannedBarcodesList = scannedBarcodesList + normalized
@@ -999,7 +992,6 @@ fun AddDeviceScreen(
                                     modifier = Modifier.clickable {
                                         capturedBitmaps = emptyList()
                                         scannedBarcodesList = emptyList()
-                                        scanStatusMessage = null
                                     }
                                 )
                             }
@@ -1088,16 +1080,6 @@ fun AddDeviceScreen(
                             }
                         }
                     }
-
-                    scanStatusMessage?.let { msg ->
-                        Text(
-                            text = msg,
-                            color = if (msg.startsWith("✓")) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
                 }
                 EnrollmentMode.MANUAL_AGENT -> {
                     OutlinedTextField(
@@ -1132,43 +1114,6 @@ fun AddDeviceScreen(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
                 )
-
-                // Active Clues Chips
-                if (userClueNotes.isNotEmpty() || accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(userClueNotes) { note ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(TuesdayTheme.HacsCyan.copy(alpha = 0.18f))
-                                    .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = note,
-                                        color = TuesdayTheme.HacsCyan,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Remove clue",
-                                        tint = TuesdayTheme.HacsCyan,
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .clickable {
-                                                userClueNotes = userClueNotes - note
-                                            }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
 
                 // Clue Type Chips
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1218,7 +1163,10 @@ fun AddDeviceScreen(
                                     DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
                                     DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
                                 }
-                                userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
+                                val entry = "${selectedClueType.rawValue}: $trimmed"
+                                if (!userClueNotes.contains(entry)) {
+                                    userClueNotes = userClueNotes + entry
+                                }
                                 clueInputText = ""
                             }
                         },
@@ -1227,6 +1175,81 @@ fun AddDeviceScreen(
                         modifier = Modifier.uiAction("addClue")
                     ) {
                         Text("Add", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Typed-in Clues List View Under Input UI
+                if (userClueNotes.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                            .padding(vertical = 4.dp)
+                    ) {
+                        userClueNotes.forEachIndexed { idx, note ->
+                            if (idx > 0) {
+                                HorizontalDivider(
+                                    thickness = 0.5.dp,
+                                    color = palette.border.copy(alpha = 0.5f),
+                                    modifier = Modifier.padding(horizontal = 12.dp)
+                                )
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Tag,
+                                        contentDescription = null,
+                                        tint = TuesdayTheme.HacsCyan,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    val parts = note.split(": ", limit = 2)
+                                    if (parts.size == 2) {
+                                        Text(
+                                            text = parts[0].uppercase(),
+                                            color = TuesdayTheme.HacsCyan,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        Text(
+                                            text = parts[1],
+                                            color = palette.textPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    } else {
+                                        Text(
+                                            text = note,
+                                            color = palette.textPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove clue",
+                                    tint = palette.textMuted,
+                                    modifier = Modifier
+                                        .size(15.dp)
+                                        .clickable {
+                                            userClueNotes = userClueNotes - note
+                                        }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1249,7 +1272,10 @@ fun AddDeviceScreen(
                                 DeviceClueType.BARCODE -> accumulatedIdentifiers.barcode = trimmed
                                 DeviceClueType.QR_CODE -> accumulatedIdentifiers.qrCode = trimmed
                             }
-                            userClueNotes = userClueNotes + "${selectedClueType.rawValue}=$trimmed"
+                            val entry = "${selectedClueType.rawValue}: $trimmed"
+                            if (!userClueNotes.contains(entry)) {
+                                userClueNotes = userClueNotes + entry
+                            }
                             clueInputText = ""
                         }
 
