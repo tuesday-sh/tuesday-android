@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +78,7 @@ fun AddDeviceScreen(
     val palette = TuesdayTheme.paletteFor(brandFlavor)
     val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
     val context = LocalContext.current
+    val view = LocalView.current
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
@@ -84,6 +86,14 @@ fun AddDeviceScreen(
     var currentSessionId by remember { mutableStateOf(discoveryService.startNewSession()) }
     var capturedBitmaps by remember { mutableStateOf(listOf<Bitmap>()) }
     var isAnalyzing by remember { mutableStateOf(false) }
+
+    // Keep the screen awake while vision analysis is in flight so Android does not freeze the process and abort the socket
+    DisposableEffect(isAnalyzing) {
+        view.keepScreenOn = isAnalyzing
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
     var discoveryResult by remember { mutableStateOf<GeminiDiscoveryTurnResult?>(null) }
     var accumulatedIdentifiers by remember { mutableStateOf(ExtractedDeviceIdentifiers()) }
     var userClueNotes by remember { mutableStateOf(listOf<String>()) }

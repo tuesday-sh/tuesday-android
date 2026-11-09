@@ -70,7 +70,7 @@ object GoldenCorpusRecorder {
                     runCatching { prettyJson.decodeFromString<GoldenCorpusManifest>(f.readText()) }.getOrNull()
                 } else null
             }
-            ?.filter { it.captureSource != "synthetic_sample" }
+            ?.filter { it.captureSource != "synthetic_sample" && it.confirmedModelNumber != "Retry Vision Analysis" }
             ?.sortedByDescending { it.capturedAtEpochMs }
             ?.take(limit)
             ?: emptyList()
@@ -150,8 +150,8 @@ object GoldenCorpusRecorder {
         confirmedCandidate: DeviceCandidateMatch? = null,
         confirmedModelOverride: String? = null
     ): File? = withContext(Dispatchers.IO) {
-        // Never pollute the real Golden Corpus or MediaStore with synthetic Canvas-drawn test cards
-        if (captureSource == "synthetic_sample") {
+        // Never pollute the real Golden Corpus with synthetic test cards, offline errors, or duplicate corpus_replay runs
+        if (captureSource == "synthetic_sample" || captureSource == "corpus_replay" || !result.usedLiveGeminiApi) {
             return@withContext null
         }
 

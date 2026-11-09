@@ -106,74 +106,87 @@ class GeminiDiscoveryService(private val context: Context) {
         sessionId: String,
         accumulatedIdentifiers: ExtractedDeviceIdentifiers
     ): GeminiDiscoveryTurnResult? {
-        return try {
-            val baseUrl = serverBaseUrl.trimEnd('/')
-            val request = Request.Builder()
-                .url("$baseUrl/api/v1/discovery/sessions?session_id=$sessionId&limit=1")
-                .addHeader("Accept", "application/json")
-                .addHeader("X-Tuesday-Device-ID", persistentDeviceId)
-                .addHeader("X-Tuesday-Client-Platform", "android")
-                .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
-                .get()
-                .build()
+        val baseUrl = serverBaseUrl.trimEnd('/')
+        // Poll up to 6 times (every 2s = up to 12s) in case the server is still finishing Gemini escalation when the app unfreezes
+        for (attempt in 1..6) {
+            try {
+                val request = Request.Builder()
+                    .url("$baseUrl/api/v1/discovery/sessions?session_id=$sessionId&limit=1")
+                    .addHeader("Accept", "application/json")
+                    .addHeader("X-Tuesday-Device-ID", persistentDeviceId)
+                    .addHeader("X-Tuesday-Client-Platform", "android")
+                    .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
+                    .get()
+                    .build()
 
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return null
-                val body = resp.body?.string() ?: return null
-                val root = JSONObject(body)
-                val sessions = root.optJSONArray("sessions") ?: return null
-                if (sessions.length() == 0) return null
-                val sess = sessions.getJSONObject(0)
-                val turns = sess.optJSONArray("turns") ?: return null
-                if (turns.length() == 0) return null
-                val lastTurn = turns.getJSONObject(turns.length() - 1)
-                val candArr = lastTurn.optJSONArray("candidates") ?: return null
-                if (candArr.length() == 0) return null
+                client.newCall(request).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            val root = JSONObject(body)
+                            val sessions = root.optJSONArray("sessions")
+                            if (sessions != null && sessions.length() > 0) {
+                                val sess = sessions.getJSONObject(0)
+                                val turns = sess.optJSONArray("turns")
+                                if (turns != null && turns.length() > 0) {
+                                    val lastTurn = turns.getJSONObject(turns.length() - 1)
+                                    val candArr = lastTurn.optJSONArray("candidates")
+                                    if (candArr != null && candArr.length() > 0) {
+                                        val cands = mutableListOf<DeviceCandidateMatch>()
+                                        for (i in 0 until candArr.length()) {
+                                            val c = candArr.getJSONObject(i)
+                                            val gaStatus = c.optString("goldAlignmentStatus", "UNALIGNED RAW MATCH")
+                                            val aligned = gaStatus == "GOLD ALIGNED"
+                                            cands.add(
+                                                DeviceCandidateMatch(
+                                                    manufacturer = c.optString("manufacturer", "Unknown Vendor"),
+                                                    modelNumber = c.optString("modelNumber", "Unidentified Hardware"),
+                                                    displayName = c.optString("displayName", "${c.optString("manufacturer")} ${c.optString("modelNumber")}"),
+                                                    deviceCategory = c.optString("deviceCategory", "Network Hardware"),
+                                                    confidencePercent = c.optInt("confidencePercent", 50),
+                                                    reasoning = "Recovered from Tuesday Server session after background socket interruption.",
+                                                    suggestedHostname = c.optString("modelNumber", "device").lowercase().replace(Regex("[^a-z0-9]+"), "-"),
+                                                    suggestedOsDetails = "Linux / Firmware",
+                                                    suggestedPackageManager = "firmware",
+                                                    goldAlignment = GoldAlignmentInfo(
+                                                        aligned = aligned,
+                                                        matchedFeedSlug = c.optString("matchedFeedSlug").takeIf { it.isNotBlank() && it != "null" },
+                                                        inferredPurl = c.optString("inferredPurl", ""),
+                                                        statusLabel = gaStatus,
+                                                        diagnosticNote = "Recovered from server session $sessionId"
+                                                    )
+                                                )
+                                            )
+                                        }
 
-                val cands = mutableListOf<DeviceCandidateMatch>()
-                for (i in 0 until candArr.length()) {
-                    val c = candArr.getJSONObject(i)
-                    val gaStatus = c.optString("goldAlignmentStatus", "UNALIGNED RAW MATCH")
-                    val aligned = gaStatus == "GOLD ALIGNED"
-                    cands.add(
-                        DeviceCandidateMatch(
-                            manufacturer = c.optString("manufacturer", "Unknown Vendor"),
-                            modelNumber = c.optString("modelNumber", "Unidentified Hardware"),
-                            displayName = c.optString("displayName", "${c.optString("manufacturer")} ${c.optString("modelNumber")}"),
-                            deviceCategory = c.optString("deviceCategory", "Network Hardware"),
-                            confidencePercent = c.optInt("confidencePercent", 50),
-                            reasoning = "Recovered from Tuesday Server session after background socket interruption.",
-                            suggestedHostname = c.optString("modelNumber", "device").lowercase().replace(Regex("[^a-z0-9]+"), "-"),
-                            suggestedOsDetails = "Linux / Firmware",
-                            suggestedPackageManager = "firmware",
-                            goldAlignment = GoldAlignmentInfo(
-                                aligned = aligned,
-                                matchedFeedSlug = c.optString("matchedFeedSlug").takeIf { it.isNotBlank() && it != "null" },
-                                inferredPurl = c.optString("inferredPurl", ""),
-                                statusLabel = gaStatus,
-                                diagnosticNote = "Recovered from server session $sessionId"
-                            )
-                        )
-                    )
+                                        val provider = lastTurn.optString("provider", "Elastix")
+                                        val model = lastTurn.optString("model", "qwen3.8-27b")
+                                        val latSec = String.format("%.2fs", lastTurn.optLong("latencyMs", 0L) / 1000.0)
+                                        return GeminiDiscoveryTurnResult(
+                                            visualSummary = "Recovered server analysis for ${cands.first().manufacturer} ${cands.first().modelNumber} (socket interrupted while app was backgrounded).",
+                                            nextNarrowingQuestion = lastTurn.optString("nextNarrowingQuestion", "Can you check for a Barcode, Serial Number, Model, or MAC Address on the label?"),
+                                            recommendedClueTypes = DeviceClueType.entries.map { it.rawValue },
+                                            extractedIdentifiers = accumulatedIdentifiers,
+                                            candidates = cands,
+                                            usedLiveGeminiApi = true,
+                                            providerUsed = "Tuesday Server → $provider ($model • $latSec • Recovered)",
+                                            latencyMs = lastTurn.optLong("latencyMs", 0L)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-
-                val provider = lastTurn.optString("provider", "Elastix")
-                val model = lastTurn.optString("model", "qwen3.8-27b")
-                val latSec = String.format("%.2fs", lastTurn.optLong("latencyMs", 0L) / 1000.0)
-                GeminiDiscoveryTurnResult(
-                    visualSummary = "Recovered server analysis for ${cands.first().manufacturer} ${cands.first().modelNumber} (socket interrupted while app was backgrounded).",
-                    nextNarrowingQuestion = lastTurn.optString("nextNarrowingQuestion", "Can you check for a Barcode, Serial Number, Model, or MAC Address on the label?"),
-                    recommendedClueTypes = DeviceClueType.entries.map { it.rawValue },
-                    extractedIdentifiers = accumulatedIdentifiers,
-                    candidates = cands,
-                    usedLiveGeminiApi = true,
-                    providerUsed = "Tuesday Server → $provider ($model • $latSec • Recovered)",
-                    latencyMs = lastTurn.optLong("latencyMs", 0L)
-                )
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
-            null
+            try {
+                Thread.sleep(2000)
+            } catch (_: InterruptedException) {
+                break
+            }
         }
+        return null
     }
 
     suspend fun confirmDeviceDiscovery(
