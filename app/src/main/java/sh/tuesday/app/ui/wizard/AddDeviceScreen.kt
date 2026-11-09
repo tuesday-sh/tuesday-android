@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -318,6 +319,9 @@ fun AddDeviceScreen(
         val debugActiveColor = if (showVisionDebug) TuesdayTheme.WarningAmber else palette.textMuted
         val highlightBorderColor = TuesdayTheme.WarningAmber
 
+        var showReplayMenu by remember { mutableStateOf(false) }
+        var showSynthMenu by remember { mutableStateOf(false) }
+
         // Left-side highlight card container for dev controls
         Column(
             modifier = Modifier
@@ -340,7 +344,7 @@ fun AddDeviceScreen(
                     )
                 }
                 .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -361,26 +365,17 @@ fun AddDeviceScreen(
                     letterSpacing = 0.5.sp
                 )
             }
+
+            // Row 1: Pickers (Replay... and Synthesize...)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (includePhotoSamples) {
-                    // 1-Tap Replay Chips for Real Photos Saved in Golden Corpus
-                    savedManifests.forEach { manifest ->
-                        val label = manifest.confirmedModelNumber ?: manifest.confirmedManufacturer ?: "Saved Photo"
+                    // Replay... Picker Button
+                    Box {
                         Surface(
-                            onClick = {
-                                val loaded = GoldenCorpusRecorder.loadSessionBitmaps(context, manifest.sessionId)
-                                if (loaded.isNotEmpty()) {
-                                    currentSessionId = discoveryService.startNewSession()
-                                    currentCaptureSource = "corpus_replay"
-                                    capturedBitmaps = loaded.dropLast(1)
-                                    accumulatedIdentifiers = ExtractedDeviceIdentifiers()
-                                    userClueNotes = emptyList()
-                                    triggerProgressiveAnalysis(loaded.last(), captureSource = "corpus_replay")
-                                }
-                            },
+                            onClick = { showReplayMenu = true },
                             shape = RoundedCornerShape(6.dp),
                             color = TuesdayTheme.HealthyGreen.copy(alpha = 0.16f),
                             modifier = Modifier.border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
@@ -390,50 +385,117 @@ fun AddDeviceScreen(
                                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(12.dp))
-                                Text("Replay: $label", color = TuesdayTheme.HealthyGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(13.dp))
+                                Text("Replay...", color = TuesdayTheme.HealthyGreen, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(15.dp))
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showReplayMenu,
+                            onDismissRequest = { showReplayMenu = false },
+                            modifier = Modifier.background(palette.elevated)
+                        ) {
+                            if (savedManifests.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No saved photo manifests", color = palette.textMuted, fontSize = 12.sp) },
+                                    onClick = { showReplayMenu = false }
+                                )
+                            } else {
+                                savedManifests.forEach { manifest ->
+                                    val label = manifest.confirmedModelNumber ?: manifest.confirmedManufacturer ?: "Saved Photo"
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(14.dp))
+                                                Column {
+                                                    Text(label, color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                                    Text(manifest.sessionId.take(16), color = palette.textMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            showReplayMenu = false
+                                            val loaded = GoldenCorpusRecorder.loadSessionBitmaps(context, manifest.sessionId)
+                                            if (loaded.isNotEmpty()) {
+                                                currentSessionId = discoveryService.startNewSession()
+                                                currentCaptureSource = "corpus_replay"
+                                                capturedBitmaps = loaded.dropLast(1)
+                                                accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+                                                userClueNotes = emptyList()
+                                                triggerProgressiveAnalysis(loaded.last(), captureSource = "corpus_replay")
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
 
-                    Surface(
-                        onClick = {
-                            currentCaptureSource = "synthetic_sample"
-                            val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
-                            capturedBitmaps = capturedBitmaps + sample
-                            triggerIdentifierOnlyAnalysis()
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                    // Synthesize... Picker Button
+                    Box {
+                        Surface(
+                            onClick = { showSynthMenu = true },
+                            shape = RoundedCornerShape(6.dp),
+                            color = TuesdayTheme.HacsCyan.copy(alpha = 0.15f),
+                            modifier = Modifier.border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                         ) {
-                            Icon(Icons.Default.Router, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(12.dp))
-                            Text("Synth Router", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(13.dp))
+                                Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(15.dp))
+                            }
                         }
-                    }
 
-                    Surface(
-                        onClick = {
-                            currentCaptureSource = "synthetic_sample"
-                            val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
-                            capturedBitmaps = capturedBitmaps + sample
-                            userClueNotes = userClueNotes + "Zigbee coordinator antenna"
-                            triggerIdentifierOnlyAnalysis()
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = TuesdayTheme.WarningAmber.copy(alpha = 0.15f)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        DropdownMenu(
+                            expanded = showSynthMenu,
+                            onDismissRequest = { showSynthMenu = false },
+                            modifier = Modifier.background(palette.elevated)
                         ) {
-                            Icon(Icons.Default.Sensors, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(12.dp))
-                            Text("Synth IoT", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Router, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
+                                        Text("Synth Router", color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                },
+                                onClick = {
+                                    showSynthMenu = false
+                                    currentCaptureSource = "synthetic_sample"
+                                    val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
+                                    capturedBitmaps = capturedBitmaps + sample
+                                    triggerIdentifierOnlyAnalysis()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Sensors, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(14.dp))
+                                        Text("Synth IoT", color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                },
+                                onClick = {
+                                    showSynthMenu = false
+                                    currentCaptureSource = "synthetic_sample"
+                                    val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
+                                    capturedBitmaps = capturedBitmaps + sample
+                                    userClueNotes = userClueNotes + "Zigbee coordinator antenna"
+                                    triggerIdentifierOnlyAnalysis()
+                                }
+                            )
                         }
                     }
                 } else {
@@ -471,71 +533,92 @@ fun AddDeviceScreen(
                         }
                     }
                 }
+            }
 
-                // Debug Mode Toggle Pill
-                Surface(
-                    onClick = {
+            // Hairline separator between pickers and toggles
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(palette.border.copy(alpha = 0.5f))
+            )
+
+            // Row 2: Actual Toggle Switches for Debug Mode and AI Provider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Debug Mode Switch
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.clickable {
                         if (!isDeveloperMode) {
                             repository.toggleDeveloperMode(true)
                             repository.toggleVisionDebugMode(true)
                         } else {
                             repository.toggleVisionDebugMode(!isVisionDebugEnabled)
                         }
-                    },
-                    shape = RoundedCornerShape(6.dp),
-                    color = debugActiveColor.copy(alpha = if (showVisionDebug) 0.16f else 0.08f),
-                    modifier = Modifier
-                        .uiAction("toggleVisionDebugMode")
-                        .border(1.dp, debugActiveColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = if (showVisionDebug) "🐞 DEBUG ON" else "🐞 DEBUG",
-                            color = debugActiveColor,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1
-                        )
                     }
+                ) {
+                    Switch(
+                        checked = showVisionDebug,
+                        onCheckedChange = { checked ->
+                            if (!isDeveloperMode) {
+                                repository.toggleDeveloperMode(true)
+                            }
+                            repository.toggleVisionDebugMode(checked)
+                        },
+                        modifier = Modifier
+                            .scale(0.8f)
+                            .uiAction("toggleVisionDebugMode"),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TuesdayTheme.WarningAmber,
+                            checkedTrackColor = TuesdayTheme.WarningAmber.copy(alpha = 0.35f),
+                            uncheckedThumbColor = palette.textMuted,
+                            uncheckedTrackColor = palette.surface
+                        )
+                    )
+                    Text(
+                        text = "Debug Mode",
+                        color = if (showVisionDebug) TuesdayTheme.WarningAmber else palette.textMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
 
-                // AI Model Switcher Pill
-                Surface(
-                    onClick = {
+                // AI Provider Switch (Gemini vs Elastix)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.clickable {
                         val nextProvider = if (isElastix) AiProviderType.GEMINI else AiProviderType.ELASTIX
                         repository.updateHacsConfig(hacsConfig.copy(aiProvider = nextProvider))
-                    },
-                    shape = RoundedCornerShape(6.dp),
-                    color = activeAiColor.copy(alpha = 0.14f),
-                    modifier = Modifier
-                        .uiAction("switchAiProvider")
-                        .border(1.dp, activeAiColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(activeAiColor)
-                        )
-                        Text(
-                            text = if (isElastix) "AI: Elastix ⇄" else "AI: Gemini ⇄",
-                            color = activeAiColor,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1
-                        )
                     }
+                ) {
+                    Text(
+                        text = if (isElastix) "AI: Elastix" else "AI: Gemini",
+                        color = activeAiColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Switch(
+                        checked = isElastix,
+                        onCheckedChange = { checked ->
+                            val nextProvider = if (checked) AiProviderType.ELASTIX else AiProviderType.GEMINI
+                            repository.updateHacsConfig(hacsConfig.copy(aiProvider = nextProvider))
+                        },
+                        modifier = Modifier
+                            .scale(0.8f)
+                            .uiAction("switchAiProvider"),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TuesdayTheme.HealthyGreen,
+                            checkedTrackColor = TuesdayTheme.HealthyGreen.copy(alpha = 0.35f),
+                            uncheckedThumbColor = TuesdayTheme.LedUpdateBlue,
+                            uncheckedTrackColor = TuesdayTheme.LedUpdateBlue.copy(alpha = 0.35f)
+                        )
+                    )
                 }
             }
         }
