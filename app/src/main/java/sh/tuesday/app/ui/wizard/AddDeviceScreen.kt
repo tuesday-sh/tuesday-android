@@ -90,7 +90,9 @@ fun AddDeviceScreen(
     var selectedClueType by remember { mutableStateOf(DeviceClueType.MODEL_NUMBER) }
     var clueInputText by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+    var currentCaptureSource by remember { mutableStateOf("camera") }
     var savedCorpusCount by remember { mutableStateOf(GoldenCorpusRecorder.getSavedSessionCount(context)) }
+    var savedManifests by remember { mutableStateOf(GoldenCorpusRecorder.listSavedManifests(context)) }
     var lastSavedCorpusFolder by remember { mutableStateOf<String?>(null) }
     var debugLogHistory by remember { mutableStateOf(listOf<String>()) }
     var copyLogFeedback by remember { mutableStateOf<String?>(null) }
@@ -121,7 +123,8 @@ fun AddDeviceScreen(
         }
     }
 
-    fun triggerProgressiveAnalysis(newBmp: Bitmap) {
+    fun triggerProgressiveAnalysis(newBmp: Bitmap, captureSource: String = "camera") {
+        currentCaptureSource = captureSource
         val updatedBitmaps = capturedBitmaps + newBmp
         capturedBitmaps = updatedBitmaps
         scope.launch {
@@ -150,10 +153,12 @@ fun AddDeviceScreen(
                 result = res,
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = userClueNotes,
-                status = "auto_tagged"
+                status = "auto_tagged",
+                captureSource = currentCaptureSource
             )
-            lastSavedCorpusFolder = savedDir.name
+            lastSavedCorpusFolder = savedDir?.name
             savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+            savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
             isAnalyzing = false
         }
     }
@@ -219,12 +224,12 @@ fun AddDeviceScreen(
                     applyDecodedBarcode(first.rawValue!!, first.format)
                 } else {
                     scanStatusMessage = "⚠ No 1D/2D barcode matrix detected in file — falling back to Vision OCR"
-                    triggerProgressiveAnalysis(bmp)
+                    triggerProgressiveAnalysis(bmp, captureSource = "gallery")
                 }
             }
             .addOnFailureListener { e ->
                 scanStatusMessage = "⚠ ML Kit decode error (${e.localizedMessage}) — falling back to Vision OCR"
-                triggerProgressiveAnalysis(bmp)
+                triggerProgressiveAnalysis(bmp, captureSource = "gallery")
             }
     }
 
@@ -247,7 +252,7 @@ fun AddDeviceScreen(
         if (uri != null) {
             val bmp = decodeUriToSoftwareBitmap(uri)
             if (bmp != null) {
-                triggerProgressiveAnalysis(bmp)
+                triggerProgressiveAnalysis(bmp, captureSource = "gallery")
             }
         }
     }
@@ -268,7 +273,7 @@ fun AddDeviceScreen(
         if (success && uri != null) {
             val bmp = decodeUriToSoftwareBitmap(uri)
             if (bmp != null) {
-                triggerProgressiveAnalysis(bmp)
+                triggerProgressiveAnalysis(bmp, captureSource = "camera")
             }
         }
     }
@@ -312,8 +317,39 @@ fun AddDeviceScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (includePhotoSamples) {
+                    // 1-Tap Replay Chips for Real Photos Saved in Golden Corpus
+                    savedManifests.forEach { manifest ->
+                        val label = manifest.confirmedModelNumber ?: manifest.confirmedManufacturer ?: "Saved Photo"
+                        Surface(
+                            onClick = {
+                                val loaded = GoldenCorpusRecorder.loadSessionBitmaps(context, manifest.sessionId)
+                                if (loaded.isNotEmpty()) {
+                                    currentSessionId = discoveryService.startNewSession()
+                                    currentCaptureSource = "corpus_replay"
+                                    capturedBitmaps = loaded.dropLast(1)
+                                    accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+                                    userClueNotes = emptyList()
+                                    triggerProgressiveAnalysis(loaded.last(), captureSource = "corpus_replay")
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = TuesdayTheme.HealthyGreen.copy(alpha = 0.16f),
+                            modifier = Modifier.border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(12.dp))
+                                Text("Replay: $label", color = TuesdayTheme.HealthyGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
                     Surface(
                         onClick = {
+                            currentCaptureSource = "synthetic_sample"
                             val sample = GeminiDiscoveryService.createSampleHardwareBitmap("router")
                             capturedBitmaps = capturedBitmaps + sample
                             triggerIdentifierOnlyAnalysis()
@@ -327,12 +363,13 @@ fun AddDeviceScreen(
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                         ) {
                             Icon(Icons.Default.Router, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(12.dp))
-                            Text("Sample Router", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Synth Router", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
 
                     Surface(
                         onClick = {
+                            currentCaptureSource = "synthetic_sample"
                             val sample = GeminiDiscoveryService.createSampleHardwareBitmap("iot-zigbee")
                             capturedBitmaps = capturedBitmaps + sample
                             userClueNotes = userClueNotes + "Zigbee coordinator antenna"
@@ -347,7 +384,7 @@ fun AddDeviceScreen(
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                         ) {
                             Icon(Icons.Default.Sensors, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(12.dp))
-                            Text("Sample IoT", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Synth IoT", color = TuesdayTheme.WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 } else {
@@ -784,14 +821,22 @@ fun AddDeviceScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "📦 GOLDEN CORPUS AUTO-SAVED ($savedCorpusCount TOTAL)",
-                                    color = TuesdayTheme.HealthyGreen,
+                                    text = if (currentCaptureSource == "synthetic_sample") {
+                                        "🧪 SYNTHETIC SAMPLE (NOT SAVED TO CORPUS)"
+                                    } else {
+                                        "📦 GOLDEN CORPUS AUTO-SAVED ($savedCorpusCount TOTAL)"
+                                    },
+                                    color = if (currentCaptureSource == "synthetic_sample") TuesdayTheme.WarningAmber else TuesdayTheme.HealthyGreen,
                                     fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = lastSavedCorpusFolder ?: "Saved to /sdcard/.../golden_corpus/",
+                                    text = if (currentCaptureSource == "synthetic_sample") {
+                                        "Canvas test graphic — excluded from real photo corpus"
+                                    } else {
+                                        lastSavedCorpusFolder ?: "Saved to /sdcard/.../golden_corpus/"
+                                    },
                                     color = Color.White.copy(alpha = 0.7f),
                                     fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace
@@ -984,10 +1029,12 @@ fun AddDeviceScreen(
                                                         result = res,
                                                         accumulatedIdentifiers = accumulatedIdentifiers,
                                                         userClueNotes = userClueNotes,
-                                                        status = "refined_clues"
+                                                        status = "refined_clues",
+                                                        captureSource = currentCaptureSource
                                                     )
-                                                    lastSavedCorpusFolder = savedDir.name
+                                                    lastSavedCorpusFolder = savedDir?.name
                                                     savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                                    savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
                                                 }
                                                 isAnalyzing = false
                                             }
@@ -1110,10 +1157,12 @@ fun AddDeviceScreen(
                                                 accumulatedIdentifiers = accumulatedIdentifiers,
                                                 userClueNotes = userClueNotes,
                                                 status = "user_confirmed",
+                                                captureSource = currentCaptureSource,
                                                 confirmedCandidate = candidate,
                                                 confirmedModelOverride = resolvedModel
                                             )
                                             savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                            savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
                                         }
                                         val meta = DiscoveredDeviceMetadata(
                                             manufacturer = candidate.manufacturer,
@@ -1135,8 +1184,8 @@ fun AddDeviceScreen(
                                             userClueNotes = userClueNotes,
                                             selectedCandidateRank = index,
                                             resolutionStatus = if (mode == EnrollmentMode.BARCODE_SCAN && capturedBitmaps.isNotEmpty()) "pivoted_to_barcode" else "confirmed_candidate",
-                                            initialMode = "photo_wizard",
-                                            finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else "photo_wizard",
+                                            initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
+                                            finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
                                             candidateModels = result.candidates.map { it.modelNumber },
                                             serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
                                         )
@@ -1210,7 +1259,8 @@ fun AddDeviceScreen(
                                         accumulatedIdentifiers = accumulatedIdentifiers,
                                         userClueNotes = userClueNotes,
                                         confirmedCandidate = bestGuess,
-                                        status = "saved_best_guess"
+                                        status = "saved_best_guess",
+                                        captureSource = currentCaptureSource
                                     )
                                     discoveryService.confirmDeviceDiscovery(
                                         inferredVendor = bestGuess?.manufacturer,
@@ -1222,8 +1272,8 @@ fun AddDeviceScreen(
                                         userClueNotes = userClueNotes,
                                         selectedCandidateRank = null,
                                         resolutionStatus = "saved_best_guess",
-                                        initialMode = "photo_wizard",
-                                        finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else "photo_wizard",
+                                        initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
+                                        finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
                                         candidateModels = result.candidates.map { it.modelNumber },
                                         serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
                                     )
@@ -1472,7 +1522,8 @@ fun AddDeviceScreen(
                                     accumulatedIdentifiers = accumulatedIdentifiers,
                                     userClueNotes = userClueNotes + listOf("ManualHost=$host", "ManualOS=$cleanOs"),
                                     confirmedCandidate = topCand,
-                                    status = "pivoted_to_manual"
+                                    status = "pivoted_to_manual",
+                                    captureSource = currentCaptureSource
                                 )
                             }
                             discoveryService.confirmDeviceDiscovery(

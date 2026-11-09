@@ -3,6 +3,7 @@ package sh.tuesday.app.services
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -26,7 +27,8 @@ data class GoldenCorpusManifest(
     val capturedAtEpochMs: Long,
     val capturedAtIso: String,
     val providerUsed: String,
-    val status: String, // "auto_tagged" | "user_confirmed" | "best_guess"
+    val status: String, // "auto_tagged" | "user_confirmed" | "saved_best_guess" | "pivoted_to_manual"
+    val captureSource: String = "camera", // "camera" | "gallery" | "corpus_replay"
     val confirmedManufacturer: String? = null,
     val confirmedModelNumber: String? = null,
     val confirmedCategory: String? = null,
@@ -56,6 +58,37 @@ object GoldenCorpusRecorder {
     fun getSavedSessionCount(context: Context): Int {
         val root = getCorpusRootDir(context)
         return root.listFiles()?.count { it.isDirectory && File(it, "capture_manifest.json").exists() } ?: 0
+    }
+
+    fun listSavedManifests(context: Context, limit: Int = 6): List<GoldenCorpusManifest> {
+        val root = getCorpusRootDir(context)
+        return root.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { dir ->
+                val f = File(dir, "capture_manifest.json")
+                if (f.exists()) {
+                    runCatching { prettyJson.decodeFromString<GoldenCorpusManifest>(f.readText()) }.getOrNull()
+                } else null
+            }
+            ?.filter { it.captureSource != "synthetic_sample" }
+            ?.sortedByDescending { it.capturedAtEpochMs }
+            ?.take(limit)
+            ?: emptyList()
+    }
+
+    fun loadSessionBitmaps(context: Context, sessionId: String): List<Bitmap> {
+        val root = getCorpusRootDir(context)
+        val dir = root.listFiles()?.firstOrNull { it.isDirectory && it.name.startsWith("${sessionId}_") } ?: return emptyList()
+        return dir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("photo_") && it.name.endsWith(".jpg") }
+            ?.sortedBy { it.name }
+            ?.mapNotNull { file ->
+                runCatching {
+                    val opts = BitmapFactory.Options().apply { inMutable = true }
+                    BitmapFactory.decodeFile(file.absolutePath, opts)
+                }.getOrNull()
+            }
+            ?: emptyList()
     }
 
     suspend fun deleteCaptureSession(
@@ -113,9 +146,15 @@ object GoldenCorpusRecorder {
         accumulatedIdentifiers: ExtractedDeviceIdentifiers,
         userClueNotes: List<String>,
         status: String = "auto_tagged",
+        captureSource: String = "camera",
         confirmedCandidate: DeviceCandidateMatch? = null,
         confirmedModelOverride: String? = null
-    ): File = withContext(Dispatchers.IO) {
+    ): File? = withContext(Dispatchers.IO) {
+        // Never pollute the real Golden Corpus or MediaStore with synthetic Canvas-drawn test cards
+        if (captureSource == "synthetic_sample") {
+            return@withContext null
+        }
+
         val root = getCorpusRootDir(context)
         val topCandidate = confirmedCandidate ?: result.candidates.firstOrNull()
         val rawSlug = (confirmedModelOverride ?: topCandidate?.modelNumber ?: "hardware")
@@ -142,8 +181,8 @@ object GoldenCorpusRecorder {
             }
             photoNames.add(fileName)
 
-            // Also publish newly captured frames to Pictures/Tuesday so they appear in the native Android Library picker
-            if (isNewFile) {
+            // Only publish newly captured camera frames to Pictures/Tuesday (avoid duplicating gallery uploads or corpus replays)
+            if (isNewFile && captureSource == "camera") {
                 exportToSystemMediaLibrary(context, bmp, "tuesday_${sessionId}_${idx + 1}.jpg")
             }
         }
@@ -156,6 +195,7 @@ object GoldenCorpusRecorder {
             capturedAtIso = isoFmt.format(Date(now)),
             providerUsed = result.providerUsed,
             status = status,
+            captureSource = captureSource,
             confirmedManufacturer = topCandidate?.manufacturer,
             confirmedModelNumber = confirmedModelOverride ?: topCandidate?.modelNumber,
             confirmedCategory = topCandidate?.deviceCategory,
