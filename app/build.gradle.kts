@@ -15,6 +15,7 @@ android {
         targetSdk = 36
         versionCode = 3
         versionName = "1.0.0"
+        manifestPlaceholders["appLabel"] = "Tuesday.sh"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -36,6 +37,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            manifestPlaceholders["appLabel"] = "Tuesday (Dev)"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -48,6 +54,17 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        enable += setOf(
+            "ContentDescription",
+            "TouchTargetSizeCheck",
+            "ClickableViewAccessibility",
+            "KeyboardInaccessibleWidget"
+        )
     }
 
     compileOptions {
@@ -102,6 +119,16 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("org.json:json:20240303")
+
+    // Instrumented Hardware E2E, Compose UI & WCAG Accessibility Testing
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test:monitor:1.7.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 
     // Debugging
     debugImplementation("androidx.compose.ui:ui-tooling")

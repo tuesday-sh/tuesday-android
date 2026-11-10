@@ -1,5 +1,7 @@
 package sh.tuesday.app.navigation
 
+import sh.tuesday.app.models.AppBrandFlavor
+
 sealed interface DeepLinkDestination {
     data class Tab(val tab: String) : DeepLinkDestination
     data class Device(val deviceId: String) : DeepLinkDestination
@@ -15,6 +17,7 @@ sealed interface DeepLinkDestination {
     data object ReferenceGuide : DeepLinkDestination
     data class SeedFleet(val count: Int) : DeepLinkDestination
     data object ToggleFlavor : DeepLinkDestination
+    data class SetFlavor(val flavor: AppBrandFlavor) : DeepLinkDestination
     data object ResetDemo : DeepLinkDestination
     data class VisionDebug(val enabled: Boolean, val openWizard: Boolean = true) : DeepLinkDestination
     data class SetApiEndpoint(val url: String) : DeepLinkDestination
@@ -89,7 +92,14 @@ sealed interface DeepLinkDestination {
                 "hacs", "hacs-settings" -> HacsSettings
                 "network-picker", "networks", "sites" -> NetworkPicker
                 "reference-guide", "reference", "standards" -> ReferenceGuide
-                "toggle-flavor", "flavor" -> ToggleFlavor
+                "toggle-flavor" -> ToggleFlavor
+                "flavor" -> {
+                    when (parts.getOrNull(1)?.lowercase()) {
+                        "pro", "tuesday", "stn-pro" -> SetFlavor(AppBrandFlavor.TUESDAY_PRO)
+                        "home", "stn", "stn-home", "surething" -> SetFlavor(AppBrandFlavor.SURETHING_HOME)
+                        else -> ToggleFlavor
+                    }
+                }
                 "reset-demo", "reset" -> ResetDemo
                 "seed", "seed-forest", "demo" -> {
                     val count = parts.getOrNull(1)?.toIntOrNull() ?: 12
@@ -109,6 +119,7 @@ sealed interface DeepLinkDestination {
                     val resolvedUrl = when (target) {
                         "prod", "gcp" -> "https://api.tuesday.sh"
                         "lan" -> "http://192.168.9.201:3000"
+                        "local", "loopback", "reverse" -> "http://127.0.0.1:3000"
                         else -> "http://100.108.40.3:3000"
                     }
                     SetApiEndpoint(resolvedUrl)

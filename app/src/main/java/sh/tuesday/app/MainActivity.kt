@@ -188,6 +188,8 @@ fun AppNavigation(
             navController.popBackStack("home", inclusive = false)
             navController.navigate(route)
             onConsumePendingDestination()
+        } else if (pendingDestination != null) {
+            navController.popBackStack("home", inclusive = false)
         }
     }
 }

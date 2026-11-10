@@ -116,6 +116,10 @@ class TuesdayRepository(context: Context) {
         }
     }
 
+    fun setBrandFlavor(flavor: AppBrandFlavor) {
+        _brandFlavor.value = flavor
+    }
+
     fun toggleIncludeOkDevices() {
         _includeOkDevices.value = !_includeOkDevices.value
     }

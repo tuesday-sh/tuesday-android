@@ -162,7 +162,15 @@ fun HomeScreen(
                 repository.toggleBrandFlavor()
                 onConsumePendingDestination()
             }
+            is sh.tuesday.app.navigation.DeepLinkDestination.SetFlavor -> {
+                repository.setBrandFlavor(pendingDestination.flavor)
+                onConsumePendingDestination()
+            }
             sh.tuesday.app.navigation.DeepLinkDestination.ResetDemo -> {
+                showHacsSheet = false
+                showNetworkPicker = false
+                showReferenceGuide = false
+                inspectedDevice = null
                 repository.resetDemoData()
                 activeTab = MainNavTab.STATUS
                 onConsumePendingDestination()
