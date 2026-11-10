@@ -12,6 +12,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import sh.tuesday.app.BuildConfig
 import sh.tuesday.app.models.*
 import java.io.ByteArrayOutputStream
 import java.util.UUID
@@ -32,6 +33,14 @@ class GeminiDiscoveryService(private val context: Context) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(55, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val req = chain.request().newBuilder()
+                .header("User-Agent", "Tuesday-Android/${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                .header("X-Tuesday-App-Version", BuildConfig.VERSION_NAME)
+                .header("X-Tuesday-Build", BuildConfig.VERSION_CODE.toString())
+                .build()
+            chain.proceed(req)
+        }
         .build()
 
     private val persistentDeviceId = "tuesday-android-" + UUID.randomUUID().toString().take(8)

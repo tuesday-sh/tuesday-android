@@ -19,6 +19,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import sh.tuesday.app.BuildConfig
 import sh.tuesday.app.models.*
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -30,6 +31,14 @@ class TuesdayRepository(context: Context) {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val req = chain.request().newBuilder()
+                .header("User-Agent", "Tuesday-Android/${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                .header("X-Tuesday-App-Version", BuildConfig.VERSION_NAME)
+                .header("X-Tuesday-Build", BuildConfig.VERSION_CODE.toString())
+                .build()
+            chain.proceed(req)
+        }
         .build()
 
     private val clientDeviceId: String by lazy {
