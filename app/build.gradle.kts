@@ -62,6 +62,10 @@ android {
     buildFeatures {
         compose = true
     }
+
+    androidResources {
+        noCompress += "gci"
+    }
 }
 
 dependencies {

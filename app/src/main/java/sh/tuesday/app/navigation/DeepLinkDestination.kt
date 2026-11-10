@@ -3,7 +3,13 @@ package sh.tuesday.app.navigation
 sealed interface DeepLinkDestination {
     data class Tab(val tab: String) : DeepLinkDestination
     data class Device(val deviceId: String) : DeepLinkDestination
-    data class AddDevice(val mode: String? = null, val synthPreset: String? = null) : DeepLinkDestination
+    data class AddDevice(
+        val mode: String? = null,
+        val synthPreset: String? = null,
+        val clueQuery: String? = null,
+        val cluesCsv: String? = null,
+        val autoSearch: Boolean = false
+    ) : DeepLinkDestination
     data object HacsSettings : DeepLinkDestination
     data object NetworkPicker : DeepLinkDestination
     data object ReferenceGuide : DeepLinkDestination
@@ -21,7 +27,7 @@ sealed interface DeepLinkDestination {
             val clean = uriString.trim()
             if (!clean.startsWith("tuesday://")) return null
 
-            val path = clean.removePrefix("tuesday://").trimStart('/')
+            val path = clean.removePrefix("tuesday://").substringBefore('?').trimStart('/')
             val parts = path.split("/").filter { it.isNotBlank() }
             if (parts.isEmpty()) return null
 
@@ -49,7 +55,27 @@ sealed interface DeepLinkDestination {
                         clean.contains("synth=qr", ignoreCase = true) || clean.contains("qr=ucg-ultra", ignoreCase = true) -> "qr-ucg-ultra"
                         else -> null
                     }
-                    AddDevice(modeParam, synthPreset)
+                    val queryString = clean.substringAfter('?', "")
+                    val queryMap = queryString.split('&')
+                        .mapNotNull { kv ->
+                            val idx = kv.indexOf('=')
+                            if (idx > 0) {
+                                val decoded = runCatching {
+                                    java.net.URLDecoder.decode(kv.substring(idx + 1), Charsets.UTF_8.name())
+                                }.getOrDefault(kv.substring(idx + 1))
+                                kv.substring(0, idx).lowercase() to decoded
+                            } else null
+                        }
+                        .toMap()
+
+                    AddDevice(
+                        mode = modeParam,
+                        synthPreset = synthPreset,
+                        clueQuery = queryMap["query"] ?: queryMap["q"],
+                        cluesCsv = queryMap["clues"] ?: queryMap["clue"],
+                        autoSearch = queryMap["search"]?.equals("true", ignoreCase = true) == true ||
+                            queryMap["autosearch"]?.equals("true", ignoreCase = true) == true
+                    )
                 }
                 "synth", "synthesize" -> {
                     val target = parts.getOrNull(1)?.lowercase() ?: "router"

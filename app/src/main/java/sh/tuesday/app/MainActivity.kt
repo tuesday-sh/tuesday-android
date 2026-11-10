@@ -121,12 +121,12 @@ fun AppNavigation(
                     }
                     navController.navigate(route)
                 },
-                pendingDestination = pendingDestination,
+                pendingDestination = if (pendingDestination is DeepLinkDestination.AddDevice) null else pendingDestination,
                 onConsumePendingDestination = onConsumePendingDestination
             )
         }
         composable(
-            "add_device?mode={mode}&synth={synth}",
+            "add_device?mode={mode}&synth={synth}&query={query}&clues={clues}&search={search}",
             arguments = listOf(
                 androidx.navigation.navArgument("mode") {
                     nullable = true
@@ -135,11 +135,26 @@ fun AppNavigation(
                 androidx.navigation.navArgument("synth") {
                     nullable = true
                     defaultValue = null
+                },
+                androidx.navigation.navArgument("query") {
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("clues") {
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("search") {
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
             val modeArg = backStackEntry.arguments?.getString("mode")
             val synthArg = backStackEntry.arguments?.getString("synth")
+            val queryArg = backStackEntry.arguments?.getString("query")
+            val cluesArg = backStackEntry.arguments?.getString("clues")
+            val searchArg = backStackEntry.arguments?.getString("search") == "true"
             val initialMode = when (modeArg) {
                 "scan" -> sh.tuesday.app.ui.wizard.EnrollmentMode.BARCODE_SCAN
                 "manual" -> sh.tuesday.app.ui.wizard.EnrollmentMode.MANUAL_AGENT
@@ -150,10 +165,29 @@ fun AppNavigation(
                 discoveryService = discoveryService,
                 initialEnrollmentMode = initialMode,
                 initialSynthPreset = synthArg,
+                initialClueQuery = queryArg,
+                initialCluesCsv = cluesArg,
+                initialAutoSearch = searchArg,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+        }
+    }
+
+    LaunchedEffect(pendingDestination) {
+        if (pendingDestination is DeepLinkDestination.AddDevice) {
+            val params = buildList {
+                pendingDestination.mode?.let { add("mode=${android.net.Uri.encode(it)}") }
+                pendingDestination.synthPreset?.let { add("synth=${android.net.Uri.encode(it)}") }
+                pendingDestination.clueQuery?.let { add("query=${android.net.Uri.encode(it)}") }
+                pendingDestination.cluesCsv?.let { add("clues=${android.net.Uri.encode(it)}") }
+                if (pendingDestination.autoSearch) add("search=true")
+            }
+            val route = if (params.isEmpty()) "add_device" else "add_device?${params.joinToString("&")}"
+            navController.popBackStack("home", inclusive = false)
+            navController.navigate(route)
+            onConsumePendingDestination()
         }
     }
 }
