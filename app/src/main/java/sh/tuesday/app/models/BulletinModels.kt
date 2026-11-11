@@ -865,7 +865,7 @@ object BulletinsAndInventoryEngine {
             category = StnHardwareCategory.C1_GATEWAY,
             assetTag = "STN-GW-01",
             shortLabel = "UDM-Pro",
-            name = "Main Rack UniFi Dream Machine Pro",
+            name = "UniFi Dream Machine Pro",
             roomLocation = "Basement Rack U02",
             version = "4.0.20",
             targetVersion = "4.0.20",
