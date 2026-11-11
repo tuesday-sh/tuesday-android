@@ -2322,7 +2322,7 @@ private fun DeviceInspectorBottomSheet(
                 InspectorSectionRow("DEVICE LIFESPAN & MANUFACTURER SUPPORT", "${device.lifecycleTier} • ${device.s3Lifecycle}", palette)
                 InspectorSectionRow("PLUGGED INTO (ROUTER PORT / WI-FI)", "Port #%02d • %s".format(device.portIndex, device.s5Topology), palette)
                 InspectorSectionRow("WI-FI LANE", device.trustZone.stnLabel, palette)
-                InspectorSectionRow("SOFTWARE VERSION & PUBLISHED WARNINGS", "Version ${device.version} • ${device.s4Advisories}", palette)
+                InspectorSectionRow("SECURITY & ADVISORIES", device.s4Advisories, palette)
             }
         } else {
             // STN-Pro: Operational Candlestick Timeline & Technical S0..S6 Stack
@@ -2349,13 +2349,6 @@ private fun DeviceInspectorBottomSheet(
                         color = palette.textPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = operationalCandle.versionLabel,
-                        color = stateColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
                     )
                 }
 
