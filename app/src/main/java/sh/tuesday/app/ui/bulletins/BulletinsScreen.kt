@@ -659,7 +659,8 @@ fun BulletinsScreen(
                     item = item,
                     onClick = { onInspectDevice(item.externalId) },
                     onConfirmModel = onConfirmModel,
-                    onRejectModel = onRejectModel
+                    onRejectModel = onRejectModel,
+                    isCompleted = true
                 )
             }
         }

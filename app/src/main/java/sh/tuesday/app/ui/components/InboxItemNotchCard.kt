@@ -33,24 +33,51 @@ fun InboxItemNotchCard(
     onClick: () -> Unit,
     onConfirmModel: (String) -> Unit = {},
     onRejectModel: () -> Unit = {},
+    isCompleted: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val accentColor = when (item.bulletinType.lowercase()) {
-        "recall", "cisa_kev", "cve" -> TuesdayTheme.LedCveRed
-        "eol" -> TuesdayTheme.LedEolAmber
-        else -> TuesdayTheme.LedUpdateBlue
+    val accentColor = if (isCompleted) {
+        TuesdayTheme.LedOkGreen
+    } else {
+        when (item.bulletinType.lowercase()) {
+            "recall", "cisa_kev", "cve" -> TuesdayTheme.LedCveRed
+            "eol" -> TuesdayTheme.LedEolAmber
+            else -> TuesdayTheme.LedUpdateBlue
+        }
+    }
+
+    val notchText = if (isCompleted) {
+        "✓ ${item.bulletinType.uppercase()} REMEDIATED"
+    } else {
+        item.bulletinType.uppercase()
     }
 
     SingleNotchCard(
         palette = palette,
         accentColor = accentColor,
-        notchLabel = item.bulletinType.uppercase(),
+        notchLabel = notchText,
         onClick = onClick,
+        cardBorderColor = if (isCompleted) TuesdayTheme.LedOkGreen.copy(alpha = 0.4f) else accentColor.copy(alpha = 0.35f),
         modifier = modifier
-            .uiSlot("bulletin-inbox-item", "id=${item.externalId};type=${item.bulletinType}")
+            .uiSlot("bulletin-inbox-item", "id=${item.externalId};type=${item.bulletinType};completed=$isCompleted")
             .uiAction("inspectDevice"),
         topEndHeader = {
-            if (item.brokeThroughMute) {
+            if (isCompleted) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(TuesdayTheme.LedOkGreen.copy(alpha = 0.18f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "✓ RESOLVED",
+                        color = TuesdayTheme.LedOkGreen,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            } else if (item.brokeThroughMute) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
@@ -95,17 +122,18 @@ fun InboxItemNotchCard(
     ) {
         Text(
             text = item.title,
-            color = palette.textPrimary,
+            color = if (isCompleted) palette.textPrimary.copy(alpha = 0.88f) else palette.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             lineHeight = 17.5.sp
         )
 
         Text(
-            text = item.body,
-            color = palette.textMuted,
+            text = if (isCompleted) "✓ Remediation applied. All associated devices are protected and marked OK." else item.body,
+            color = if (isCompleted) TuesdayTheme.LedOkGreen else palette.textMuted,
             fontSize = 11.5.sp,
-            lineHeight = 15.5.sp
+            lineHeight = 15.5.sp,
+            fontWeight = if (isCompleted) FontWeight.SemiBold else FontWeight.Normal
         )
 
         if (!item.sourceUrl.isNullOrBlank()) {
