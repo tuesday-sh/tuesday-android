@@ -51,8 +51,8 @@ import sh.tuesday.app.ui.components.CandleGraphCanvas
 import sh.tuesday.app.ui.components.NotchBulletinCard
 import sh.tuesday.app.ui.components.WifiWarningOverlay
 import sh.tuesday.app.ui.hacs.HacsSettingsSheet
-import sh.tuesday.app.ui.tabs.SeasonalCheckupScreen
-import sh.tuesday.app.ui.tabs.SwimlaneTimelineScreen
+import sh.tuesday.app.ui.tabs.RhythmScreen
+import sh.tuesday.app.ui.tabs.TimelineScreen
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -510,7 +510,7 @@ fun HomeScreen(
                 MainNavTab.TIMELINE -> {
                     val attestations by repository.attestations.collectAsState()
                     val userSignature by repository.userSignature.collectAsState()
-                    SwimlaneTimelineScreen(
+                    TimelineScreen(
                         flavor = brandFlavor,
                         palette = palette,
                         devices = visibleDevices,
@@ -530,7 +530,7 @@ fun HomeScreen(
                         }
                     )
                 }
-                MainNavTab.CHECKUP -> SeasonalCheckupScreen(
+                MainNavTab.CHECKUP -> RhythmScreen(
                     flavor = brandFlavor,
                     palette = palette,
                     devices = visibleDevices
