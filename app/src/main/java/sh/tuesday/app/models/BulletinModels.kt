@@ -248,7 +248,7 @@ data class RackPortDevice(
     val portState: PortLifecycleState,
     val trustZone: TrustZone,
     val category: StnHardwareCategory = StnHardwareCategory.C6_IOT,
-    val assetTag: String,
+    val assetTag: String = "",
     val shortLabel: String,
     val name: String,
     val roomLocation: String,

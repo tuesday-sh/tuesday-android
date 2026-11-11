@@ -906,7 +906,7 @@ private fun BatchAuditModal(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "#%02d %s (%s)".format(dev.portIndex, dev.shortLabel, dev.assetTag),
+                            text = "#%02d %s".format(dev.portIndex, dev.shortLabel),
                             color = palette.textPrimary,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold

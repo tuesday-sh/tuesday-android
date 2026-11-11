@@ -1264,32 +1264,12 @@ private fun StatusMatrixAndActionListScreen(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = dev.name,
-                                    color = palette.textPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(palette.elevated)
-                                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        text = dev.assetTag,
-                                        color = palette.textMuted,
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
+                            Text(
+                                text = dev.name,
+                                color = palette.textPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                             Text(
                                 text = "${dev.trustZone.shortCode} • ${dev.roomLocation} • ${dev.version} • ${dev.lifecycleTier}",
                                 color = palette.textMuted,
@@ -2227,9 +2207,8 @@ private fun DeviceInspectorBottomSheet(
                     text = if (isStn) {
                         "${device.portState.stnLabel.uppercase()} • ${device.lifecycleTier.uppercase()}"
                     } else {
-                        "PORT #%02d • %s • %s (%s)".format(
+                        "PORT #%02d • %s (%s)".format(
                             device.portIndex,
-                            device.assetTag,
                             device.category.code,
                             device.category.shortName
                         )
