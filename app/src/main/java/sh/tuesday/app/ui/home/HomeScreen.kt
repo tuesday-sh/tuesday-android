@@ -1411,7 +1411,8 @@ private fun WelcomeCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (!bulletinDismissed) {
+        val showReadinessCard = !bulletinDismissed && !bulletinSnoozed
+        if (showReadinessCard) {
             val context = LocalContext.current
             val steps = listOf(
                 BulletinChecklistStep(
@@ -1475,8 +1476,8 @@ private fun WelcomeCard(
             )
         }
 
-        if (bulletinDismissed && activeDeviceCount == 0) {
-            // Router recommendation tip row and Add Device CTA block (visible once welcome bulletin is dismissed on Day 0)
+        if ((bulletinDismissed || bulletinSnoozed) && activeDeviceCount == 0) {
+            // Router recommendation tip row and Add Device CTA block (visible once welcome bulletin is dismissed or snoozed on Day 0)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
