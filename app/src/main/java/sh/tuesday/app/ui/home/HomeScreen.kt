@@ -71,7 +71,7 @@ fun HomeScreen(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
     notificationManager: TuesdayNotificationManager? = null,
-    onNavigateToAddDevice: (String?, String?) -> Unit,
+    onNavigateToAddDevice: (mode: String?, synth: String?, query: String?, clues: String?, autoSearch: Boolean) -> Unit,
     pendingDestination: sh.tuesday.app.navigation.DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
 ) {
@@ -134,7 +134,13 @@ fun HomeScreen(
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.AddDevice -> {
-                onNavigateToAddDevice(pendingDestination.mode, pendingDestination.synthPreset)
+                onNavigateToAddDevice(
+                    pendingDestination.mode,
+                    pendingDestination.synthPreset,
+                    pendingDestination.clueQuery,
+                    pendingDestination.cluesCsv,
+                    pendingDestination.autoSearch
+                )
                 onConsumePendingDestination()
             }
             sh.tuesday.app.navigation.DeepLinkDestination.HacsSettings -> {
@@ -180,7 +186,7 @@ fun HomeScreen(
                 repository.toggleDeveloperMode(true)
                 repository.toggleVisionDebugMode(pendingDestination.enabled)
                 if (pendingDestination.openWizard) {
-                    onNavigateToAddDevice(null, null)
+                    onNavigateToAddDevice(null, null, null, null, false)
                 }
                 onConsumePendingDestination()
             }
@@ -460,7 +466,13 @@ fun HomeScreen(
                     onSelectPortState = { repository.setPortStateFilter(it) },
                     onToggleIncludeOk = { repository.toggleIncludeOkDevices() },
                     onOpenReferenceGuide = { showReferenceGuide = true },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null) },
+                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
+                    onAddRouter = {
+                        onNavigateToAddDevice(null, null, null, "Router / Gateway", false)
+                    },
+                    onAddAnyDevice = {
+                        onNavigateToAddDevice(null, null, null, null, false)
+                    },
                     onNavigateToBulletins = { activeTab = MainNavTab.BULLETINS },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
                     remindersEnabled = remindersEnabled,
@@ -488,7 +500,7 @@ fun HomeScreen(
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
                     },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null) },
+                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
                     remindersEnabled = remindersEnabled,
                     dispatchSubscribed = dispatchSubscribed,
@@ -662,6 +674,8 @@ private fun StatusMatrixAndActionListScreen(
     onToggleIncludeOk: () -> Unit,
     onOpenReferenceGuide: () -> Unit,
     onNavigateToAddDevice: () -> Unit,
+    onAddRouter: () -> Unit = onNavigateToAddDevice,
+    onAddAnyDevice: () -> Unit = onNavigateToAddDevice,
     onNavigateToBulletins: () -> Unit,
     onNavigateToAccount: () -> Unit = {},
     remindersEnabled: Boolean = false,
@@ -705,8 +719,8 @@ private fun StatusMatrixAndActionListScreen(
                 onSetBulletinSnoozed = onSetBulletinSnoozed,
                 bulletinMuted = bulletinMuted,
                 onSetBulletinMuted = onSetBulletinMuted,
-                onAddRouter = onNavigateToAddDevice,
-                onAddAnyDevice = onNavigateToAddDevice,
+                onAddRouter = onAddRouter,
+                onAddAnyDevice = onAddAnyDevice,
                 onLoadDemoFleet = onLoadDemoFleet,
                 onOpenReferenceGuide = onOpenReferenceGuide,
                 onNavigateToBulletins = onNavigateToBulletins,

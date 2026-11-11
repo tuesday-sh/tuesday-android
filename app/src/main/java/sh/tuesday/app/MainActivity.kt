@@ -112,13 +112,15 @@ fun AppNavigation(
                 repository = repository,
                 connectivity = connectivity,
                 notificationManager = notificationManager,
-                onNavigateToAddDevice = { mode, synth ->
-                    val route = when {
-                        mode != null && synth != null -> "add_device?mode=$mode&synth=$synth"
-                        mode != null -> "add_device?mode=$mode"
-                        synth != null -> "add_device?synth=$synth"
-                        else -> "add_device"
+                onNavigateToAddDevice = { mode, synth, query, clues, autoSearch ->
+                    val params = buildList {
+                        mode?.let { add("mode=${android.net.Uri.encode(it)}") }
+                        synth?.let { add("synth=${android.net.Uri.encode(it)}") }
+                        query?.let { add("query=${android.net.Uri.encode(it)}") }
+                        clues?.let { add("clues=${android.net.Uri.encode(it)}") }
+                        if (autoSearch) add("search=true")
                     }
+                    val route = if (params.isEmpty()) "add_device" else "add_device?${params.joinToString("&")}"
                     navController.navigate(route)
                 },
                 pendingDestination = if (pendingDestination is DeepLinkDestination.AddDevice) null else pendingDestination,
