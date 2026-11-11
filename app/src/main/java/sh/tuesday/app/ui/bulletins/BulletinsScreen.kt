@@ -391,6 +391,28 @@ fun BulletinsScreen(
         }
 
         // 5. Matched Feed Rows (Confirmed Mute Toggles + Provisional Guess Disambiguation)
+        if (payload.matchedFeeds.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                        .padding(14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Add devices to your inventory to get feeds",
+                        color = palette.textMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Default
+                    )
+                }
+            }
+        }
+
         items(payload.matchedFeeds, key = { it.id }) { feed ->
             val isProvisional = feed.matchMode == DeviceConfidenceTier.PROVISIONAL_GUESS
             Column(
