@@ -208,12 +208,6 @@ fun HomeScreen(
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.TimelineAction -> {
-                when (pendingDestination.scenario) {
-                    "decommissioned", "retired" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.DECOMMISSIONED)
-                    "zombie" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.ZOMBIE_OVERHANG)
-                    "runway" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.RUNWAY_CRITICAL)
-                    "standard" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.STANDARD)
-                }
                 pendingTimelineModal = pendingDestination.modal ?: "none"
                 activeTab = MainNavTab.TIMELINE
                 onConsumePendingDestination()
@@ -556,10 +550,6 @@ fun HomeScreen(
                         onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
                         onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
-                        onSeedTimelineScenario = { scenario ->
-                            repository.seedTimelineScenario(scenario)
-                            activeTab = MainNavTab.TIMELINE
-                        },
                         initialExpandNetwork = expandNetworkInSettings,
                         onResendInventoryNotifications = {
                             if (notificationManager != null) {

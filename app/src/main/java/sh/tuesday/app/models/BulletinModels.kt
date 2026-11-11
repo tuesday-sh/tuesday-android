@@ -963,9 +963,12 @@ object BulletinsAndInventoryEngine {
             releaseDate = "2025-06-01",
             purchaseDate = "2025-06-15",
             vendorEolAt = "2032-06-15",
+            isRetired = true,
+            decommissionDate = "2025-10-01",
+            presenceState = DevicePresenceState.RETIRED,
             candles = listOf(
-                DeviceLifecycleCandle("19.0.0", 0.15f, 0.25f, 0.68f, 0.90f, null),
-                DeviceLifecycleCandle("19.0.1", 0.64f, 0.68f, 0.96f, 0.99f, null)
+                DeviceLifecycleCandle("19.0.0", 0.15f, 0.25f, 0.50f, 0.90f, null),
+                DeviceLifecycleCandle("19.0.1", 0.48f, 0.50f, 0.62f, 0.99f, null)
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/nintendo/horizon-os@19.0.1"),
@@ -993,10 +996,10 @@ object BulletinsAndInventoryEngine {
             targetVersion = "15.3.2",
             releaseDate = "2024-11-01",
             purchaseDate = "2025-01-20",
-            vendorEolAt = "2032-01-20",
+            vendorEolAt = "2027-04-30",
             candles = listOf(
-                DeviceLifecycleCandle("15.2.0", 0.12f, 0.18f, 0.52f, 0.80f, null),
-                DeviceLifecycleCandle("15.3.1", 0.48f, 0.52f, 0.90f, 0.99f, null)
+                DeviceLifecycleCandle("15.2.0", 0.12f, 0.18f, 0.52f, 0.75f, null),
+                DeviceLifecycleCandle("15.3.1", 0.48f, 0.52f, 0.90f, 0.78f, null)
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/apple/macos@15.3.1"),
@@ -1180,9 +1183,12 @@ object BulletinsAndInventoryEngine {
             releaseDate = "2018-09-01",
             purchaseDate = "2024-03-10",
             vendorEolAt = "2029-03-10",
+            isRetired = true,
+            decommissionDate = "2025-08-20",
+            presenceState = DevicePresenceState.STOPPED_WORKING,
             candles = listOf(
                 DeviceLifecycleCandle("2026.8.2", 0.10f, 0.18f, 0.48f, 0.75f, null),
-                DeviceLifecycleCandle("2026.9.0", 0.45f, 0.48f, 0.92f, 0.99f, null)
+                DeviceLifecycleCandle("2026.9.0", 0.45f, 0.48f, 0.60f, 0.99f, null)
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/esphome/firmware@2026.9.0"),

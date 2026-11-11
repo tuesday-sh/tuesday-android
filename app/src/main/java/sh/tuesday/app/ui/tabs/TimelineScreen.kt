@@ -88,9 +88,7 @@ fun TimelineScreen(
     var selectedDeviceForAttestation by remember { mutableStateOf<RackPortDevice?>(null) }
     var showBatchAuditModal by remember { mutableStateOf(false) }
 
-    val effectiveDevices = remember(devices) {
-        if (devices.isEmpty()) BulletinsAndInventoryEngine.defaultRackPortDevices() else devices
-    }
+    val effectiveDevices = devices
 
     LaunchedEffect(initialModal, effectiveDevices) {
         when (initialModal) {
@@ -344,7 +342,7 @@ fun TimelineScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${currentCandles.size} HARDWARE NODES",
+                        text = if (currentCandles.size == 1) "1 HARDWARE NODE" else "${currentCandles.size} HARDWARE NODES",
                         color = palette.accent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -1140,10 +1138,15 @@ private fun SwimlaneCanvas(
     scrubberXNorm: Float,
     onScrubChanged: (Float) -> Unit
 ) {
+    val canvasHeight = if (candles.isEmpty()) {
+        104.dp
+    } else {
+        (candles.size * 20 + 22).coerceIn(56, 236).dp
+    }
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(236.dp)
+            .height(canvasHeight)
             .background(Color(0xFF0B0D11))
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
@@ -1199,13 +1202,13 @@ private fun SwimlaneCanvas(
                 textAlign = android.graphics.Paint.Align.CENTER
             }
             drawContext.canvas.nativeCanvas.drawText(
-                "No Operational Items in Layer",
+                "No Hardware Devices in Inventory",
                 w / 2f,
                 midY - 12.dp.toPx(),
                 paintTitle
             )
             drawContext.canvas.nativeCanvas.drawText(
-                "Enroll inventory to visualize operational tenure wicks and envelopes",
+                "Add a device or seed inventory to visualize hardware lifecycles",
                 w / 2f,
                 midY + 18.dp.toPx(),
                 paintSub

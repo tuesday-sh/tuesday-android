@@ -110,7 +110,9 @@ sealed interface DeepLinkDestination {
                 }
                 "reset-demo", "reset" -> ResetDemo
                 "seed", "seed-forest", "demo" -> {
-                    val count = parts.getOrNull(1)?.toIntOrNull() ?: 12
+                    val count = parts.getOrNull(1)?.toIntOrNull()
+                        ?: parts.getOrNull(2)?.toIntOrNull()
+                        ?: 12
                     SeedFleet(count)
                 }
                 "device" -> {

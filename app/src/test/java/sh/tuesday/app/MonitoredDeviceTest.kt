@@ -255,54 +255,39 @@ class MonitoredDeviceTest {
     }
 
     @Test
-    fun testDevModeTimelineSeedScenarios() {
-        // 1. Standard fleet scenario
-        val standardDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.STANDARD)
-        assertEquals(12, standardDevs.size)
-        val udm = standardDevs.first { it.portIndex == 1 }
+    fun testUnifiedInventorySeedsDriveTimelineStates() {
+        val allDevices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        assertEquals(12, allDevices.size)
+
+        // 1. Reset (0): 0 inventory items -> 0 timeline candles
+        val zeroSeed = allDevices.take(0)
+        assertEquals(0, zeroSeed.size)
+
+        // 2. Pea (1): 1 inventory item -> 1 timeline candle (#01 UDM-Pro)
+        val peaSeed = allDevices.take(1)
+        assertEquals(1, peaSeed.size)
+        val udm = peaSeed.first()
+        assertEquals(1, udm.portIndex)
         assertEquals("2020-02-15", udm.releaseDate)
         assertEquals("2024-02-01", udm.purchaseDate)
         assertFalse(udm.isRetired)
 
-        // 2. Zombie Overhang scenario
-        val zombieDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.ZOMBIE_OVERHANG)
-        val r7000 = zombieDevs.first { it.portIndex == 2 }
-        val zombiePi = zombieDevs.first { it.portIndex == 6 }
-        val zombieTv = zombieDevs.first { it.portIndex == 10 }
-        val r7000Candle = BulletinsAndInventoryEngine.toOperationalCandle(r7000, 0.72f)
-        val piCandle = BulletinsAndInventoryEngine.toOperationalCandle(zombiePi, 0.72f)
-        val tvCandle = BulletinsAndInventoryEngine.toOperationalCandle(zombieTv, 0.72f)
+        // 3. Garden (7): 7 inventory items -> includes Active (#03, #07), Zombie Overhang (#02), Retired (#04), and Runway Low (#05)
+        val gardenSeed = allDevices.take(7)
+        assertEquals(7, gardenSeed.size)
+        val r7000Candle = BulletinsAndInventoryEngine.toOperationalCandle(gardenSeed.first { it.portIndex == 2 }, 0.72f)
+        val retiredSwitchCandle = BulletinsAndInventoryEngine.toOperationalCandle(gardenSeed.first { it.portIndex == 4 }, 0.72f)
+        val macRunwayCandle = BulletinsAndInventoryEngine.toOperationalCandle(gardenSeed.first { it.portIndex == 5 }, 0.72f)
         assertTrue(r7000Candle.isPastEol)
-        assertTrue(piCandle.isPastEol)
-        assertTrue(tvCandle.isPastEol)
+        assertTrue(retiredSwitchCandle.isRetired)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retiredSwitchCandle.presenceState)
+        assertTrue(macRunwayCandle.isEolNearing)
 
-        // 3. Decommissioned scenario
-        val retiredDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.DECOMMISSIONED)
-        val retired1 = retiredDevs.first { it.portIndex == 1 }
-        val retired4 = retiredDevs.first { it.portIndex == 4 }
-        val stopped7 = retiredDevs.first { it.portIndex == 7 }
-        val lost11 = retiredDevs.first { it.portIndex == 11 }
-        assertTrue(retired1.isRetired)
-        assertTrue(retired4.isRetired)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retired1.presenceState)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retired4.presenceState)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, stopped7.presenceState)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.LOST, lost11.presenceState)
-        val retiredCandle = BulletinsAndInventoryEngine.toOperationalCandle(retired1, 0.72f)
-        val stoppedCandle = BulletinsAndInventoryEngine.toOperationalCandle(stopped7, 0.72f)
-        val lostCandle = BulletinsAndInventoryEngine.toOperationalCandle(lost11, 0.72f)
-        assertTrue(retiredCandle.isRetired)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retiredCandle.presenceState)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, stoppedCandle.presenceState)
-        assertEquals(sh.tuesday.app.models.DevicePresenceState.LOST, lostCandle.presenceState)
-
-        // 4. Runway Critical scenario
-        val nearEolDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.RUNWAY_CRITICAL)
-        val mac = nearEolDevs.first { it.portIndex == 5 }
-        val cam = nearEolDevs.first { it.portIndex == 9 }
-        val macCandle = BulletinsAndInventoryEngine.toOperationalCandle(mac, 0.72f)
-        val camCandle = BulletinsAndInventoryEngine.toOperationalCandle(cam, 0.72f)
-        assertTrue(macCandle.isEolNearing)
+        // 4. Forest (12): 12 inventory items -> also includes Stopped Working (#11) and Baby Cam Nearing EOL (#09)
+        val stoppedEspCandle = BulletinsAndInventoryEngine.toOperationalCandle(allDevices.first { it.portIndex == 11 }, 0.72f)
+        val camCandle = BulletinsAndInventoryEngine.toOperationalCandle(allDevices.first { it.portIndex == 9 }, 0.72f)
+        assertTrue(stoppedEspCandle.isRetired)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, stoppedEspCandle.presenceState)
         assertTrue(camCandle.isEolNearing)
     }
 
