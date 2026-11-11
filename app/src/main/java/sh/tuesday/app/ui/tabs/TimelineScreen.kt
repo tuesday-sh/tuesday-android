@@ -981,7 +981,7 @@ private fun BatchAuditModal(
 }
 
 @Composable
-private fun MiniCandleBar(
+fun MiniCandleBar(
     candle: OperationalCandle,
     modifier: Modifier = Modifier
 ) {

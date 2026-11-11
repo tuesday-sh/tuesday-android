@@ -47,7 +47,7 @@ import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.bulletins.BulletinsScreen
 import sh.tuesday.app.ui.components.BulletinChecklistStep
-import sh.tuesday.app.ui.components.CandleGraphCanvas
+import sh.tuesday.app.ui.tabs.MiniCandleBar
 import sh.tuesday.app.ui.components.NotchBulletinCard
 import sh.tuesday.app.ui.components.WifiWarningOverlay
 import sh.tuesday.app.ui.hacs.HacsSettingsSheet
@@ -2216,31 +2216,13 @@ private fun DeviceInspectorBottomSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (isStn) {
-                        "${device.portState.stnLabel.uppercase()} • ${device.lifecycleTier.uppercase()}"
-                    } else {
-                        "PORT #%02d • %s (%s)".format(
-                            device.portIndex,
-                            device.category.code,
-                            device.category.shortName
-                        )
-                    },
-                    color = stateColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = device.name,
-                    color = palette.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            RiskMeter(portState = device.portState, isStn = isStn, noticeCount = noticeCount)
-            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = device.name,
+                color = palette.textPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
             TextButton(
                 onClick = onClose,
                 modifier = Modifier.uiAction("closeDeviceInspector")
@@ -2343,18 +2325,62 @@ private fun DeviceInspectorBottomSheet(
                 InspectorSectionRow("SOFTWARE VERSION & PUBLISHED WARNINGS", "Version ${device.version} • ${device.s4Advisories}", palette)
             }
         } else {
-            // STN-Pro: OHLC Version Candlesticks & Telemetry Health + Technical S0..S6 Stack
-            Box(modifier = Modifier.uiSlot("candlestick-chart")) {
-                CandleGraphCanvas(
-                    score = when (device.portState) {
-                        PortLifecycleState.OK -> 98.0
-                        PortLifecycleState.UPDATE -> 82.0
-                        PortLifecycleState.GUESSED -> 64.0
-                        PortLifecycleState.EOL -> 42.0
-                        PortLifecycleState.CVE_KEV -> 28.0
-                        PortLifecycleState.UNASSIGNED -> 100.0
-                    }
+            // STN-Pro: Operational Candlestick Timeline & Technical S0..S6 Stack
+            val operationalCandle = remember(device.id, device.version, device.presenceState) {
+                BulletinsAndInventoryEngine.toOperationalCandle(device)
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.bg)
+                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+                    .uiSlot("candlestick-chart"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Timeline",
+                        color = palette.textPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = operationalCandle.versionLabel,
+                        color = stateColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                MiniCandleBar(
+                    candle = operationalCandle,
+                    modifier = Modifier.fillMaxWidth().height(16.dp)
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Released ${operationalCandle.releaseDateStr ?: "Launch"} • Active ${operationalCandle.deployDateStr ?: "Install"}",
+                        color = palette.textMuted,
+                        fontSize = 10.sp
+                    )
+                    Text(
+                        text = "EOL: ${operationalCandle.eolDateStr ?: "TBD"}",
+                        color = if (operationalCandle.isPastEol) TuesdayTheme.CriticalRed else palette.textMuted,
+                        fontSize = 10.sp,
+                        fontWeight = if (operationalCandle.isPastEol) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
             }
 
             Column(
