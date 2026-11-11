@@ -141,8 +141,8 @@ class TuesdayRepository(context: Context) {
                 auditDate = auditDate,
                 userSignature = sig,
                 environment = env,
-                auditSessionId = "AUDIT-2024-Q1-INGRESS",
-                note = "Initial point-in-time fleet inventory audit ingress.",
+                auditSessionId = "CHECKIN-2024-Q1-INITIAL",
+                note = "Enrolled during initial hardware check-in.",
                 cryptographicProof = proof
             )
         }.reversed()
@@ -1128,11 +1128,15 @@ class TuesdayRepository(context: Context) {
         if (scenario == TimelineSeedScenario.DECOMMISSIONED) {
             val env = getAppEnvironmentString()
             val sig = _userSignature.value
+            val p1Id = seededDevices.find { it.portIndex == 1 }?.id ?: "dev-01"
+            val p4Id = seededDevices.find { it.portIndex == 4 }?.id ?: "dev-04"
+            val p7Id = seededDevices.find { it.portIndex == 7 }?.id ?: "dev-07"
+            val p11Id = seededDevices.find { it.portIndex == 11 }?.id ?: "dev-11"
             val decommAttestations = listOf(
-                createSeedAttestation("dev-01", "UDM-Pro", AttestationType.ABSENCE_RETIRED, DevicePresenceState.RETIRED, "2025-08-15", "Replaced with UDM-SE for 2.5GbE PoE backhaul", sig, env),
-                createSeedAttestation("dev-04", "USW-Lite", AttestationType.ABSENCE_RETIRED, DevicePresenceState.RETIRED, "2025-10-01", "Consolidated patch cables to 24-port switch", sig, env),
-                createSeedAttestation("dev-07", "Shelly 1PM", AttestationType.ABSENCE_STOPPED_WORKING, DevicePresenceState.STOPPED_WORKING, "2025-04-20", "Internal relay burnt out after electrical storm surge; power dead", sig, env),
-                createSeedAttestation("dev-11", "Hue Bridge", AttestationType.ABSENCE_LOST, DevicePresenceState.LOST, "2024-11-30", "Unaccounted during Q4 physical audit walk; missing from rack cabinet", sig, env)
+                createSeedAttestation(p1Id, "UDM-Pro", AttestationType.ABSENCE_RETIRED, DevicePresenceState.RETIRED, "2025-08-15", "Replaced with UDM-SE for 2.5GbE PoE backhaul", sig, env),
+                createSeedAttestation(p4Id, "Switch 2", AttestationType.ABSENCE_RETIRED, DevicePresenceState.RETIRED, "2025-10-01", "Consolidated patch cables to 24-port switch", sig, env),
+                createSeedAttestation(p7Id, "unraid-lml", AttestationType.ABSENCE_STOPPED_WORKING, DevicePresenceState.STOPPED_WORKING, "2025-04-20", "Power supply failed after electrical storm surge", sig, env),
+                createSeedAttestation(p11Id, "Garage ESP", AttestationType.ABSENCE_LOST, DevicePresenceState.LOST, "2024-11-30", "Unaccounted for during seasonal inventory check-in", sig, env)
             )
             _attestations.value = decommAttestations + initialDefaultAttestations()
         } else {

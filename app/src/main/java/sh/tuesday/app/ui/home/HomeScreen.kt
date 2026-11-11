@@ -102,6 +102,7 @@ fun HomeScreen(
     var showHacsSheet by remember { mutableStateOf(false) }
     var showNetworkPicker by remember { mutableStateOf(false) }
     var showReferenceGuide by remember { mutableStateOf(false) }
+    var pendingTimelineModal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(notificationManager) {
         if (notificationManager != null) {
@@ -204,6 +205,17 @@ fun HomeScreen(
                     repository.triggerMockPatchTuesdayBulletin(notificationManager)
                 }
                 activeTab = MainNavTab.BULLETINS
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.TimelineAction -> {
+                when (pendingDestination.scenario) {
+                    "decommissioned", "retired" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.DECOMMISSIONED)
+                    "zombie" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.ZOMBIE_OVERHANG)
+                    "runway" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.RUNWAY_CRITICAL)
+                    "standard" -> repository.seedTimelineScenario(sh.tuesday.app.services.TimelineSeedScenario.STANDARD)
+                }
+                pendingTimelineModal = pendingDestination.modal ?: "none"
+                activeTab = MainNavTab.TIMELINE
                 onConsumePendingDestination()
             }
             null -> {}
@@ -504,6 +516,8 @@ fun HomeScreen(
                         devices = visibleDevices,
                         attestations = attestations,
                         userSignature = userSignature,
+                        initialModal = pendingTimelineModal,
+                        onConsumeInitialModal = { pendingTimelineModal = null },
                         onOpenReferenceGuide = { showReferenceGuide = true },
                         onInspectDevice = { devId ->
                             visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }

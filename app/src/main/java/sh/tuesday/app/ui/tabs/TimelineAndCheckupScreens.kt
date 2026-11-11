@@ -11,14 +11,17 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,40 +75,55 @@ fun SwimlaneTimelineScreen(
     devices: List<RackPortDevice>,
     attestations: List<DeviceAttestation> = emptyList(),
     userSignature: String = "Aaron Bronow (sig_4b9a8c)",
+    initialModal: String? = null,
+    onConsumeInitialModal: () -> Unit = {},
     onOpenReferenceGuide: () -> Unit = {},
     onInspectDevice: (String) -> Unit = {},
     onRecordAttestation: ((deviceId: String, type: AttestationType, auditDate: String, note: String?, sessionId: String?) -> DeviceAttestation)? = null,
     onRecordBatchAudit: ((deviceIds: List<String>, auditDate: String, sessionId: String, note: String?) -> List<DeviceAttestation>)? = null
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
-    var activeViewMode by remember { mutableStateOf(TimelineViewMode.CANDLESTICKS) }
-    var activeLayer by remember { mutableStateOf(LifecycleLayer.HARDWARE) }
     var scrubberXNorm by remember { mutableFloatStateOf(0.72f) }
     val retiredOverrides = remember { mutableStateMapOf<String, Boolean>() }
     var selectedDeviceForAttestation by remember { mutableStateOf<RackPortDevice?>(null) }
     var showBatchAuditModal by remember { mutableStateOf(false) }
-    var expandedAuditTrailDeviceId by remember { mutableStateOf<String?>(null) }
-    var attestationFilterType by remember { mutableStateOf<AttestationType?>(null) }
 
     val effectiveDevices = remember(devices) {
         if (devices.isEmpty()) BulletinsAndInventoryEngine.defaultRackPortDevices() else devices
+    }
+
+    LaunchedEffect(initialModal, effectiveDevices) {
+        when (initialModal) {
+            "checkin", "check-in" -> {
+                selectedDeviceForAttestation = null
+                showBatchAuditModal = true
+                onConsumeInitialModal()
+            }
+            "status", "update-status" -> {
+                showBatchAuditModal = false
+                selectedDeviceForAttestation = effectiveDevices.firstOrNull()
+                onConsumeInitialModal()
+            }
+            "none", "close" -> {
+                showBatchAuditModal = false
+                selectedDeviceForAttestation = null
+                onConsumeInitialModal()
+            }
+        }
     }
 
     val sortedDevices = remember(effectiveDevices) {
         BulletinsAndInventoryEngine.sortDevicesForTimeline(effectiveDevices)
     }
 
-    val currentCandles = remember(sortedDevices, retiredOverrides.toMap(), scrubberXNorm, activeLayer) {
-        when (activeLayer) {
-            LifecycleLayer.HARDWARE -> sortedDevices.map { dev ->
-                val isRet = retiredOverrides[dev.id] ?: dev.isRetired
-                BulletinsAndInventoryEngine.toOperationalCandle(
-                    device = dev.copy(isRetired = isRet),
-                    referenceNowNorm = scrubberXNorm
-                )
-            }
-            LifecycleLayer.OS -> BulletinsAndInventoryEngine.sampleHostOsCandles(referenceNowNorm = scrubberXNorm)
-            LifecycleLayer.CONTAINER -> BulletinsAndInventoryEngine.sampleContainerCandles(referenceNowNorm = scrubberXNorm)
+    // M1 Scope: Hardware-only operational candlestick grammar (OS & Container layers deferred to M5)
+    val currentCandles = remember(sortedDevices, retiredOverrides.toMap(), scrubberXNorm) {
+        sortedDevices.map { dev ->
+            val isRet = retiredOverrides[dev.id] ?: dev.isRetired
+            BulletinsAndInventoryEngine.toOperationalCandle(
+                device = dev.copy(isRetired = isRet),
+                referenceNowNorm = scrubberXNorm
+            )
         }
     }
 
@@ -118,11 +136,6 @@ fun SwimlaneTimelineScreen(
         "2026-11-11 (+%dd projection)".format(-dayOffset)
     }
 
-    val filteredAttestations = remember(attestations, attestationFilterType) {
-        if (attestationFilterType == null) attestations
-        else attestations.filter { it.type == attestationFilterType }
-    }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -131,7 +144,7 @@ fun SwimlaneTimelineScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        // 1. Unboxed Header with View Mode Switcher + Batch Ingress Audit Trigger
+        // 1. Unboxed Header with Rhythm Inventory Check-In Trigger
         item {
             Column(
                 modifier = Modifier
@@ -139,7 +152,6 @@ fun SwimlaneTimelineScreen(
                     .uiSlot("timeline-header-card"),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Top Header Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -152,7 +164,7 @@ fun SwimlaneTimelineScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = if (isStn) "Lifespan & Attestations" else "Timeline & Attestations",
+                            text = if (isStn) "Hardware Lifespan" else "Hardware Lifecycles",
                             color = palette.textPrimary,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -178,7 +190,7 @@ fun SwimlaneTimelineScreen(
                         }
                     }
 
-                    // Quick trigger to record a point-in-time fleet audit
+                    // Quick trigger for an Inventory Rhythm Check-In
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
@@ -188,7 +200,7 @@ fun SwimlaneTimelineScreen(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "+ Point-in-Time Audit",
+                            text = "✓ Inventory Check-In",
                             color = palette.accent,
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
@@ -196,639 +208,217 @@ fun SwimlaneTimelineScreen(
                         )
                     }
                 }
+            }
+        }
 
-                // View Mode Segmented Control: Candlesticks vs Attestation Stream
+        // ==================== HARDWARE CANDLESTICK ENVELOPE ====================
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Cursor Date & Timeline Scrubber
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
-                        .background(palette.elevated)
+                        .background(Color(0xFF13171F))
                         .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                        .padding(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (activeViewMode == TimelineViewMode.CANDLESTICKS) palette.accent else Color.Transparent)
-                            .clickable { activeViewMode = TimelineViewMode.CANDLESTICKS }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "📊 Lifecycle Candlesticks",
-                            color = if (activeViewMode == TimelineViewMode.CANDLESTICKS) Color.Black else palette.textPrimary,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (activeViewMode == TimelineViewMode.ATTESTED_EVENTS) palette.accent else Color.Transparent)
-                            .clickable { activeViewMode = TimelineViewMode.ATTESTED_EVENTS }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "📜 Attested Events (${attestations.size})",
-                            color = if (activeViewMode == TimelineViewMode.ATTESTED_EVENTS) Color.Black else palette.textPrimary,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // ==================== VIEW MODE 1: CANDLESTICK ENVELOPE ====================
-        if (activeViewMode == TimelineViewMode.CANDLESTICKS) {
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Layer Selection Chips (Hardware • Host OS • Containers)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "LAYER FOCUS:",
-                            color = palette.textMuted,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LifecycleLayer.entries.forEach { layer ->
-                                val selected = activeLayer == layer
-                                val count = when (layer) {
-                                    LifecycleLayer.HARDWARE -> effectiveDevices.size
-                                    LifecycleLayer.OS -> 6
-                                    LifecycleLayer.CONTAINER -> 5
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (selected) palette.accent.copy(alpha = 0.2f) else palette.elevated)
-                                        .border(
-                                            0.8.dp,
-                                            if (selected) palette.accent else palette.border,
-                                            RoundedCornerShape(4.dp)
-                                        )
-                                        .clickable { activeLayer = layer }
-                                        .padding(horizontal = 7.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "${layer.label} ($count)",
-                                        color = if (selected) palette.accent else palette.textMuted,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Cursor Date & Timeline Scrubber
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF13171F))
-                            .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("⏱", fontSize = 12.sp)
-                            Text(
-                                text = "POINT-IN-TIME CURSOR:",
-                                color = palette.textMuted,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = cursorDateStr,
-                                color = if (kotlin.math.abs(dayOffset) <= 1) Color(0xFF2EBD6B) else palette.accent,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-
-                        if (kotlin.math.abs(dayOffset) > 1) {
-                            Text(
-                                text = "[RESET TODAY]",
-                                color = palette.accent,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.clickable { scrubberXNorm = 0.72f }
-                            )
-                        }
-                    }
-
-                    // 2D Candlestick Lifespan Canvas
-                    SwimlaneCanvas(
-                        candles = currentCandles,
-                        palette = palette,
-                        scrubberXNorm = scrubberXNorm,
-                        onScrubChanged = { scrubberXNorm = it }
-                    )
-
-                    // Visual Grammar Legend (All 6 States)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF0F1218))
-                            .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "CANDLESTICK LIFECYCLE GRAMMAR:",
-                            color = palette.accent,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFF2EBD6B)))
-                                Text("Solid: Active", color = palette.textMuted, fontSize = 9.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).border(1.dp, Color(0xFF64748B)))
-                                Text("Hollow: Retired", color = palette.textMuted, fontSize = 9.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).border(1.dp, Color(0xFFA855F7)))
-                                Text("Dashed: Lost", color = Color(0xFFC084FC), fontSize = 9.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFFEF4444)))
-                                Text("Slash: Defect", color = Color(0xFFF87171), fontSize = 9.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFFF59E0B)))
-                                Text("Amber: EOL Nears", color = palette.textMuted, fontSize = 9.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFFDC2626)))
-                                Text("Overhang: Past EOL", color = Color(0xFFF87171), fontSize = 9.sp)
-                            }
-                        }
-                    }
-
-                    // Section Title
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp, start = 2.dp, end = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = when (activeLayer) {
-                                LifecycleLayer.HARDWARE -> if (isStn) "Hardware Lifespan & Active Tenure" else "Operational Tenures & Attested State"
-                                LifecycleLayer.OS -> "Host OS Tenures & Security EOL Envelopes"
-                                LifecycleLayer.CONTAINER -> "Container Deployment Uptimes & Deprecations"
-                            },
-                            color = palette.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "${activeLayer.label.uppercase()} LAYER",
-                            color = palette.accent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-
-            if (currentCandles.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No operational items tracked in ${activeLayer.label} layer.",
-                            color = palette.textMuted,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            } else {
-                items(currentCandles, key = { "${it.layer}-${it.id}" }) { candle ->
-                    val isPastEol = candle.isPastEol
-                    val isEolNearing = candle.isEolNearing
-                    val presenceState = candle.presenceState
-
-                    val statusBadgeColor = when (presenceState) {
-                        DevicePresenceState.STOPPED_WORKING -> Color(0xFFEF4444)
-                        DevicePresenceState.LOST -> Color(0xFFA855F7)
-                        DevicePresenceState.RETIRED -> Color(0xFF64748B)
-                        DevicePresenceState.ACTIVE -> when {
-                            candle.hasCveOrRecall -> Color(0xFFDC2626)
-                            isPastEol -> Color(0xFFDC2626)
-                            isEolNearing -> Color(0xFFF59E0B)
-                            else -> Color(0xFF2EBD6B)
-                        }
-                    }
-
-                    val statusText = when (presenceState) {
-                        DevicePresenceState.STOPPED_WORKING -> "STOPPED WORKING • DEFECT"
-                        DevicePresenceState.LOST -> "LOST • UNACCOUNTED"
-                        DevicePresenceState.RETIRED -> "RETIRED • DECOMMISSIONED"
-                        DevicePresenceState.ACTIVE -> when {
-                            isPastEol -> "ZOMBIE HARDWARE • PAST EOL"
-                            isEolNearing -> "EOL NEARS • RUNWAY LOW"
-                            candle.hasCveOrRecall -> "SECURITY RECALL / CVE"
-                            else -> "ACTIVE • SUPPORTED RUNWAY"
-                        }
-                    }
-
-                    val devAttestations = remember(attestations, candle.id) {
-                        attestations.filter { it.deviceId == candle.id }
-                    }
-                    val isTrailExpanded = expandedAuditTrailDeviceId == candle.id
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { if (candle.layer == LifecycleLayer.HARDWARE) onInspectDevice(candle.id) }
-                    ) {
-                        HorizontalDivider(color = palette.border, thickness = 1.dp)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    if (candle.portIndex > 0) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(statusBadgeColor),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = candle.portIndex.toString(),
-                                                color = Color.White,
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = candle.name,
-                                        color = palette.textPrimary,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-
-                                // Interactive State Attestation & Audit Trail Chips
-                                if (candle.layer == LifecycleLayer.HARDWARE) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        // Trail Expansion toggle
-                                        if (devAttestations.isNotEmpty()) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(if (isTrailExpanded) palette.accent.copy(alpha = 0.2f) else palette.elevated)
-                                                    .border(0.8.dp, if (isTrailExpanded) palette.accent else palette.border, RoundedCornerShape(4.dp))
-                                                    .clickable {
-                                                        expandedAuditTrailDeviceId = if (isTrailExpanded) null else candle.id
-                                                    }
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = "Trail (${devAttestations.size})",
-                                                    color = if (isTrailExpanded) palette.accent else palette.textMuted,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
-                                            }
-                                        }
-
-                                        // Attest State Change button
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(palette.accent.copy(alpha = 0.15f))
-                                                .border(0.8.dp, palette.accent, RoundedCornerShape(4.dp))
-                                                .clickable {
-                                                    val targetDev = effectiveDevices.find { it.id == candle.id }
-                                                    selectedDeviceForAttestation = targetDev
-                                                }
-                                                .padding(horizontal = 7.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = "Attest State",
-                                                color = palette.accent,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Mini Candlestick Bar Widget
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                MiniCandleBar(
-                                    candle = candle,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = statusText,
-                                    color = statusBadgeColor,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-
-                            // Operational metrics row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val preAgeText = "Pre-adoption: %s".format(candle.releaseDateStr ?: "Launch")
-                                val deployText = if (presenceState.isOutOfService) {
-                                    "${presenceState.shortLabel}: %s".format(candle.decommissionDateStr ?: "Attested Out")
-                                } else {
-                                    "Active since: %s".format(candle.deployDateStr ?: "Enrollment")
-                                }
-                                val eolText = "EOL: %s".format(candle.eolDateStr ?: "TBD")
-
-                                Text(
-                                    text = "$preAgeText  •  $deployText",
-                                    color = palette.textMuted,
-                                    fontSize = 11.sp
-                                )
-                                Text(
-                                    text = eolText,
-                                    color = if (isPastEol) Color(0xFFF87171) else palette.textMuted,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isPastEol) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-
-                            // Latest Attestation Signer Stamp
-                            val latestAtt = candle.latestAttestation ?: devAttestations.firstOrNull()
-                            if (latestAtt != null) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF0F1218))
-                                        .padding(horizontal = 6.dp, vertical = 3.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "👤 ${latestAtt.userSignature} • 📅 ${latestAtt.auditDate}",
-                                        color = palette.textMuted,
-                                        fontSize = 9.5.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = "🔐 sig:${latestAtt.shortProof}",
-                                        color = palette.accent,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-
-                            // Expanded Audit Trail Drawer (if opened)
-                            if (isTrailExpanded && devAttestations.isNotEmpty()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF13171F))
-                                        .border(0.8.dp, palette.border, RoundedCornerShape(6.dp))
-                                        .padding(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "ATTESTATION HISTORY & POINT-IN-TIME AUDITS:",
-                                        color = palette.accent,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    devAttestations.forEach { att ->
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "${att.type.displayLabel}  •  ${att.auditDate}",
-                                                    color = palette.textPrimary,
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                if (!att.note.isNullOrBlank()) {
-                                                    Text(
-                                                        text = "“${att.note}”",
-                                                        color = palette.textMuted,
-                                                        fontSize = 10.sp
-                                                    )
-                                                }
-                                                Text(
-                                                    text = "Signer: ${att.userSignature} • Env: ${att.environment}",
-                                                    color = palette.textMuted.copy(alpha = 0.8f),
-                                                    fontSize = 9.sp,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
-                                            }
-                                            Text(
-                                                text = "🔐 ${att.shortProof}",
-                                                color = palette.accent,
-                                                fontSize = 9.5.sp,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                        HorizontalDivider(color = palette.border.copy(alpha = 0.3f), thickness = 0.5.dp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ==================== VIEW MODE 2: ATTESTED EVENT STREAM ====================
-        if (activeViewMode == TimelineViewMode.ATTESTED_EVENTS) {
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = "CHRONOLOGICAL FLEET ATTESTATION AUDIT LOG",
-                            color = palette.accent,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Every point-in-time presence audit, retirement, loss, and defect event is cryptographically sealed by an operator present in the environment.",
-                            color = palette.textMuted,
-                            fontSize = 11.5.sp,
-                            lineHeight = 15.sp
-                        )
-                    }
-
-                    // Summary Metrics Row
-                    val presenceCount = attestations.count { it.type == AttestationType.PRESENCE_AUDIT || it.type == AttestationType.PRESENCE_REACTIVATED }
-                    val retiredCount = attestations.count { it.type == AttestationType.ABSENCE_RETIRED }
-                    val lostCount = attestations.count { it.type == AttestationType.ABSENCE_LOST }
-                    val defectCount = attestations.count { it.type == AttestationType.ABSENCE_STOPPED_WORKING }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        AuditMetricBadge("TOTAL", attestations.size.toString(), palette.textPrimary, palette, Modifier.weight(1f))
-                        AuditMetricBadge("PRESENCE", presenceCount.toString(), Color(0xFF2EBD6B), palette, Modifier.weight(1f))
-                        AuditMetricBadge("RETIRED", retiredCount.toString(), Color(0xFF64748B), palette, Modifier.weight(1f))
-                        AuditMetricBadge("LOST", lostCount.toString(), Color(0xFFA855F7), palette, Modifier.weight(1f))
-                        AuditMetricBadge("DEFECT", defectCount.toString(), Color(0xFFEF4444), palette, Modifier.weight(1f))
-                    }
-
-                    // Filter chips
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("FILTER:", color = palette.textMuted, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        AttestationFilterChip("All (${attestations.size})", isSelected = attestationFilterType == null, palette) {
-                            attestationFilterType = null
-                        }
-                        AttestationFilterChip("Presence", isSelected = attestationFilterType == AttestationType.PRESENCE_AUDIT, palette) {
-                            attestationFilterType = AttestationType.PRESENCE_AUDIT
-                        }
-                        AttestationFilterChip("Retired", isSelected = attestationFilterType == AttestationType.ABSENCE_RETIRED, palette) {
-                            attestationFilterType = AttestationType.ABSENCE_RETIRED
-                        }
-                        AttestationFilterChip("Lost", isSelected = attestationFilterType == AttestationType.ABSENCE_LOST, palette) {
-                            attestationFilterType = AttestationType.ABSENCE_LOST
-                        }
-                        AttestationFilterChip("Defect", isSelected = attestationFilterType == AttestationType.ABSENCE_STOPPED_WORKING, palette) {
-                            attestationFilterType = AttestationType.ABSENCE_STOPPED_WORKING
-                        }
-                    }
-                }
-            }
-
-            if (filteredAttestations.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                        Text("⏱", fontSize = 12.sp)
                         Text(
-                            text = "No attestations match the selected filter.",
+                            text = "POINT-IN-TIME CURSOR:",
                             color = palette.textMuted,
-                            fontSize = 12.sp
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = cursorDateStr,
+                            color = if (kotlin.math.abs(dayOffset) <= 1) Color(0xFF2EBD6B) else palette.accent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    if (kotlin.math.abs(dayOffset) > 1) {
+                        Text(
+                            text = "[RESET TODAY]",
+                            color = palette.accent,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.clickable { scrubberXNorm = 0.72f }
                         )
                     }
                 }
-            } else {
-                items(filteredAttestations, key = { it.id }) { att ->
-                    val typeBadgeColor = when (att.type) {
-                        AttestationType.PRESENCE_AUDIT -> Color(0xFF2EBD6B)
-                        AttestationType.PRESENCE_REACTIVATED -> Color(0xFF3B82F6)
-                        AttestationType.ABSENCE_RETIRED -> Color(0xFF64748B)
-                        AttestationType.ABSENCE_LOST -> Color(0xFFA855F7)
-                        AttestationType.ABSENCE_STOPPED_WORKING -> Color(0xFFEF4444)
-                    }
 
+                // 2D Candlestick Lifespan Canvas
+                SwimlaneCanvas(
+                    candles = currentCandles,
+                    palette = palette,
+                    scrubberXNorm = scrubberXNorm,
+                    onScrubChanged = { scrubberXNorm = it }
+                )
+
+                // Visual Grammar Legend (All 6 States)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF0F1218))
+                        .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "CANDLESTICK LIFECYCLE GRAMMAR:",
+                        color = palette.accent,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFF2EBD6B)))
+                            Text("Solid: Active", color = palette.textMuted, fontSize = 9.5.sp)
+                        }
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).border(1.dp, Color(0xFF64748B)))
+                            Text("Hollow: Retired", color = palette.textMuted, fontSize = 9.5.sp)
+                        }
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).border(1.dp, Color(0xFFA855F7)))
+                            Text("Dashed: Lost", color = Color(0xFFC084FC), fontSize = 9.5.sp)
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFFEF4444)))
+                            Text("Slash: Defect", color = Color(0xFFF87171), fontSize = 9.5.sp)
+                        }
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFFF59E0B)))
+                            Text("Amber: EOL Nears", color = palette.textMuted, fontSize = 9.5.sp)
+                        }
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(Color(0xFFDC2626)))
+                            Text("Hatched: Past EOL", color = Color(0xFFF87171), fontSize = 9.5.sp)
+                        }
+                    }
+                }
+
+                // Section Title
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, start = 2.dp, end = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isStn) "Hardware Lifespan & Active Tenure" else "Hardware Operational Tenures",
+                        color = palette.textPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${currentCandles.size} HARDWARE NODES",
+                        color = palette.accent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        if (currentCandles.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No hardware devices tracked in your inventory yet.",
+                        color = palette.textMuted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            items(currentCandles, key = { "${it.layer}-${it.id}" }) { candle ->
+                val isPastEol = candle.isPastEol
+                val isEolNearing = candle.isEolNearing
+                val presenceState = candle.presenceState
+
+                val statusBadgeColor = when (presenceState) {
+                    DevicePresenceState.STOPPED_WORKING -> Color(0xFFEF4444)
+                    DevicePresenceState.LOST -> Color(0xFFA855F7)
+                    DevicePresenceState.RETIRED -> Color(0xFF64748B)
+                    DevicePresenceState.ACTIVE -> when {
+                        candle.hasCveOrRecall -> Color(0xFFDC2626)
+                        isPastEol -> Color(0xFFDC2626)
+                        isEolNearing -> Color(0xFFF59E0B)
+                        else -> Color(0xFF2EBD6B)
+                    }
+                }
+
+                val statusText = when (presenceState) {
+                    DevicePresenceState.STOPPED_WORKING -> "STOPPED WORKING • DEFECT"
+                    DevicePresenceState.LOST -> "LOST • UNACCOUNTED"
+                    DevicePresenceState.RETIRED -> "RETIRED • DECOMMISSIONED"
+                    DevicePresenceState.ACTIVE -> when {
+                        isPastEol -> "ZOMBIE HARDWARE • PAST EOL"
+                        isEolNearing -> "EOL NEARS • RUNWAY LOW"
+                        candle.hasCveOrRecall -> "SECURITY RECALL / CVE"
+                        else -> "ACTIVE • SUPPORTED RUNWAY"
+                    }
+                }
+
+                val devAttestations = remember(attestations, candle.id) {
+                    attestations.filter { it.deviceId == candle.id }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onInspectDevice(candle.id) }
+                ) {
+                    HorizontalDivider(color = palette.border, thickness = 1.dp)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                            .padding(10.dp),
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Top row: Type badge, audit date, session ID
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -838,100 +428,111 @@ fun SwimlaneTimelineScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(typeBadgeColor.copy(alpha = 0.18f))
-                                        .border(0.8.dp, typeBadgeColor, RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = att.type.displayLabel.uppercase(),
-                                        color = typeBadgeColor,
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
+                                if (candle.portIndex > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(statusBadgeColor),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = candle.portIndex.toString(),
+                                            color = Color.White,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
                                 }
                                 Text(
-                                    text = "📅 ${att.auditDate}",
+                                    text = candle.name,
                                     color = palette.textPrimary,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+
+                            // Update Lifecycle Status action button
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.accent.copy(alpha = 0.15f))
+                                    .border(0.8.dp, palette.accent, RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        val targetDev = effectiveDevices.find { it.id == candle.id }
+                                        selectedDeviceForAttestation = targetDev
+                                    }
+                                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Update Status",
+                                    color = palette.accent,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
-
-                            if (!att.auditSessionId.isNullOrBlank()) {
-                                Text(
-                                    text = "#${att.auditSessionId}",
-                                    color = palette.accent,
-                                    fontSize = 9.5.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
                         }
 
-                        // Target Device Header
-                        val matchingDev = effectiveDevices.find { it.id == att.deviceId }
-                        Text(
-                            text = matchingDev?.name ?: att.deviceLabel,
-                            color = palette.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        // Attestation Notes
-                        if (!att.note.isNullOrBlank()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF0F1218))
-                                    .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "“${att.note}”",
-                                    color = palette.textPrimary,
-                                    fontSize = 11.sp,
-                                    lineHeight = 15.sp
-                                )
-                            }
-                        }
-
-                        // Signer & Environment Metadata Footer
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(palette.elevated)
-                                .padding(horizontal = 6.dp, vertical = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        // Mini Candlestick Bar Widget
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "👤 Signer: ${att.userSignature}",
-                                    color = palette.textMuted,
-                                    fontSize = 9.5.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = "📱 ${att.environment}",
-                                    color = palette.textMuted,
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                            MiniCandleBar(
+                                candle = candle,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = statusText,
+                                color = statusBadgeColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        // Operational metrics row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val preAgeText = "Pre-adoption: %s".format(candle.releaseDateStr ?: "Launch")
+                            val deployText = if (presenceState.isOutOfService) {
+                                "${presenceState.shortLabel}: %s".format(candle.decommissionDateStr ?: "Updated")
+                            } else {
+                                "Active since: %s".format(candle.deployDateStr ?: "Enrollment")
+                            }
+                            val eolText = "EOL: %s".format(candle.eolDateStr ?: "TBD")
+
+                            Text(
+                                text = "$preAgeText  •  $deployText",
+                                color = palette.textMuted,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = eolText,
+                                color = if (isPastEol) Color(0xFFF87171) else palette.textMuted,
+                                fontSize = 11.sp,
+                                fontWeight = if (isPastEol) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+
+                        // Latest Rhythm Check-In Summary (Colloquial, no cryptographic jargon)
+                        val latestAtt = candle.latestAttestation ?: devAttestations.firstOrNull()
+                        if (latestAtt != null) {
+                            val checkInSummary = if (!latestAtt.note.isNullOrBlank()) {
+                                "✓ Last check-in: ${latestAtt.auditDate}  •  “${latestAtt.note}”"
+                            } else {
+                                "✓ Last check-in: ${latestAtt.auditDate}"
                             }
                             Text(
-                                text = "🔐 SHA-256: ${att.cryptographicProof}",
-                                color = palette.accent,
-                                fontSize = 8.5.sp,
-                                fontFamily = FontFamily.Monospace
+                                text = checkInSummary,
+                                color = palette.textMuted.copy(alpha = 0.85f),
+                                fontSize = 10.5.sp
                             )
                         }
                     }
@@ -940,12 +541,10 @@ fun SwimlaneTimelineScreen(
         }
     }
 
-    // Modal Sheet 1: Record Lifecycle Attestation for a Device
+    // Modal Sheet 1: Update Hardware Lifecycle Status for a Device
     selectedDeviceForAttestation?.let { dev ->
         LifecycleAttestationSheet(
             device = dev,
-            userSignature = userSignature,
-            environment = "Tuesday Android (Pixel 9)",
             palette = palette,
             onDismiss = { selectedDeviceForAttestation = null },
             onAttest = { type, date, note, sessId ->
@@ -954,12 +553,10 @@ fun SwimlaneTimelineScreen(
         )
     }
 
-    // Modal Sheet 2: Point-in-Time Batch Audit
+    // Modal Sheet 2: Rhythm Inventory Check-In
     if (showBatchAuditModal) {
         BatchAuditModal(
             devices = effectiveDevices,
-            userSignature = userSignature,
-            environment = "Tuesday Android (Pixel 9)",
             palette = palette,
             onDismiss = { showBatchAuditModal = false },
             onBatchAttest = { devIds, date, sessId, note ->
@@ -969,59 +566,10 @@ fun SwimlaneTimelineScreen(
     }
 }
 
-@Composable
-private fun AuditMetricBadge(
-    label: String,
-    value: String,
-    valueColor: Color,
-    palette: BrandPalette,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(palette.elevated)
-            .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
-            .padding(vertical = 6.dp, horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(text = label, color = palette.textMuted, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Text(text = value, color = valueColor, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-    }
-}
-
-@Composable
-private fun AttestationFilterChip(
-    label: String,
-    isSelected: Boolean,
-    palette: BrandPalette,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (isSelected) palette.accent.copy(alpha = 0.2f) else palette.elevated)
-            .border(0.8.dp, if (isSelected) palette.accent else palette.border, RoundedCornerShape(4.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 6.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            color = if (isSelected) palette.accent else palette.textMuted,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LifecycleAttestationSheet(
     device: RackPortDevice,
-    userSignature: String,
-    environment: String,
     palette: BrandPalette,
     onDismiss: () -> Unit,
     onAttest: (AttestationType, String, String?, String?) -> Unit
@@ -1033,28 +581,18 @@ private fun LifecycleAttestationSheet(
         )
     }
     var auditDate by remember { mutableStateOf("2026-11-11") }
-    var auditSessionId by remember { mutableStateOf("AUDIT-2026-Q4") }
+    val auditSessionId = "CHECKIN-2026-Q4"
     var notes by remember { mutableStateOf("") }
-
-    val liveProof = remember(device.id, selectedType, auditDate, userSignature, environment) {
-        BulletinsAndInventoryEngine.computeAttestationProof(
-            id = "preview-seal",
-            deviceId = device.id,
-            type = selectedType,
-            auditDate = auditDate,
-            userSignature = userSignature,
-            environment = environment,
-            timestampMs = System.currentTimeMillis()
-        )
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = palette.surface
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1064,9 +602,13 @@ private fun LifecycleAttestationSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
                     Text(
-                        text = "RECORD LIFECYCLE ATTESTATION",
+                        text = "RHYTHM CHECK-IN & LIFECYCLE",
                         color = palette.accent,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -1097,38 +639,38 @@ private fun LifecycleAttestationSheet(
             }
 
             Text(
-                text = "Select the lifecycle state change to attest. The event will be cryptographically sealed with your operator signature and device environment.",
+                text = "Update this device's operational status. Your check-in updates the hardware lifecycle candlestick and keeps your seasonal rhythm posture accurate.",
                 color = palette.textMuted,
                 fontSize = 11.5.sp,
                 lineHeight = 15.sp
             )
 
-            // Event Options
+            // Lifecycle Status Options
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 AttestationOptionRow(
-                    label = "🟢 Presence Attestation (Verify Present in Audit)",
-                    desc = "Confirms device is currently online, racked, and active.",
+                    label = "🟢 Confirm Active (Check-In)",
+                    desc = "Device is powered on, connected, and in active service.",
                     isSelected = selectedType == AttestationType.PRESENCE_AUDIT,
                     palette = palette,
                     onClick = { selectedType = AttestationType.PRESENCE_AUDIT }
                 )
                 AttestationOptionRow(
-                    label = "📦 Retire Gear (Graceful Decommission)",
-                    desc = "Planned sunset, replacement, or standard decommissioning.",
+                    label = "📦 Retire Gear (Decommissioned)",
+                    desc = "Planned sunset, replacement, or removed from active service.",
                     isSelected = selectedType == AttestationType.ABSENCE_RETIRED,
                     palette = palette,
                     onClick = { selectedType = AttestationType.ABSENCE_RETIRED }
                 )
                 AttestationOptionRow(
-                    label = "❓ Mark Lost (Missing in Audit)",
-                    desc = "Device unaccounted for during inventory walk or missing from rack.",
+                    label = "❓ Mark Lost (Missing)",
+                    desc = "Device unaccounted for during inventory check-in.",
                     isSelected = selectedType == AttestationType.ABSENCE_LOST,
                     palette = palette,
                     onClick = { selectedType = AttestationType.ABSENCE_LOST }
                 )
                 AttestationOptionRow(
-                    label = "⚡ Stopped Working (Hardware Failure)",
-                    desc = "Power supply blown, fried capacitor, port failure, or bricked.",
+                    label = "⚡ Stopped Working (Hardware Fault)",
+                    desc = "Power supply failed, hardware defect, port failure, or bricked.",
                     isSelected = selectedType == AttestationType.ABSENCE_STOPPED_WORKING,
                     palette = palette,
                     onClick = { selectedType = AttestationType.ABSENCE_STOPPED_WORKING }
@@ -1136,7 +678,7 @@ private fun LifecycleAttestationSheet(
                 if (device.presenceState != DevicePresenceState.ACTIVE) {
                     AttestationOptionRow(
                         label = "🔄 Return to Active Service (Reactivate)",
-                        desc = "Repaired, located, or re-commissioned back into fleet.",
+                        desc = "Repaired, located, or returned to active service.",
                         isSelected = selectedType == AttestationType.PRESENCE_REACTIVATED,
                         palette = palette,
                         onClick = { selectedType = AttestationType.PRESENCE_REACTIVATED }
@@ -1144,10 +686,10 @@ private fun LifecycleAttestationSheet(
                 }
             }
 
-            // Audit Date input
+            // Check-In Date input
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "AUDIT DATE (YYYY-MM-DD)",
+                    text = "STATUS DATE (YYYY-MM-DD)",
                     color = palette.textMuted,
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -1170,7 +712,7 @@ private fun LifecycleAttestationSheet(
             // Note input
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "AUDIT NOTES / JUSTIFICATION",
+                    text = "CHECK-IN NOTES (OPTIONAL)",
                     color = palette.textMuted,
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -1179,7 +721,7 @@ private fun LifecycleAttestationSheet(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    placeholder = { Text("e.g. Replaced with UDM-SE for 2.5GbE PoE, or PSU blown", color = palette.textMuted.copy(alpha = 0.5f), fontSize = 11.5.sp) },
+                    placeholder = { Text("e.g. Replaced with UDM-SE for 2.5GbE PoE, or PSU failed", color = palette.textMuted.copy(alpha = 0.5f), fontSize = 11.5.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = palette.textPrimary,
@@ -1187,43 +729,6 @@ private fun LifecycleAttestationSheet(
                         focusedBorderColor = palette.accent,
                         unfocusedBorderColor = palette.border
                     )
-                )
-            }
-
-            // Cryptographic Proof Box
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF0F1218))
-                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                Text(
-                    text = "CRYPTOGRAPHIC ATTESTATION SEAL",
-                    color = palette.accent,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "👤 Signer: $userSignature",
-                    color = palette.textPrimary,
-                    fontSize = 10.5.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "📱 Environment: $environment",
-                    color = palette.textMuted,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "🔐 Proof: sha256:${liveProof.take(24)}...",
-                    color = palette.textMuted,
-                    fontSize = 9.5.sp,
-                    fontFamily = FontFamily.Monospace
                 )
             }
 
@@ -1259,7 +764,7 @@ private fun LifecycleAttestationSheet(
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Sign & Record Attestation", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Save Lifecycle Status", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1311,8 +816,6 @@ private fun AttestationOptionRow(
 @Composable
 private fun BatchAuditModal(
     devices: List<RackPortDevice>,
-    userSignature: String,
-    environment: String,
     palette: BrandPalette,
     onDismiss: () -> Unit,
     onBatchAttest: (List<String>, String, String, String?) -> Unit
@@ -1321,30 +824,32 @@ private fun BatchAuditModal(
         devices.filter { it.presenceState == DevicePresenceState.ACTIVE }.forEach { put(it.id, true) }
     } }
     var auditDate by remember { mutableStateOf("2026-11-11") }
-    var sessionId by remember { mutableStateOf("AUDIT-2026-Q4-RACK") }
-    var notes by remember { mutableStateOf("Scheduled physical rack inventory audit walk.") }
+    val sessionId = "CHECKIN-2026-Q4-WALK"
+    var notes by remember { mutableStateOf("Seasonal inventory check-in.") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = palette.surface
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Column {
                 Text(
-                    text = "POINT-IN-TIME AUDIT BATCH",
+                    text = "OPERATIONAL RHYTHM • CHECK-IN",
                     color = palette.accent,
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Attest Fleet Presence",
+                    text = "Inventory Check-In",
                     color = palette.textPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -1352,7 +857,7 @@ private fun BatchAuditModal(
             }
 
             Text(
-                text = "Attest to the verified presence of multiple devices in your network during a point-in-time audit date. Each device receives a signed attestation record.",
+                text = "Confirm which hardware devices are currently powered on and active in your network. Unchecked devices can be updated individually if retired or replaced.",
                 color = palette.textMuted,
                 fontSize = 11.5.sp,
                 lineHeight = 15.sp
@@ -1365,7 +870,7 @@ private fun BatchAuditModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "TARGET INVENTORY (${selectedIds.values.count { it }} / ${devices.size})",
+                    text = "ACTIVE HARDWARE (${selectedIds.values.count { it }} / ${devices.size})",
                     color = palette.textMuted,
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -1386,7 +891,7 @@ private fun BatchAuditModal(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 140.dp),
+                    .heightIn(max = 150.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(devices, key = { it.id }) { dev ->
@@ -1409,7 +914,7 @@ private fun BatchAuditModal(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = if (isChecked) "✓ Selected" else "Tap to select",
+                            text = if (isChecked) "✓ Active" else "Tap to include",
                             color = if (isChecked) palette.accent else palette.textMuted,
                             fontSize = 9.5.sp,
                             fontFamily = FontFamily.Monospace
@@ -1418,44 +923,26 @@ private fun BatchAuditModal(
                 }
             }
 
-            // Audit Session ID & Date fields
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("AUDIT SESSION ID", color = palette.textMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    OutlinedTextField(
-                        value = sessionId,
-                        onValueChange = { sessionId = it },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = palette.textPrimary,
-                            unfocusedTextColor = palette.textPrimary,
-                            focusedBorderColor = palette.accent,
-                            unfocusedBorderColor = palette.border
-                        )
+            // Check-In Date field
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("CHECK-IN DATE (YYYY-MM-DD)", color = palette.textMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                OutlinedTextField(
+                    value = auditDate,
+                    onValueChange = { auditDate = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary,
+                        focusedBorderColor = palette.accent,
+                        unfocusedBorderColor = palette.border
                     )
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("AUDIT DATE", color = palette.textMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    OutlinedTextField(
-                        value = auditDate,
-                        onValueChange = { auditDate = it },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = palette.textPrimary,
-                            unfocusedTextColor = palette.textPrimary,
-                            focusedBorderColor = palette.accent,
-                            unfocusedBorderColor = palette.border
-                        )
-                    )
-                }
+                )
             }
 
             // Note input
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("AUDIT NOTES", color = palette.textMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Text("CHECK-IN NOTES (OPTIONAL)", color = palette.textMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
@@ -1466,23 +953,6 @@ private fun BatchAuditModal(
                         focusedBorderColor = palette.accent,
                         unfocusedBorderColor = palette.border
                     )
-                )
-            }
-
-            // Signer Preview
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF0F1218))
-                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = "👤 Signer: $userSignature  •  📱 $environment",
-                    color = palette.textMuted,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
                 )
             }
 
@@ -1502,7 +972,7 @@ private fun BatchAuditModal(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Sign & Attest Fleet Audit ($selectedCount Devices)",
+                    text = "Complete Check-In ($selectedCount Devices)",
                     color = if (selectedCount > 0) Color.Black else palette.textMuted,
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold

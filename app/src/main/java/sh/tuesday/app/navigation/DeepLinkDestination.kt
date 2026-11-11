@@ -23,6 +23,7 @@ sealed interface DeepLinkDestination {
     data class SetApiEndpoint(val url: String) : DeepLinkDestination
     data class SyncNotifications(val forceResend: Boolean = true) : DeepLinkDestination
     data object TriggerMockPatchTuesday : DeepLinkDestination
+    data class TimelineAction(val scenario: String? = null, val modal: String? = null) : DeepLinkDestination
 
     companion object {
         fun fromUri(uriString: String?): DeepLinkDestination? {
@@ -38,7 +39,14 @@ sealed interface DeepLinkDestination {
             return when (head) {
                 "status", "fleet", "home", "grid" -> Tab("status")
                 "bulletins", "inbox" -> Tab("bulletins")
-                "timeline", "lifespan", "swimlane" -> Tab("timeline")
+                "timeline", "lifespan", "swimlane" -> {
+                    val sub = parts.getOrNull(1)?.lowercase()
+                    when (sub) {
+                        "decommissioned", "retired", "zombie", "runway", "standard" -> TimelineAction(scenario = sub, modal = parts.getOrNull(2)?.lowercase())
+                        "checkin", "check-in", "status", "update-status" -> TimelineAction(scenario = null, modal = sub)
+                        else -> Tab("timeline")
+                    }
+                }
                 "checkup", "audit" -> Tab("checkup")
                 "account", "settings" -> {
                     val sub = parts.getOrNull(1)?.lowercase()
