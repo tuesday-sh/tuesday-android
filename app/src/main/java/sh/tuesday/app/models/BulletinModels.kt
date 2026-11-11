@@ -859,6 +859,22 @@ object BulletinsAndInventoryEngine {
         )
     }
 
+    fun countBulletinsForDevice(
+        device: RackPortDevice,
+        bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
+    ): Int {
+        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE) return 0
+        return bulletins.count { b ->
+            val isExcluded = device.excludedPurlPrefixes.any { ex ->
+                b.purlBase.startsWith(ex.removeSuffix("/*"))
+            }
+            !isExcluded && device.purls.any { dp ->
+                val cleanDp = dp.substringBefore("@").removeSuffix("/*")
+                b.purlBase.startsWith(cleanDp) || cleanDp.startsWith(b.purlBase)
+            }
+        }
+    }
+
     fun defaultRackPortDevices(): List<RackPortDevice> = listOf(
         RackPortDevice(
             id = "0192d9f0-0008-7000-8000-000000000108",

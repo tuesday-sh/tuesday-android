@@ -622,6 +622,10 @@ fun HomeScreen(
                     repository.markDeviceUpdatesApplied(device.id)
                     inspectedDevice = null
                 },
+                onNavigateToBulletins = {
+                    inspectedDevice = null
+                    activeTab = MainNavTab.BULLETINS
+                },
                 onClose = { inspectedDevice = null }
             )
         }
@@ -1268,7 +1272,10 @@ private fun StatusMatrixAndActionListScreen(
                             )
                         }
 
-                        RiskMeter(portState = dev.portState, isStn = isStn)
+                        val noticeCount = remember(dev.id, dev.purls) {
+                            BulletinsAndInventoryEngine.countBulletinsForDevice(dev)
+                        }
+                        RiskMeter(portState = dev.portState, isStn = isStn, noticeCount = noticeCount)
                     }
                 }
             }
@@ -1299,7 +1306,8 @@ private fun StatusMatrixAndActionListScreen(
 @Composable
 fun RiskMeter(
     portState: PortLifecycleState,
-    isStn: Boolean = false
+    isStn: Boolean = false,
+    noticeCount: Int = 0
 ) {
     val activeBars = when (portState) {
         PortLifecycleState.CVE_KEV -> 3
@@ -1314,42 +1322,59 @@ fun RiskMeter(
 
     Column(
         horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(3.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // Sev Bars Diagram
         Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.5.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             Box(
                 modifier = Modifier
-                    .width(3.dp)
-                    .height(7.dp)
+                    .width(3.5.dp)
+                    .height(6.dp)
                     .clip(RoundedCornerShape(1.dp))
                     .background(if (activeBars >= 1) activeColor else inactiveColor)
             )
             Box(
                 modifier = Modifier
-                    .width(3.dp)
+                    .width(3.5.dp)
                     .height(10.dp)
                     .clip(RoundedCornerShape(1.dp))
                     .background(if (activeBars >= 2) activeColor else inactiveColor)
             )
             Box(
                 modifier = Modifier
-                    .width(3.dp)
-                    .height(13.dp)
+                    .width(3.5.dp)
+                    .height(14.dp)
                     .clip(RoundedCornerShape(1.dp))
                     .background(if (activeBars >= 3) activeColor else inactiveColor)
             )
         }
-        Text(
-            text = portState.proLabel,
-            color = activeColor,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
+
+        // Relevant Advisories Count Badge / Notice Counter
+        if (noticeCount > 0) {
+            Text(
+                text = if (noticeCount == 1) "1 notice" else "$noticeCount notices",
+                color = activeColor,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+        } else {
+            Text(
+                text = "0 notices",
+                color = palette_textMuted_or(activeColor, isStn),
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
     }
+}
+
+private fun palette_textMuted_or(activeColor: Color, isStn: Boolean): Color {
+    return if (isStn) Color(0xFF94A3B8) else Color(0xFF6B7280)
 }
 
 @Composable
@@ -2169,9 +2194,14 @@ private fun DeviceInspectorBottomSheet(
     palette: BrandPalette,
     isStn: Boolean,
     onApplyPatch: () -> Unit,
+    onNavigateToBulletins: () -> Unit = {},
     onClose: () -> Unit
 ) {
     val stateColor = TuesdayTheme.ledColorFor(device.portState, isStn)
+    val noticeCount = remember(device.id, device.purls) {
+        BulletinsAndInventoryEngine.countBulletinsForDevice(device)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2209,14 +2239,58 @@ private fun DeviceInspectorBottomSheet(
                     fontWeight = FontWeight.Bold
                 )
             }
-            if (!isStn) {
-                RiskMeter(portState = device.portState, isStn = false)
-            }
+            RiskMeter(portState = device.portState, isStn = isStn, noticeCount = noticeCount)
+            Spacer(modifier = Modifier.width(6.dp))
             TextButton(
                 onClick = onClose,
                 modifier = Modifier.uiAction("closeDeviceInspector")
             ) {
                 Text(if (isStn) "Done" else "Close", color = palette.accent)
+            }
+        }
+
+        // Clickable banner/button near the top of the drawer navigating to the Bulletins tab
+        if (noticeCount > 0) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(stateColor.copy(alpha = 0.12f))
+                    .border(1.dp, stateColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .clickable { onNavigateToBulletins() }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "📢",
+                        fontSize = 13.sp
+                    )
+                    Column {
+                        Text(
+                            text = if (noticeCount == 1) "1 Advisory Bulletin for this device" else "$noticeCount Advisory Bulletins for this device",
+                            color = palette.textPrimary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Tap to view in Bulletins feed",
+                            color = stateColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Text(
+                    text = "View →",
+                    color = stateColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
