@@ -1252,7 +1252,7 @@ private fun StatusMatrixAndActionListScreen(
 
                         Column(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
                                 text = dev.name,
@@ -1261,13 +1261,7 @@ private fun StatusMatrixAndActionListScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "${dev.trustZone.shortCode} • ${dev.roomLocation} • ${dev.version} • ${dev.lifecycleTier}",
-                                color = palette.textMuted,
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = dev.proHeadline,
+                                text = if (isStn) dev.stnHeadline else dev.proHeadline,
                                 color = stateColor,
                                 fontSize = 10.sp,
                                 lineHeight = 13.sp
