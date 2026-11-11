@@ -76,6 +76,12 @@ fun BulletinsScreen(
         )
     }
 
+    val step1Done = activeDeviceCount > 0
+    val step2Done = remindersEnabled
+    val step3Done = dispatchSubscribed
+    val allStepsDone = step1Done && step2Done && step3Done
+    val isComplete = allStepsDone || bulletinDismissed
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -96,7 +102,7 @@ fun BulletinsScreen(
 
         // 1. Bulletin Inbox Section Header (Top of screen, matching Web Workbench)
         item {
-            val totalInboxCount = payload.inbox.size + (if (!bulletinDismissed && !bulletinSnoozed && !bulletinMuted) 1 else 0)
+            val totalInboxCount = payload.inbox.size + (if (!bulletinDismissed && !bulletinSnoozed && !bulletinMuted && !isComplete) 1 else 0)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -123,13 +129,8 @@ fun BulletinsScreen(
         }
 
         // 2. Preloaded Monthly Rhythm Bulletin Card (`bul-00-rhythm`)
-        if (!bulletinDismissed && !bulletinSnoozed && !bulletinMuted) {
+        if (!bulletinDismissed && !bulletinSnoozed && !bulletinMuted && !isComplete) {
             item(key = "bul-00-rhythm") {
-                val step1Done = activeDeviceCount > 0
-                val step2Done = remindersEnabled
-                val step3Done = dispatchSubscribed
-                val allStepsDone = step1Done && step2Done && step3Done
-
                 val steps = listOf(
                     BulletinChecklistStep(
                         id = "step1",
@@ -560,6 +561,93 @@ fun BulletinsScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // 6. Completed Bulletins Section (at the bottom of the bulletins list)
+        if (isComplete) {
+            item {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isStn) "COMPLETED BULLETINS" else "COMPLETED BULLETINS",
+                        color = palette.textMuted,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "1 Completed",
+                        color = TuesdayTheme.LedOkGreen,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            item(key = "bul-00-rhythm-completed") {
+                val completeSteps = listOf(
+                    BulletinChecklistStep(
+                        id = "step1",
+                        num = "1",
+                        title = "Inventory Your Network",
+                        description = "Kick off Plug & Tag intake to map active routers, switches, NAS, and IoT nodes.",
+                        linkText = "✓ Added",
+                        isDone = true,
+                        onClick = onNavigateToAddDevice
+                    ),
+                    BulletinChecklistStep(
+                        id = "step2",
+                        num = "2",
+                        title = "Enable Push Reminders",
+                        description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
+                        linkText = "✓ Active",
+                        isDone = true,
+                        onClick = onEnableReminders
+                    ),
+                    BulletinChecklistStep(
+                        id = "step3",
+                        num = "3",
+                        title = "Subscribe to the Dispatch",
+                        description = "Get human-curated patch analysis and firmware changelogs delivered every cycle.",
+                        linkText = "✓ Subscribed",
+                        isDone = true,
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tuesday.sh/dispatch"))
+                            context.startActivity(intent)
+                        }
+                    )
+                )
+
+                NotchBulletinCard(
+                    palette = palette,
+                    title = "Patch Tuesday Rhythm • Complete",
+                    description = "Enrolled & monitored. Inventory mapped, 10:00 AM PT push alerts enabled, monthly dispatch active.",
+                    leftNotchLabel = "RHYTHM COMPLETE",
+                    leftNotchDotColor = TuesdayTheme.LedOkGreen,
+                    rightNotchLabel = "RHYTHM",
+                    onRightNotchClick = onOpenFeedsSettings,
+                    steps = completeSteps,
+                    allStepsDone = true,
+                    primaryActionLabel = "✓ Completed",
+                    completeActionLabel = "✓ Completed",
+                    secondaryActionLabel = "Reopen",
+                    onPrimaryAction = {
+                        // Already completed
+                    },
+                    onSecondaryAction = {
+                        onSetBulletinDismissed(false)
+                        onSetBulletinSnoozed(false)
+                    }
+                )
             }
         }
     }
