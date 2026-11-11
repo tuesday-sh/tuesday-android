@@ -24,6 +24,13 @@ import sh.tuesday.app.models.*
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
+enum class TimelineSeedScenario(val label: String, val shortBadge: String, val description: String) {
+    STANDARD("Standard Fleet", "12 Active", "Realistic release-to-EOL envelopes with live operational tenures"),
+    ZOMBIE_OVERHANG("Zombie Outbreak", "3 Past EOL", "Multiple devices running past vendor EOL with red hatched overhangs"),
+    DECOMMISSIONED("Decommissioned Fleet", "4 Retired", "Mix of active solid candles and hollow retired outlines"),
+    RUNWAY_CRITICAL("Runway Critical", "4 Amber", "Imminent support cliffs (< 12 mo remaining) with amber warning fills")
+}
+
 class TuesdayRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("tuesday_prefs_v1", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
@@ -87,6 +94,138 @@ class TuesdayRepository(context: Context) {
 
     private val _isVisionDebugEnabled = MutableStateFlow(true)
     val isVisionDebugEnabled: StateFlow<Boolean> = _isVisionDebugEnabled.asStateFlow()
+
+    private val _userSignature = MutableStateFlow(
+        prefs.getString("user_signature", null) ?: "Aaron Bronow (sig_4b9a8c)"
+    )
+    val userSignature: StateFlow<String> = _userSignature.asStateFlow()
+
+    fun setUserSignature(signature: String) {
+        _userSignature.value = signature
+        prefs.edit().putString("user_signature", signature).apply()
+    }
+
+    fun getAppEnvironmentString(): String {
+        return "Tuesday Android v${BuildConfig.VERSION_NAME} (Pixel 9 • ${_activeNetworkId.value})"
+    }
+
+    private val _attestations = MutableStateFlow<List<DeviceAttestation>>(initialDefaultAttestations())
+    val attestations: StateFlow<List<DeviceAttestation>> = _attestations.asStateFlow()
+
+    private fun initialDefaultAttestations(): List<DeviceAttestation> {
+        val baseDevices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        val env = "Tuesday Android v${BuildConfig.VERSION_NAME} (Pixel 9 • net-default)"
+        val sig = _userSignature.value
+        return baseDevices.map { dev ->
+            val attId = "att-${dev.portIndex}-ingress"
+            val auditDate = dev.purchaseDate ?: "2024-02-01"
+            val timestamp = 1706788800000L + (dev.portIndex * 86400000L)
+            val iso = "2024-02-%02dT12:00:00Z".format((dev.portIndex % 28) + 1)
+            val proof = BulletinsAndInventoryEngine.computeAttestationProof(
+                id = attId,
+                deviceId = dev.id,
+                type = AttestationType.PRESENCE_AUDIT,
+                auditDate = auditDate,
+                userSignature = sig,
+                environment = env,
+                timestampMs = timestamp
+            )
+            DeviceAttestation(
+                id = attId,
+                deviceId = dev.id,
+                deviceLabel = dev.shortLabel,
+                type = AttestationType.PRESENCE_AUDIT,
+                presenceState = DevicePresenceState.ACTIVE,
+                timestampMs = timestamp,
+                timestampIso = iso,
+                auditDate = auditDate,
+                userSignature = sig,
+                environment = env,
+                auditSessionId = "AUDIT-2024-Q1-INGRESS",
+                note = "Initial point-in-time fleet inventory audit ingress.",
+                cryptographicProof = proof
+            )
+        }.reversed()
+    }
+
+    fun recordAttestation(
+        deviceId: String,
+        type: AttestationType,
+        auditDate: String,
+        note: String? = null,
+        auditSessionId: String? = null
+    ): DeviceAttestation {
+        val targetDev = _rackDevices.value.find { it.id == deviceId }
+        val devLabel = targetDev?.shortLabel ?: targetDev?.name ?: deviceId
+        val now = System.currentTimeMillis()
+        val iso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date(now))
+        val env = getAppEnvironmentString()
+        val sig = _userSignature.value
+        val attId = "att-" + java.util.UUID.randomUUID().toString().take(8)
+        val proof = BulletinsAndInventoryEngine.computeAttestationProof(
+            id = attId,
+            deviceId = deviceId,
+            type = type,
+            auditDate = auditDate,
+            userSignature = sig,
+            environment = env,
+            timestampMs = now
+        )
+
+        val newState = type.resultingState
+        val attestation = DeviceAttestation(
+            id = attId,
+            deviceId = deviceId,
+            deviceLabel = devLabel,
+            type = type,
+            presenceState = newState,
+            timestampMs = now,
+            timestampIso = iso,
+            auditDate = auditDate,
+            userSignature = sig,
+            environment = env,
+            auditSessionId = auditSessionId ?: if (type == AttestationType.PRESENCE_AUDIT) "POINT-IN-TIME-AUDIT" else "LIFECYCLE-STATE-CHANGE",
+            note = note,
+            cryptographicProof = proof
+        )
+
+        _attestations.value = listOf(attestation) + _attestations.value
+
+        _rackDevices.value = _rackDevices.value.map { dev ->
+            if (dev.id == deviceId) {
+                dev.copy(
+                    presenceState = newState,
+                    isRetired = newState.isOutOfService,
+                    decommissionDate = if (newState.isOutOfService) auditDate else null,
+                    latestAttestation = attestation,
+                    attestationCount = dev.attestationCount + 1
+                )
+            } else dev
+        }
+        return attestation
+    }
+
+    fun recordBatchAudit(
+        deviceIds: List<String>,
+        auditDate: String,
+        auditSessionId: String,
+        note: String? = null
+    ): List<DeviceAttestation> {
+        val created = mutableListOf<DeviceAttestation>()
+        deviceIds.forEach { id ->
+            val att = recordAttestation(
+                deviceId = id,
+                type = AttestationType.PRESENCE_AUDIT,
+                auditDate = auditDate,
+                note = note,
+                auditSessionId = auditSessionId
+            )
+            created.add(att)
+        }
+        return created
+    }
 
     private val _hacsConfig = MutableStateFlow(HacsConfig())
     val hacsConfig: StateFlow<HacsConfig> = _hacsConfig.asStateFlow()
@@ -446,12 +585,49 @@ class TuesdayRepository(context: Context) {
             s3Lifecycle = if (isGuessed) "Provisional Guess" else "Active Support",
             s4Advisories = "0 Active CVEs",
             s5Topology = "Z3 IoT",
-            s6Remediation = if (isGuessed) "Confirm exact model on Bulletins tab." else "No action required."
+            s6Remediation = if (isGuessed) "Confirm exact model on Bulletins tab." else "No action required.",
+            presenceState = DevicePresenceState.ACTIVE,
+            isRetired = false
         )
-        _rackDevices.value = listOf(newRackDev) + _rackDevices.value
+
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(now))
+        val isoStr = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date(now))
+        val attId = "att-" + java.util.UUID.randomUUID().toString().take(8)
+        val proof = BulletinsAndInventoryEngine.computeAttestationProof(
+            id = attId,
+            deviceId = newDevice.id,
+            type = AttestationType.PRESENCE_AUDIT,
+            auditDate = todayStr,
+            userSignature = _userSignature.value,
+            environment = getAppEnvironmentString(),
+            timestampMs = now
+        )
+        val initialAttestation = DeviceAttestation(
+            id = attId,
+            deviceId = newDevice.id,
+            deviceLabel = hostname.take(10),
+            type = AttestationType.PRESENCE_AUDIT,
+            presenceState = DevicePresenceState.ACTIVE,
+            timestampMs = now,
+            timestampIso = isoStr,
+            auditDate = todayStr,
+            userSignature = _userSignature.value,
+            environment = getAppEnvironmentString(),
+            auditSessionId = "ENROLL-AUDIT",
+            note = "Device added via Point-in-Time Inventory Audit",
+            cryptographicProof = proof
+        )
+        _attestations.value = listOf(initialAttestation) + _attestations.value
+        val finalRackDev = newRackDev.copy(
+            latestAttestation = initialAttestation,
+            attestationCount = 1
+        )
+        _rackDevices.value = listOf(finalRackDev) + _rackDevices.value
         _activeDeviceCount.value = (_activeDeviceCount.value + 1).coerceAtMost(128)
 
-        syncDeviceCreateToServerAsync(newRackDev, discoveredMetadata)
+        syncDeviceCreateToServerAsync(finalRackDev, discoveredMetadata)
 
         _isSyncing.value = false
         persistDevices()
@@ -944,7 +1120,122 @@ class TuesdayRepository(context: Context) {
         _activeDeviceCount.value = 12
     }
 
+    fun seedTimelineScenario(scenario: TimelineSeedScenario) {
+        val seededDevices = generateTimelineSeedScenario(scenario)
+        _rackDevices.value = seededDevices
+        _activeDeviceCount.value = seededDevices.size
+
+        if (scenario == TimelineSeedScenario.DECOMMISSIONED) {
+            val env = getAppEnvironmentString()
+            val sig = _userSignature.value
+            val decommAttestations = listOf(
+                createSeedAttestation("dev-01", "UDM-Pro", AttestationType.ABSENCE_RETIRED, DevicePresenceState.RETIRED, "2025-08-15", "Replaced with UDM-SE for 2.5GbE PoE backhaul", sig, env),
+                createSeedAttestation("dev-04", "USW-Lite", AttestationType.ABSENCE_RETIRED, DevicePresenceState.RETIRED, "2025-10-01", "Consolidated patch cables to 24-port switch", sig, env),
+                createSeedAttestation("dev-07", "Shelly 1PM", AttestationType.ABSENCE_STOPPED_WORKING, DevicePresenceState.STOPPED_WORKING, "2025-04-20", "Internal relay burnt out after electrical storm surge; power dead", sig, env),
+                createSeedAttestation("dev-11", "Hue Bridge", AttestationType.ABSENCE_LOST, DevicePresenceState.LOST, "2024-11-30", "Unaccounted during Q4 physical audit walk; missing from rack cabinet", sig, env)
+            )
+            _attestations.value = decommAttestations + initialDefaultAttestations()
+        } else {
+            _attestations.value = initialDefaultAttestations()
+        }
+    }
+
+    private fun createSeedAttestation(
+        deviceId: String,
+        label: String,
+        type: AttestationType,
+        state: DevicePresenceState,
+        auditDate: String,
+        note: String,
+        sig: String,
+        env: String
+    ): DeviceAttestation {
+        val attId = "att-" + UUID.randomUUID().toString().take(8)
+        val timestamp = 1735689600000L
+        val proof = BulletinsAndInventoryEngine.computeAttestationProof(
+            id = attId,
+            deviceId = deviceId,
+            type = type,
+            auditDate = auditDate,
+            userSignature = sig,
+            environment = env,
+            timestampMs = timestamp
+        )
+        return DeviceAttestation(
+            id = attId,
+            deviceId = deviceId,
+            deviceLabel = label,
+            type = type,
+            presenceState = state,
+            timestampMs = timestamp,
+            timestampIso = "${auditDate}T14:30:00Z",
+            auditDate = auditDate,
+            userSignature = sig,
+            environment = env,
+            auditSessionId = "AUDIT-DECOMM-CYCLE",
+            note = note,
+            cryptographicProof = proof
+        )
+    }
+
     companion object {
+        fun generateTimelineSeedScenario(
+            scenario: TimelineSeedScenario,
+            baseDevices: List<RackPortDevice> = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        ): List<RackPortDevice> = when (scenario) {
+            TimelineSeedScenario.STANDARD -> baseDevices
+            TimelineSeedScenario.ZOMBIE_OVERHANG -> baseDevices.map { dev ->
+                when (dev.portIndex) {
+                    2 -> dev.copy(
+                        portState = PortLifecycleState.EOL,
+                        vendorEolAt = "2025-12-31",
+                        candles = listOf(DeviceLifecycleCandle("1.0.11.136", 0.08f, 0.18f, 0.96f, 0.65f, null))
+                    )
+                    6 -> dev.copy(
+                        portState = PortLifecycleState.EOL,
+                        shortLabel = "Zombie Pi",
+                        vendorEolAt = "2025-06-30",
+                        candles = listOf(DeviceLifecycleCandle("legacy-kernel", 0.20f, 0.35f, 0.96f, 0.58f, null))
+                    )
+                    10 -> dev.copy(
+                        portState = PortLifecycleState.EOL,
+                        vendorEolAt = "2026-03-31",
+                        candles = listOf(DeviceLifecycleCandle("webos-6", 0.16f, 0.32f, 0.96f, 0.62f, 0.50f))
+                    )
+                    else -> dev
+                }
+            }
+            TimelineSeedScenario.DECOMMISSIONED -> baseDevices.map { dev ->
+                when (dev.portIndex) {
+                    1 -> dev.copy(isRetired = true, presenceState = DevicePresenceState.RETIRED, decommissionDate = "2025-08-15")
+                    4 -> dev.copy(isRetired = true, presenceState = DevicePresenceState.RETIRED, decommissionDate = "2025-10-01")
+                    7 -> dev.copy(isRetired = true, presenceState = DevicePresenceState.STOPPED_WORKING, decommissionDate = "2025-04-20")
+                    11 -> dev.copy(isRetired = true, presenceState = DevicePresenceState.LOST, decommissionDate = "2024-11-30")
+                    else -> dev
+                }
+            }
+            TimelineSeedScenario.RUNWAY_CRITICAL -> baseDevices.map { dev ->
+                when (dev.portIndex) {
+                    5 -> dev.copy(
+                        vendorEolAt = "2026-12-31",
+                        candles = listOf(DeviceLifecycleCandle("15.3.1", 0.35f, 0.52f, 0.90f, 0.75f, null))
+                    )
+                    8 -> dev.copy(
+                        vendorEolAt = "2027-01-15",
+                        candles = listOf(DeviceLifecycleCandle("8.3.1", 0.40f, 0.54f, 0.90f, 0.76f, null))
+                    )
+                    9 -> dev.copy(
+                        vendorEolAt = "2026-11-30",
+                        candles = listOf(DeviceLifecycleCandle("1.0.4", 0.22f, 0.52f, 0.96f, 0.74f, 0.62f))
+                    )
+                    10 -> dev.copy(
+                        vendorEolAt = "2027-02-28",
+                        candles = listOf(DeviceLifecycleCandle("8.1.0", 0.16f, 0.36f, 0.96f, 0.77f, 0.70f))
+                    )
+                    else -> dev
+                }
+            }
+        }
         fun defaultUserNetworks(): List<NetworkSite> = listOf(
             NetworkSite(id = "net-default", name = "My Network", devicesCount = 0, role = "Primary Site"),
             NetworkSite(id = "net-demo", name = "Demo Network", devicesCount = 12, role = "Evaluation Homelab (Demo Mode)")

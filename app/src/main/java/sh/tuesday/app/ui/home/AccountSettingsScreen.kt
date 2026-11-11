@@ -49,6 +49,7 @@ data class AccountSettingsParams(
     val onSetTuesdayApiBaseUrl: (String) -> Unit = {},
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
     val onSwitchToFleetTab: () -> Unit = {},
+    val onSeedTimelineScenario: ((sh.tuesday.app.services.TimelineSeedScenario) -> Unit)? = null,
     val initialExpandNetwork: Boolean = false,
     val onResendInventoryNotifications: suspend () -> Int = { 0 },
     val onTriggerMockPatchTuesday: () -> Boolean = { false }
@@ -642,6 +643,63 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             onClick = {
                                                 onSetSimulatedDeviceCount(12)
                                                 onSwitchToFleetTab()
+                                            }
+                                        )
+                                    }
+
+                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+                                    Text(
+                                        text = "TIMELINE LIFECYCLE SEEDS:",
+                                        color = palette.textMuted,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        DevStateSimButton(
+                                            label = "🕯️ Standard (12)",
+                                            isSelected = false,
+                                            palette = palette,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                params.onSeedTimelineScenario?.invoke(sh.tuesday.app.services.TimelineSeedScenario.STANDARD)
+                                            }
+                                        )
+                                        DevStateSimButton(
+                                            label = "🧟 Zombie Overhang",
+                                            isSelected = false,
+                                            palette = palette,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                params.onSeedTimelineScenario?.invoke(sh.tuesday.app.services.TimelineSeedScenario.ZOMBIE_OVERHANG)
+                                            }
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        DevStateSimButton(
+                                            label = "🏛️ Decommissioned",
+                                            isSelected = false,
+                                            palette = palette,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                params.onSeedTimelineScenario?.invoke(sh.tuesday.app.services.TimelineSeedScenario.DECOMMISSIONED)
+                                            }
+                                        )
+                                        DevStateSimButton(
+                                            label = "⚠️ Runway Critical",
+                                            isSelected = false,
+                                            palette = palette,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                params.onSeedTimelineScenario?.invoke(sh.tuesday.app.services.TimelineSeedScenario.RUNWAY_CRITICAL)
                                             }
                                         )
                                     }

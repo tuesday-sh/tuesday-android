@@ -101,6 +101,137 @@ enum class DeviceConfidenceTier {
 }
 
 @Serializable
+enum class LifecycleLayer(
+    val label: String,
+    val wickDescription: String,
+    val bodyDescription: String
+) {
+    HARDWARE("Hardware", "Release to Vendor EOL", "Purchase/Discovery to Today/Decommissioned"),
+    OS("Host OS", "Release to Security EOL", "Host Install to Upgrade"),
+    CONTAINER("Containers", "Publish to Deprecation/CVE", "Deployment Uptime")
+}
+
+@Serializable
+enum class DevicePresenceState {
+    ACTIVE,
+    RETIRED,
+    LOST,
+    STOPPED_WORKING;
+
+    val isOutOfService: Boolean
+        get() = this != ACTIVE
+
+    val label: String
+        get() = when (this) {
+            ACTIVE -> "Active in Service"
+            RETIRED -> "Retired (Decommissioned)"
+            LOST -> "Lost / Missing"
+            STOPPED_WORKING -> "Stopped Working (Defective)"
+        }
+
+    val shortLabel: String
+        get() = when (this) {
+            ACTIVE -> "ACTIVE"
+            RETIRED -> "RETIRED"
+            LOST -> "LOST"
+            STOPPED_WORKING -> "DEFECTIVE"
+        }
+}
+
+@Serializable
+enum class AttestationType {
+    PRESENCE_AUDIT,          // Point-in-time audit adding or confirming presence
+    ABSENCE_RETIRED,         // Graceful decommission / sunset
+    ABSENCE_LOST,            // Unaccounted / missing in audit
+    ABSENCE_STOPPED_WORKING, // Hardware failure / defect
+    PRESENCE_REACTIVATED;    // Re-attested back into service
+
+    val isAbsence: Boolean
+        get() = this == ABSENCE_RETIRED || this == ABSENCE_LOST || this == ABSENCE_STOPPED_WORKING
+
+    val resultingState: DevicePresenceState
+        get() = when (this) {
+            PRESENCE_AUDIT, PRESENCE_REACTIVATED -> DevicePresenceState.ACTIVE
+            ABSENCE_RETIRED -> DevicePresenceState.RETIRED
+            ABSENCE_LOST -> DevicePresenceState.LOST
+            ABSENCE_STOPPED_WORKING -> DevicePresenceState.STOPPED_WORKING
+        }
+
+    val displayLabel: String
+        get() = when (this) {
+            PRESENCE_AUDIT -> "Presence Attestation"
+            ABSENCE_RETIRED -> "Decommission (Retired)"
+            ABSENCE_LOST -> "Absence (Lost / Missing)"
+            ABSENCE_STOPPED_WORKING -> "Absence (Stopped Working)"
+            PRESENCE_REACTIVATED -> "Reactivation (Return to Service)"
+        }
+}
+
+@Serializable
+data class DeviceAttestation(
+    val id: String,
+    val deviceId: String,
+    val deviceLabel: String,
+    val type: AttestationType,
+    val presenceState: DevicePresenceState,
+    val timestampMs: Long,
+    val timestampIso: String,
+    val auditDate: String, // Point-in-time audit date YYYY-MM-DD
+    val userSignature: String, // Unique user signature e.g. "Aaron Bronow (sig_4b9a8c)"
+    val environment: String,   // App environment e.g. "Tuesday Android v2026.11 (Pixel 9)"
+    val auditSessionId: String? = null,
+    val note: String? = null,
+    val cryptographicProof: String = ""
+) {
+    val shortProof: String
+        get() = if (cryptographicProof.length >= 12) cryptographicProof.take(12) else cryptographicProof
+}
+
+@Serializable
+data class OperationalCandle(
+    val layer: LifecycleLayer = LifecycleLayer.HARDWARE,
+    val id: String,
+    val shortLabel: String,
+    val name: String,
+    val portIndex: Int = 0,
+    val trustZone: TrustZone = TrustZone.Z1_TRUSTED,
+    val marketReleaseNorm: Float,
+    val deployStartNorm: Float,
+    val deployEndNorm: Float,
+    val vendorEolNorm: Float,
+    val isRetired: Boolean = false,
+    val presenceState: DevicePresenceState = if (isRetired) DevicePresenceState.RETIRED else DevicePresenceState.ACTIVE,
+    val isGuessed: Boolean = false,
+    val hasCveOrRecall: Boolean = false,
+    val cveStartNorm: Float? = null,
+    val versionLabel: String = "",
+    val releaseDateStr: String? = null,
+    val deployDateStr: String? = null,
+    val eolDateStr: String? = null,
+    val decommissionDateStr: String? = null,
+    val latestAttestation: DeviceAttestation? = null,
+    val attestationCount: Int = 1
+) {
+    val isOutOfService: Boolean
+        get() = isRetired || presenceState != DevicePresenceState.ACTIVE
+
+    val preAdoptionAgeNorm: Float
+        get() = (deployStartNorm - marketReleaseNorm).coerceAtLeast(0f)
+
+    val remainingRunwayNorm: Float
+        get() = if (isPastEol) 0f else (vendorEolNorm - deployEndNorm).coerceAtLeast(0f)
+
+    val isPastEol: Boolean
+        get() = deployEndNorm > vendorEolNorm
+
+    val postEolOverhangNorm: Float
+        get() = if (isPastEol) (deployEndNorm - vendorEolNorm).coerceAtLeast(0f) else 0f
+
+    val isEolNearing: Boolean
+        get() = !isPastEol && !isOutOfService && remainingRunwayNorm in 0.001f..0.12f
+}
+
+@Serializable
 data class DeviceLifecycleCandle(
     val ver: String,
     val released: Float,
@@ -125,6 +256,12 @@ data class RackPortDevice(
     val targetVersion: String? = null,
     val purchaseDate: String? = null,
     val vendorEolAt: String? = null,
+    val releaseDate: String? = null,
+    val decommissionDate: String? = null,
+    val isRetired: Boolean = false,
+    val presenceState: DevicePresenceState = if (isRetired) DevicePresenceState.RETIRED else DevicePresenceState.ACTIVE,
+    val latestAttestation: DeviceAttestation? = null,
+    val attestationCount: Int = 1,
     val candles: List<DeviceLifecycleCandle> = emptyList(),
     val lifecycleTier: String,
     val purls: List<String>,
@@ -295,6 +432,253 @@ object BulletinsAndInventoryEngine {
         category: StnHardwareCategory,
         devices: List<RackPortDevice>
     ): Int = devices.count { it.category == category }
+
+    fun computeAttestationProof(
+        id: String,
+        deviceId: String,
+        type: AttestationType,
+        auditDate: String,
+        userSignature: String,
+        environment: String,
+        timestampMs: Long
+    ): String {
+        val raw = "$id:$deviceId:${type.name}:$auditDate:$userSignature:$environment:$timestampMs"
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    fun toOperationalCandle(device: RackPortDevice, referenceNowNorm: Float = 0.72f): OperationalCandle {
+        val firstCandle = device.candles.firstOrNull()
+        val lastCandle = device.candles.lastOrNull()
+        val isGuessed = device.portState == PortLifecycleState.GUESSED || device.version == "unverified"
+        val marketRel = firstCandle?.released ?: 0.10f
+        val vendorEol = lastCandle?.eol ?: 0.95f
+        val deployStart = lastCandle?.attested ?: firstCandle?.attested ?: 0.40f
+        val isOutOfService = device.isRetired || device.presenceState != DevicePresenceState.ACTIVE
+        val deployEnd = if (isOutOfService) {
+            (lastCandle?.ended ?: 0.58f).coerceAtMost(vendorEol + 0.05f)
+        } else {
+            referenceNowNorm
+        }
+        val hasCve = device.portState == PortLifecycleState.CVE_KEV || lastCandle?.cveStart != null
+        val effectivePresence = if (device.isRetired && device.presenceState == DevicePresenceState.ACTIVE) {
+            DevicePresenceState.RETIRED
+        } else {
+            device.presenceState
+        }
+        return OperationalCandle(
+            layer = LifecycleLayer.HARDWARE,
+            id = device.id,
+            shortLabel = device.shortLabel,
+            name = device.name,
+            portIndex = device.portIndex,
+            trustZone = device.trustZone,
+            marketReleaseNorm = marketRel,
+            deployStartNorm = deployStart,
+            deployEndNorm = deployEnd,
+            vendorEolNorm = vendorEol,
+            isRetired = isOutOfService,
+            presenceState = effectivePresence,
+            isGuessed = isGuessed,
+            hasCveOrRecall = hasCve,
+            cveStartNorm = lastCandle?.cveStart,
+            versionLabel = device.version,
+            releaseDateStr = device.releaseDate ?: device.purchaseDate,
+            deployDateStr = device.purchaseDate,
+            eolDateStr = device.vendorEolAt,
+            decommissionDateStr = device.decommissionDate,
+            latestAttestation = device.latestAttestation,
+            attestationCount = device.attestationCount
+        )
+    }
+
+    fun sampleHostOsCandles(referenceNowNorm: Float = 0.72f): List<OperationalCandle> = listOf(
+        OperationalCandle(
+            layer = LifecycleLayer.OS,
+            id = "os-01",
+            shortLabel = "UniFi OS",
+            name = "Basement Rack Gateway (UDM-Pro)",
+            portIndex = 1,
+            trustZone = TrustZone.Z0_CORE,
+            marketReleaseNorm = 0.45f,
+            deployStartNorm = 0.48f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.95f,
+            versionLabel = "UniFi OS 4.0.20",
+            releaseDateStr = "2024-05",
+            deployDateStr = "2024-06",
+            eolDateStr = "2029-06"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.OS,
+            id = "os-02",
+            shortLabel = "Linux 2.6",
+            name = "Basement AP (Netgear R7000)",
+            portIndex = 2,
+            trustZone = TrustZone.Z0_CORE,
+            marketReleaseNorm = 0.08f,
+            deployStartNorm = 0.18f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.58f,
+            hasCveOrRecall = true,
+            versionLabel = "Linux 2.6.36.4 (OpenSSL 1.0.2u)",
+            releaseDateStr = "2016-02",
+            deployDateStr = "2016-09",
+            eolDateStr = "2023-01"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.OS,
+            id = "os-03",
+            shortLabel = "macOS 14",
+            name = "Aaron's MacBook Pro 16",
+            portIndex = 5,
+            trustZone = TrustZone.Z1_TRUSTED,
+            marketReleaseNorm = 0.38f,
+            deployStartNorm = 0.42f,
+            deployEndNorm = 0.55f,
+            vendorEolNorm = 0.70f,
+            isRetired = true,
+            versionLabel = "macOS Sonoma 14.7 (Upgraded)",
+            releaseDateStr = "2023-09",
+            deployDateStr = "2024-01",
+            eolDateStr = "2026-09",
+            decommissionDateStr = "2025-01"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.OS,
+            id = "os-04",
+            shortLabel = "Debian 12",
+            name = "Homelab Hypervisor (pve-node-01)",
+            portIndex = 8,
+            trustZone = TrustZone.Z2_LAB,
+            marketReleaseNorm = 0.35f,
+            deployStartNorm = 0.52f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.88f,
+            versionLabel = "Debian 12.8 (Bookworm)",
+            releaseDateStr = "2023-06",
+            deployDateStr = "2024-11",
+            eolDateStr = "2028-06"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.OS,
+            id = "os-05",
+            shortLabel = "ESPHome",
+            name = "Garage Door Relay ESP32",
+            portIndex = 11,
+            trustZone = TrustZone.Z3_IOT,
+            marketReleaseNorm = 0.68f,
+            deployStartNorm = 0.69f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.75f,
+            versionLabel = "ESPHome 2026.9.0",
+            releaseDateStr = "2026-09",
+            deployDateStr = "2026-09",
+            eolDateStr = "2026-12"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.OS,
+            id = "os-06",
+            shortLabel = "Ubuntu 22",
+            name = "Unraid Storage Server (lml)",
+            portIndex = 7,
+            trustZone = TrustZone.Z2_LAB,
+            marketReleaseNorm = 0.22f,
+            deployStartNorm = 0.40f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.82f,
+            versionLabel = "Ubuntu 22.04.5 LTS",
+            releaseDateStr = "2022-04",
+            deployDateStr = "2023-05",
+            eolDateStr = "2027-04"
+        )
+    )
+
+    fun sampleContainerCandles(referenceNowNorm: Float = 0.72f): List<OperationalCandle> = listOf(
+        OperationalCandle(
+            layer = LifecycleLayer.CONTAINER,
+            id = "ctr-01",
+            shortLabel = "rclone",
+            name = "Rclone Sync Engine (lml)",
+            portIndex = 1,
+            trustZone = TrustZone.Z2_LAB,
+            marketReleaseNorm = 0.40f,
+            deployStartNorm = 0.52f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.85f,
+            versionLabel = "ghcr.io/linuxserver/rclone:v1.68",
+            releaseDateStr = "2024-01",
+            deployDateStr = "2024-11",
+            eolDateStr = "2028-01"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.CONTAINER,
+            id = "ctr-02",
+            shortLabel = "homeassistant",
+            name = "Home Assistant Supervised",
+            portIndex = 2,
+            trustZone = TrustZone.Z3_IOT,
+            marketReleaseNorm = 0.70f,
+            deployStartNorm = 0.71f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.76f,
+            versionLabel = "homeassistant/home-assistant:2026.10",
+            releaseDateStr = "2026-10",
+            deployDateStr = "2026-10",
+            eolDateStr = "2026-11-30"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.CONTAINER,
+            id = "ctr-03",
+            shortLabel = "pihole:v5",
+            name = "Local DNS Resolver (Node 1)",
+            portIndex = 3,
+            trustZone = TrustZone.Z0_CORE,
+            marketReleaseNorm = 0.30f,
+            deployStartNorm = 0.34f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.60f,
+            hasCveOrRecall = true,
+            versionLabel = "pihole/pihole:v5.18-legacy",
+            releaseDateStr = "2023-04",
+            deployDateStr = "2023-06",
+            eolDateStr = "2025-06"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.CONTAINER,
+            id = "ctr-04",
+            shortLabel = "caddy",
+            name = "Edge Reverse Proxy",
+            portIndex = 4,
+            trustZone = TrustZone.Z0_CORE,
+            marketReleaseNorm = 0.22f,
+            deployStartNorm = 0.26f,
+            deployEndNorm = 0.48f,
+            vendorEolNorm = 0.62f,
+            isRetired = true,
+            versionLabel = "caddy:2.6-alpine (Stopped)",
+            releaseDateStr = "2022-10",
+            deployDateStr = "2023-01",
+            eolDateStr = "2025-02",
+            decommissionDateStr = "2024-03"
+        ),
+        OperationalCandle(
+            layer = LifecycleLayer.CONTAINER,
+            id = "ctr-05",
+            shortLabel = "cloudflared",
+            name = "Zero Trust Tunnel Daemon",
+            portIndex = 5,
+            trustZone = TrustZone.Z0_CORE,
+            marketReleaseNorm = 0.55f,
+            deployStartNorm = 0.58f,
+            deployEndNorm = referenceNowNorm,
+            vendorEolNorm = 0.90f,
+            versionLabel = "cloudflare/cloudflared:2026.8",
+            releaseDateStr = "2024-08",
+            deployDateStr = "2024-09",
+            eolDateStr = "2029-01"
+        )
+    )
 
     fun sortDevicesForTimeline(devices: List<RackPortDevice>): List<RackPortDevice> =
         devices.sortedWith(compareBy<RackPortDevice> { it.trustZone.ordinal }.thenBy { it.portIndex })
@@ -484,6 +868,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack U02",
             version = "4.0.20",
             targetVersion = "4.0.20",
+            releaseDate = "2020-02-15",
             purchaseDate = "2024-02-01",
             vendorEolAt = "2030-06-01",
             candles = listOf(
@@ -514,6 +899,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Workbench",
             version = "1.0.11.136",
             targetVersion = null,
+            releaseDate = "2013-10-01",
             purchaseDate = "2016-09-01",
             vendorEolAt = "2025-12-31",
             candles = listOf(
@@ -543,6 +929,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Living Room",
             version = "7.0.66",
             targetVersion = "7.0.66",
+            releaseDate = "2024-01-09",
             purchaseDate = "2025-03-10",
             vendorEolAt = "2032-03-10",
             candles = listOf(
@@ -573,6 +960,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Media Console",
             version = "19.0.1",
             targetVersion = "19.0.1",
+            releaseDate = "2025-06-01",
             purchaseDate = "2025-06-15",
             vendorEolAt = "2032-06-15",
             candles = listOf(
@@ -603,6 +991,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "2F Office Desk",
             version = "15.3.1",
             targetVersion = "15.3.2",
+            releaseDate = "2024-11-01",
             purchaseDate = "2025-01-20",
             vendorEolAt = "2032-01-20",
             candles = listOf(
@@ -633,6 +1022,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack Shelf",
             version = "unverified",
             targetVersion = null,
+            releaseDate = "2023-10-23",
             purchaseDate = null,
             vendorEolAt = null,
             candles = listOf(
@@ -663,6 +1053,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack U06",
             version = "7.0.0",
             targetVersion = "7.0.0",
+            releaseDate = "2020-04-10",
             purchaseDate = "2024-11-15",
             vendorEolAt = "2031-11-15",
             candles = listOf(
@@ -693,6 +1084,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Basement Rack U04",
             version = "8.3.1",
             targetVersion = "8.3.2",
+            releaseDate = "2024-02-01",
             purchaseDate = "2025-02-01",
             vendorEolAt = "2030-02-01",
             candles = listOf(
@@ -723,11 +1115,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "2F Nursery",
             version = "1.0.4",
             targetVersion = "2.1.0",
+            releaseDate = "2022-03-01",
             purchaseDate = "2025-01-12",
             vendorEolAt = "2026-10-15",
             candles = listOf(
                 DeviceLifecycleCandle("1.0.2", 0.05f, 0.12f, 0.45f, 0.55f, null),
-                DeviceLifecycleCandle("1.0.4", 0.40f, 0.45f, 0.96f, 0.98f, 0.62f)
+                DeviceLifecycleCandle("1.0.4", 0.40f, 0.45f, 0.96f, 0.74f, 0.62f)
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/owlet/cam-2@1.0.4"),
@@ -753,11 +1146,12 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Living Room",
             version = "8.1.0",
             targetVersion = "8.3.0",
+            releaseDate = "2021-03-01",
             purchaseDate = "2022-11-28",
             vendorEolAt = "2027-11-28",
             candles = listOf(
                 DeviceLifecycleCandle("8.0.4", 0.04f, 0.10f, 0.38f, 0.60f, null),
-                DeviceLifecycleCandle("8.1.0", 0.32f, 0.38f, 0.96f, 0.99f, 0.72f)
+                DeviceLifecycleCandle("8.1.0", 0.32f, 0.38f, 0.96f, 0.78f, 0.72f)
             ),
             lifecycleTier = "Vintage",
             purls = listOf("pkg:generic/lg/webos@8.1.0"),
@@ -783,6 +1177,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "Garage Ceiling",
             version = "2026.9.0",
             targetVersion = "2026.10.2",
+            releaseDate = "2018-09-01",
             purchaseDate = "2024-03-10",
             vendorEolAt = "2029-03-10",
             candles = listOf(
@@ -813,6 +1208,7 @@ object BulletinsAndInventoryEngine {
             roomLocation = "1F Hallway",
             version = "unverified",
             targetVersion = null,
+            releaseDate = "2022-05-15",
             purchaseDate = null,
             vendorEolAt = null,
             candles = listOf(

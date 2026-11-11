@@ -495,11 +495,27 @@ fun HomeScreen(
                     bulletinMuted = bulletinMuted,
                     onSetBulletinMuted = { repository.setBulletinMuted(it) }
                 )
-                MainNavTab.TIMELINE -> SwimlaneTimelineScreen(
-                    flavor = brandFlavor,
-                    palette = palette,
-                    devices = visibleDevices
-                )
+                MainNavTab.TIMELINE -> {
+                    val attestations by repository.attestations.collectAsState()
+                    val userSignature by repository.userSignature.collectAsState()
+                    SwimlaneTimelineScreen(
+                        flavor = brandFlavor,
+                        palette = palette,
+                        devices = visibleDevices,
+                        attestations = attestations,
+                        userSignature = userSignature,
+                        onOpenReferenceGuide = { showReferenceGuide = true },
+                        onInspectDevice = { devId ->
+                            visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
+                        },
+                        onRecordAttestation = { devId, type, date, note, sessId ->
+                            repository.recordAttestation(devId, type, date, note, sessId)
+                        },
+                        onRecordBatchAudit = { ids, date, sessId, note ->
+                            repository.recordBatchAudit(ids, date, sessId, note)
+                        }
+                    )
+                }
                 MainNavTab.CHECKUP -> SeasonalCheckupScreen(
                     flavor = brandFlavor,
                     palette = palette,
@@ -526,6 +542,10 @@ fun HomeScreen(
                         onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
                         onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
+                        onSeedTimelineScenario = { scenario ->
+                            repository.seedTimelineScenario(scenario)
+                            activeTab = MainNavTab.TIMELINE
+                        },
                         initialExpandNetwork = expandNetworkInSettings,
                         onResendInventoryNotifications = {
                             if (notificationManager != null) {

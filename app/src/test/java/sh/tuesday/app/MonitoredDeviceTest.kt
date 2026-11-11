@@ -199,6 +199,114 @@ class MonitoredDeviceTest {
     }
 
     @Test
+    fun testOperationalTenureCandlestickGrammar() {
+        val devices = BulletinsAndInventoryEngine.defaultRackPortDevices()
+
+        // 1. UDM-Pro: Pre-adoption age, operational tenure, remaining runway
+        val udmPro = devices.first { it.portIndex == 1 }
+        val udmCandle = BulletinsAndInventoryEngine.toOperationalCandle(udmPro, referenceNowNorm = 0.72f)
+        assertEquals(sh.tuesday.app.models.LifecycleLayer.HARDWARE, udmCandle.layer)
+        assertEquals(0.05f, udmCandle.marketReleaseNorm)
+        assertEquals(0.50f, udmCandle.deployStartNorm)
+        assertEquals(0.72f, udmCandle.deployEndNorm)
+        assertEquals(0.99f, udmCandle.vendorEolNorm)
+        // Left wick: pre-adoption age (0.50 - 0.05 = 0.45)
+        assertEquals(0.45f, udmCandle.preAdoptionAgeNorm, 0.001f)
+        // Right wick: remaining runway (0.99 - 0.72 = 0.27)
+        assertEquals(0.27f, udmCandle.remainingRunwayNorm, 0.001f)
+        assertFalse(udmCandle.isPastEol)
+        assertFalse(udmCandle.isRetired)
+
+        // 2. Netgear R7000: Post-EOL Overhang (Zombie hardware running past EOL)
+        val r7000 = devices.first { it.portIndex == 2 }
+        val r7000Candle = BulletinsAndInventoryEngine.toOperationalCandle(r7000, referenceNowNorm = 0.72f)
+        assertTrue(r7000Candle.isPastEol)
+        assertEquals(0.07f, r7000Candle.postEolOverhangNorm, 0.001f)
+        assertEquals(0f, r7000Candle.remainingRunwayNorm, 0.001f)
+
+        // 3. Retired gear: Hollow outline
+        val retiredUdm = BulletinsAndInventoryEngine.toOperationalCandle(udmPro.copy(isRetired = true), referenceNowNorm = 0.72f)
+        assertTrue(retiredUdm.isRetired)
+
+        // 4. EOL nearing (Amber)
+        val nearEolCandle = sh.tuesday.app.models.OperationalCandle(
+            layer = sh.tuesday.app.models.LifecycleLayer.HARDWARE,
+            id = "near-eol",
+            shortLabel = "Expiring",
+            name = "Expiring Gateway",
+            marketReleaseNorm = 0.20f,
+            deployStartNorm = 0.40f,
+            deployEndNorm = 0.70f,
+            vendorEolNorm = 0.75f // remaining runway = 0.05f (< 0.12f threshold)
+        )
+        assertTrue(nearEolCandle.isEolNearing)
+        assertEquals(0.05f, nearEolCandle.remainingRunwayNorm, 0.001f)
+
+        // 5. Multi-layer scaling: Host OS and Containers
+        val osCandles = BulletinsAndInventoryEngine.sampleHostOsCandles(referenceNowNorm = 0.72f)
+        assertEquals(6, osCandles.size)
+        assertTrue(osCandles.any { it.isPastEol }) // Netgear Linux 2.6
+        assertTrue(osCandles.any { it.isRetired }) // macOS Sonoma upgraded
+
+        val containerCandles = BulletinsAndInventoryEngine.sampleContainerCandles(referenceNowNorm = 0.72f)
+        assertEquals(5, containerCandles.size)
+        assertTrue(containerCandles.any { it.isPastEol }) // pihole legacy
+        assertTrue(containerCandles.any { it.isRetired }) // caddy alpine
+    }
+
+    @Test
+    fun testDevModeTimelineSeedScenarios() {
+        // 1. Standard fleet scenario
+        val standardDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.STANDARD)
+        assertEquals(12, standardDevs.size)
+        val udm = standardDevs.first { it.portIndex == 1 }
+        assertEquals("2020-02-15", udm.releaseDate)
+        assertEquals("2024-02-01", udm.purchaseDate)
+        assertFalse(udm.isRetired)
+
+        // 2. Zombie Overhang scenario
+        val zombieDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.ZOMBIE_OVERHANG)
+        val r7000 = zombieDevs.first { it.portIndex == 2 }
+        val zombiePi = zombieDevs.first { it.portIndex == 6 }
+        val zombieTv = zombieDevs.first { it.portIndex == 10 }
+        val r7000Candle = BulletinsAndInventoryEngine.toOperationalCandle(r7000, 0.72f)
+        val piCandle = BulletinsAndInventoryEngine.toOperationalCandle(zombiePi, 0.72f)
+        val tvCandle = BulletinsAndInventoryEngine.toOperationalCandle(zombieTv, 0.72f)
+        assertTrue(r7000Candle.isPastEol)
+        assertTrue(piCandle.isPastEol)
+        assertTrue(tvCandle.isPastEol)
+
+        // 3. Decommissioned scenario
+        val retiredDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.DECOMMISSIONED)
+        val retired1 = retiredDevs.first { it.portIndex == 1 }
+        val retired4 = retiredDevs.first { it.portIndex == 4 }
+        val stopped7 = retiredDevs.first { it.portIndex == 7 }
+        val lost11 = retiredDevs.first { it.portIndex == 11 }
+        assertTrue(retired1.isRetired)
+        assertTrue(retired4.isRetired)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retired1.presenceState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retired4.presenceState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, stopped7.presenceState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.LOST, lost11.presenceState)
+        val retiredCandle = BulletinsAndInventoryEngine.toOperationalCandle(retired1, 0.72f)
+        val stoppedCandle = BulletinsAndInventoryEngine.toOperationalCandle(stopped7, 0.72f)
+        val lostCandle = BulletinsAndInventoryEngine.toOperationalCandle(lost11, 0.72f)
+        assertTrue(retiredCandle.isRetired)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, retiredCandle.presenceState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, stoppedCandle.presenceState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.LOST, lostCandle.presenceState)
+
+        // 4. Runway Critical scenario
+        val nearEolDevs = sh.tuesday.app.services.TuesdayRepository.generateTimelineSeedScenario(sh.tuesday.app.services.TimelineSeedScenario.RUNWAY_CRITICAL)
+        val mac = nearEolDevs.first { it.portIndex == 5 }
+        val cam = nearEolDevs.first { it.portIndex == 9 }
+        val macCandle = BulletinsAndInventoryEngine.toOperationalCandle(mac, 0.72f)
+        val camCandle = BulletinsAndInventoryEngine.toOperationalCandle(cam, 0.72f)
+        assertTrue(macCandle.isEolNearing)
+        assertTrue(camCandle.isEolNearing)
+    }
+
+    @Test
     fun testVisionDebugGoldAlignmentAndDeepLink() {
         val destOn = sh.tuesday.app.navigation.DeepLinkDestination.fromUri("tuesday://dev/vision-debug")
         assertTrue(destOn is sh.tuesday.app.navigation.DeepLinkDestination.VisionDebug)
@@ -354,5 +462,68 @@ class MonitoredDeviceTest {
         assertTrue(espCve!!.brokeThroughMute)
 
         assertNotNull(payload.inbox.find { it.externalId == "REL-sonoff-zbdongle-e-7.4.4" })
+    }
+
+    @Test
+    fun testDeviceAttestationLifecycleModelAndSeals() {
+        val userSig = "Aaron Bronow (sig_4b9a8c)"
+        val env = "Tuesday Android v2026.11 (Pixel 9 • net-default)"
+        val auditDate = "2026-11-11"
+        val timestamp = 1794412800000L
+
+        // 1. Compute Deterministic Proof Hash
+        val proof1 = BulletinsAndInventoryEngine.computeAttestationProof(
+            id = "att-test-01",
+            deviceId = "dev-udm",
+            type = sh.tuesday.app.models.AttestationType.PRESENCE_AUDIT,
+            auditDate = auditDate,
+            userSignature = userSig,
+            environment = env,
+            timestampMs = timestamp
+        )
+        val proof2 = BulletinsAndInventoryEngine.computeAttestationProof(
+            id = "att-test-01",
+            deviceId = "dev-udm",
+            type = sh.tuesday.app.models.AttestationType.PRESENCE_AUDIT,
+            auditDate = auditDate,
+            userSignature = userSig,
+            environment = env,
+            timestampMs = timestamp
+        )
+        // Proofs must be deterministic
+        assertEquals(proof1, proof2)
+        assertEquals(64, proof1.length) // Full SHA-256 hex string
+
+        // 2. State Mapping for Lifecycle Transitions
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.ACTIVE, sh.tuesday.app.models.AttestationType.PRESENCE_AUDIT.resultingState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.ACTIVE, sh.tuesday.app.models.AttestationType.PRESENCE_REACTIVATED.resultingState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.RETIRED, sh.tuesday.app.models.AttestationType.ABSENCE_RETIRED.resultingState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.LOST, sh.tuesday.app.models.AttestationType.ABSENCE_LOST.resultingState)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, sh.tuesday.app.models.AttestationType.ABSENCE_STOPPED_WORKING.resultingState)
+
+        // 3. Absence flags
+        assertFalse(sh.tuesday.app.models.AttestationType.PRESENCE_AUDIT.isAbsence)
+        assertTrue(sh.tuesday.app.models.AttestationType.ABSENCE_RETIRED.isAbsence)
+        assertTrue(sh.tuesday.app.models.AttestationType.ABSENCE_LOST.isAbsence)
+        assertTrue(sh.tuesday.app.models.AttestationType.ABSENCE_STOPPED_WORKING.isAbsence)
+
+        // 4. DeviceAttestation instance and shortProof
+        val att = sh.tuesday.app.models.DeviceAttestation(
+            id = "att-test-01",
+            deviceId = "dev-udm",
+            deviceLabel = "UDM-Pro",
+            type = sh.tuesday.app.models.AttestationType.ABSENCE_STOPPED_WORKING,
+            presenceState = sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING,
+            timestampMs = timestamp,
+            timestampIso = "2026-11-11T12:00:00Z",
+            auditDate = auditDate,
+            userSignature = userSig,
+            environment = env,
+            auditSessionId = "AUDIT-2026-Q4",
+            note = "Blown capacitor on power rail",
+            cryptographicProof = proof1
+        )
+        assertEquals(proof1.take(12), att.shortProof)
+        assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, att.presenceState)
     }
 }
