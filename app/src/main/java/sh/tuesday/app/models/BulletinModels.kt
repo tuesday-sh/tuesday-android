@@ -737,6 +737,7 @@ object BulletinsAndInventoryEngine {
         val deviceFeedLinks = mutableMapOf<String, MutableList<RackPortDevice>>()
 
         devices.forEach { dev ->
+            if (dev.isRetired || dev.presenceState != DevicePresenceState.ACTIVE) return@forEach
             if (dev.confidenceTier == DeviceConfidenceTier.OPAQUE_UNKNOWN) return@forEach
 
             var matchedForDevice = feeds.filter { feed ->
@@ -1242,7 +1243,7 @@ object BulletinsAndInventoryEngine {
             slug = "ubiquiti-advisories",
             proName = "Ubiquiti UniFi Security & Firmware",
             stnName = "UniFi Wi-Fi & Router Updates",
-            purlPrefixes = listOf("pkg:generic/ui/unifi-os", "pkg:generic/ui/u7-pro")
+            purlPrefixes = listOf("pkg:generic/ui/unifi-os", "pkg:generic/ui/u7-pro", "pkg:generic/ubiquiti/")
         ),
         CanonicalFeedItem(
             id = "f-02",

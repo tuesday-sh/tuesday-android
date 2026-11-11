@@ -166,6 +166,15 @@ class MonitoredDeviceTest {
         // Routine releases from muted or provisional feeds are suppressed
         assertNull(payload.inbox.find { it.externalId == "REL-esphome-2026.10.2" })
         assertNull(payload.inbox.find { it.externalId == "REL-ecobee-4.8.7.220" })
+
+        // Out-of-service devices (#04 Switch 2 RETIRED, #11 Garage ESP STOPPED_WORKING) are excluded from matchedPorts
+        val unraidFeed = payload.matchedFeeds.find { it.slug == "unraid-nintendo-stable" }
+        assertNotNull(unraidFeed)
+        assertEquals(listOf("#07 unraid-lml"), unraidFeed!!.matchedPorts)
+
+        val lgEspFeed = payload.matchedFeeds.find { it.slug == "lg-esphome-iot" }
+        assertNotNull(lgEspFeed)
+        assertEquals(listOf("#10 LG OLED"), lgEspFeed!!.matchedPorts)
     }
 
     @Test
