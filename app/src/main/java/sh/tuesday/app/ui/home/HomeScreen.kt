@@ -71,6 +71,7 @@ fun HomeScreen(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
     notificationManager: TuesdayNotificationManager? = null,
+    onRequestNotificationPermission: () -> Unit = {},
     onNavigateToAddDevice: (mode: String?, synth: String?, query: String?, clues: String?, autoSearch: Boolean) -> Unit,
     pendingDestination: sh.tuesday.app.navigation.DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
@@ -98,6 +99,7 @@ fun HomeScreen(
 
     var activeTab by remember { mutableStateOf(MainNavTab.STATUS) }
     var expandNetworkInSettings by remember { mutableStateOf(false) }
+    var expandRemindersInSettings by remember { mutableStateOf(false) }
     var inspectedDevice by remember { mutableStateOf<RackPortDevice?>(null) }
     var showHacsSheet by remember { mutableStateOf(false) }
     var showNetworkPicker by remember { mutableStateOf(false) }
@@ -475,6 +477,11 @@ fun HomeScreen(
                     },
                     onNavigateToBulletins = { activeTab = MainNavTab.BULLETINS },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
+                    onEnableReminders = {
+                        onRequestNotificationPermission()
+                        expandRemindersInSettings = true
+                        activeTab = MainNavTab.ACCOUNT
+                    },
                     remindersEnabled = remindersEnabled,
                     dispatchSubscribed = dispatchSubscribed,
                     onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
@@ -502,6 +509,11 @@ fun HomeScreen(
                     },
                     onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
+                    onEnableReminders = {
+                        onRequestNotificationPermission()
+                        expandRemindersInSettings = true
+                        activeTab = MainNavTab.ACCOUNT
+                    },
                     remindersEnabled = remindersEnabled,
                     dispatchSubscribed = dispatchSubscribed,
                     onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
@@ -563,6 +575,7 @@ fun HomeScreen(
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
                         onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
                         initialExpandNetwork = expandNetworkInSettings,
+                        initialExpandReminders = expandRemindersInSettings,
                         onResendInventoryNotifications = {
                             if (notificationManager != null) {
                                 repository.syncPendingNotifications(
@@ -678,6 +691,7 @@ private fun StatusMatrixAndActionListScreen(
     onAddAnyDevice: () -> Unit = onNavigateToAddDevice,
     onNavigateToBulletins: () -> Unit,
     onNavigateToAccount: () -> Unit = {},
+    onEnableReminders: () -> Unit = onNavigateToAccount,
     remindersEnabled: Boolean = false,
     dispatchSubscribed: Boolean = false,
     onSetDispatchSubscribed: (Boolean) -> Unit = {},
@@ -724,7 +738,8 @@ private fun StatusMatrixAndActionListScreen(
                 onLoadDemoFleet = onLoadDemoFleet,
                 onOpenReferenceGuide = onOpenReferenceGuide,
                 onNavigateToBulletins = onNavigateToBulletins,
-                onNavigateToAccount = onNavigateToAccount
+                onNavigateToAccount = onNavigateToAccount,
+                onEnableReminders = onEnableReminders
             )
         }
 
@@ -1391,7 +1406,8 @@ private fun WelcomeCard(
     onLoadDemoFleet: () -> Unit,
     onOpenReferenceGuide: () -> Unit = {},
     onNavigateToBulletins: () -> Unit = {},
-    onNavigateToAccount: () -> Unit = {}
+    onNavigateToAccount: () -> Unit = {},
+    onEnableReminders: () -> Unit = onNavigateToAccount
 ) {
     var showIgnoreDialog by remember { mutableStateOf(false) }
 
@@ -1445,7 +1461,7 @@ private fun WelcomeCard(
                     description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
                     linkText = if (step2Done) "✓ Active" else "Enable →",
                     isDone = step2Done,
-                    onClick = onNavigateToAccount
+                    onClick = onEnableReminders
                 ),
                 BulletinChecklistStep(
                     id = "step3",

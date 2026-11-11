@@ -43,6 +43,7 @@ fun BulletinsScreen(
     onInspectDevice: (String) -> Unit = {},
     onNavigateToAddDevice: () -> Unit = {},
     onNavigateToAccount: () -> Unit = {},
+    onEnableReminders: () -> Unit = onNavigateToAccount,
     remindersEnabled: Boolean = false,
     dispatchSubscribed: Boolean = false,
     onSetDispatchSubscribed: (Boolean) -> Unit = {},
@@ -146,7 +147,7 @@ fun BulletinsScreen(
                         description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
                         linkText = if (step2Done) "✓ Active" else "Enable →",
                         isDone = step2Done,
-                        onClick = onNavigateToAccount
+                        onClick = onEnableReminders
                     ),
                     BulletinChecklistStep(
                         id = "step3",

@@ -50,6 +50,7 @@ data class AccountSettingsParams(
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
     val onSwitchToFleetTab: () -> Unit = {},
     val initialExpandNetwork: Boolean = false,
+    val initialExpandReminders: Boolean = false,
     val onResendInventoryNotifications: suspend () -> Int = { 0 },
     val onTriggerMockPatchTuesday: () -> Boolean = { false }
 )
@@ -122,7 +123,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     // Accordion Expansion States
     var isNetworkOpen by remember(params.initialExpandNetwork) { mutableStateOf(params.initialExpandNetwork) }
     var isDevModeOpen by remember(isDeveloperMode) { mutableStateOf(isDeveloperMode) }
-    var isRemindersOpen by remember { mutableStateOf(false) }
+    var isRemindersOpen by remember(params.initialExpandReminders) { mutableStateOf(params.initialExpandReminders) }
     var isFeedsOpen by remember { mutableStateOf(false) }
 
     val reminderStates = remember(params.remindersEnabled) {
@@ -794,6 +795,11 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             if (def.key == "monthly_rhythm") {
                                                 params.onToggleReminders?.invoke(checked)
                                             }
+                                        },
+                                        modifier = if (def.key == "monthly_rhythm") {
+                                            Modifier.uiAction("toggleMonthlyReminders")
+                                        } else {
+                                            Modifier
                                         },
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = Color.White,

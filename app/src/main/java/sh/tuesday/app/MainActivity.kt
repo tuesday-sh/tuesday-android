@@ -40,7 +40,6 @@ class MainActivity : ComponentActivity() {
         discoveryService = GeminiDiscoveryService(applicationContext)
         notificationManager = TuesdayNotificationManager(applicationContext)
 
-        requestNotificationPermissionIfNeeded()
         handleIntent(intent)
 
         setContent {
@@ -51,6 +50,9 @@ class MainActivity : ComponentActivity() {
                     connectivity = connectivity,
                     discoveryService = discoveryService,
                     notificationManager = notificationManager,
+                    onRequestNotificationPermission = {
+                        requestNotificationPermissionIfNeeded()
+                    },
                     pendingDestination = dest,
                     onConsumePendingDestination = {
                         _pendingDestination.value = null
@@ -66,7 +68,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    private fun requestNotificationPermissionIfNeeded() {
+    fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 this,
@@ -101,6 +103,7 @@ fun AppNavigation(
     connectivity: ConnectivityMonitor,
     discoveryService: GeminiDiscoveryService,
     notificationManager: TuesdayNotificationManager? = null,
+    onRequestNotificationPermission: () -> Unit = {},
     pendingDestination: DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
 ) {
@@ -112,6 +115,7 @@ fun AppNavigation(
                 repository = repository,
                 connectivity = connectivity,
                 notificationManager = notificationManager,
+                onRequestNotificationPermission = onRequestNotificationPermission,
                 onNavigateToAddDevice = { mode, synth, query, clues, autoSearch ->
                     val params = buildList {
                         mode?.let { add("mode=${android.net.Uri.encode(it)}") }
