@@ -565,7 +565,8 @@ fun BulletinsScreen(
         }
 
         // 6. Completed Bulletins Section (at the bottom of the bulletins list)
-        if (isComplete) {
+        val completedCount = (if (isComplete) 1 else 0) + payload.completedBulletins.size
+        if (completedCount > 0) {
             item {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
@@ -584,7 +585,7 @@ fun BulletinsScreen(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "1 Completed",
+                        text = "$completedCount Completed",
                         color = TuesdayTheme.LedOkGreen,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -593,60 +594,72 @@ fun BulletinsScreen(
                 }
             }
 
-            item(key = "bul-00-rhythm-completed") {
-                val completeSteps = listOf(
-                    BulletinChecklistStep(
-                        id = "step1",
-                        num = "1",
-                        title = "Inventory Your Network",
-                        description = "Kick off Plug & Tag intake to map active routers, switches, NAS, and IoT nodes.",
-                        linkText = "✓ Added",
-                        isDone = true,
-                        onClick = onNavigateToAddDevice
-                    ),
-                    BulletinChecklistStep(
-                        id = "step2",
-                        num = "2",
-                        title = "Enable Push Reminders",
-                        description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
-                        linkText = "✓ Active",
-                        isDone = true,
-                        onClick = onEnableReminders
-                    ),
-                    BulletinChecklistStep(
-                        id = "step3",
-                        num = "3",
-                        title = "Subscribe to the Dispatch",
-                        description = "Get human-curated patch analysis and firmware changelogs delivered every cycle.",
-                        linkText = "✓ Subscribed",
-                        isDone = true,
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tuesday.sh/dispatch"))
-                            context.startActivity(intent)
+            if (isComplete) {
+                item(key = "bul-00-rhythm-completed") {
+                    val completeSteps = listOf(
+                        BulletinChecklistStep(
+                            id = "step1",
+                            num = "1",
+                            title = "Inventory Your Network",
+                            description = "Kick off Plug & Tag intake to map active routers, switches, NAS, and IoT nodes.",
+                            linkText = "✓ Added",
+                            isDone = true,
+                            onClick = onNavigateToAddDevice
+                        ),
+                        BulletinChecklistStep(
+                            id = "step2",
+                            num = "2",
+                            title = "Enable Push Reminders",
+                            description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
+                            linkText = "✓ Active",
+                            isDone = true,
+                            onClick = onEnableReminders
+                        ),
+                        BulletinChecklistStep(
+                            id = "step3",
+                            num = "3",
+                            title = "Subscribe to the Dispatch",
+                            description = "Get human-curated patch analysis and firmware changelogs delivered every cycle.",
+                            linkText = "✓ Subscribed",
+                            isDone = true,
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tuesday.sh/dispatch"))
+                                context.startActivity(intent)
+                            }
+                        )
+                    )
+
+                    NotchBulletinCard(
+                        palette = palette,
+                        title = "Patch Tuesday Rhythm • Complete",
+                        description = "Enrolled & monitored. Inventory mapped, 10:00 AM PT push alerts enabled, monthly dispatch active.",
+                        leftNotchLabel = "RHYTHM COMPLETE",
+                        leftNotchDotColor = TuesdayTheme.LedOkGreen,
+                        rightNotchLabel = "RHYTHM",
+                        onRightNotchClick = onOpenFeedsSettings,
+                        steps = completeSteps,
+                        allStepsDone = true,
+                        primaryActionLabel = "✓ Completed",
+                        completeActionLabel = "✓ Completed",
+                        secondaryActionLabel = "Reopen",
+                        onPrimaryAction = {
+                            // Already completed
+                        },
+                        onSecondaryAction = {
+                            onSetBulletinDismissed(false)
+                            onSetBulletinSnoozed(false)
                         }
                     )
-                )
+                }
+            }
 
-                NotchBulletinCard(
+            items(payload.completedBulletins, key = { "completed-" + it.externalId }) { item ->
+                InboxItemNotchCard(
                     palette = palette,
-                    title = "Patch Tuesday Rhythm • Complete",
-                    description = "Enrolled & monitored. Inventory mapped, 10:00 AM PT push alerts enabled, monthly dispatch active.",
-                    leftNotchLabel = "RHYTHM COMPLETE",
-                    leftNotchDotColor = TuesdayTheme.LedOkGreen,
-                    rightNotchLabel = "RHYTHM",
-                    onRightNotchClick = onOpenFeedsSettings,
-                    steps = completeSteps,
-                    allStepsDone = true,
-                    primaryActionLabel = "✓ Completed",
-                    completeActionLabel = "✓ Completed",
-                    secondaryActionLabel = "Reopen",
-                    onPrimaryAction = {
-                        // Already completed
-                    },
-                    onSecondaryAction = {
-                        onSetBulletinDismissed(false)
-                        onSetBulletinSnoozed(false)
-                    }
+                    item = item,
+                    onClick = { onInspectDevice(item.externalId) },
+                    onConfirmModel = onConfirmModel,
+                    onRejectModel = onRejectModel
                 )
             }
         }

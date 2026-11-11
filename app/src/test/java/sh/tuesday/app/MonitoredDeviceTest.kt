@@ -484,4 +484,40 @@ class MonitoredDeviceTest {
         assertEquals(proof1.take(12), att.shortProof)
         assertEquals(sh.tuesday.app.models.DevicePresenceState.STOPPED_WORKING, att.presenceState)
     }
+
+    @Test
+    fun testBulletinMarkedCompleteWhenAllLinkedDevicesRemediated() {
+        val dev = RackPortDevice(
+            id = "0192d9f0-0008-7000-8000-000000000108",
+            portIndex = 1,
+            portState = PortLifecycleState.CVE_KEV,
+            trustZone = TrustZone.Z0_CORE,
+            category = StnHardwareCategory.C1_GATEWAY,
+            shortLabel = "UDM-Pro",
+            name = "UniFi Dream Machine Pro",
+            roomLocation = "Basement",
+            version = "4.0.20",
+            lifecycleTier = "Active",
+            purls = listOf("pkg:generic/ui/unifi-os@4.0.20")
+        )
+
+        // When device is in CVE_KEV (unremediated)
+        val unremediatedPayload = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = listOf(dev),
+            mutedFeedSlugs = emptySet()
+        )
+        assertTrue(unremediatedPayload.inbox.any { it.externalId == "CVE-2026-50881" })
+        assertTrue(unremediatedPayload.completedBulletins.none { it.externalId == "CVE-2026-50881" })
+
+        // When device is remediated (portState == OK)
+        val remediatedDev = dev.copy(portState = PortLifecycleState.OK)
+        val remediatedPayload = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = listOf(remediatedDev),
+            mutedFeedSlugs = emptySet()
+        )
+        assertFalse(remediatedPayload.inbox.any { it.externalId == "CVE-2026-50881" })
+        assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "CVE-2026-50881" })
+    }
 }

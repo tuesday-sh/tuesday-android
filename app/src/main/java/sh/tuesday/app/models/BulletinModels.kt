@@ -336,7 +336,8 @@ data class AssembledBulletinsPayload(
     val provisionalHighSevCount: Int,
     val aiBullets: List<String>,
     val matchedFeeds: List<MatchedFeedView>,
-    val inbox: List<BulletinInboxView>
+    val inbox: List<BulletinInboxView>,
+    val completedBulletins: List<BulletinInboxView> = emptyList()
 )
 
 @Serializable
@@ -834,6 +835,19 @@ object BulletinsAndInventoryEngine {
             )
         }
 
+        val (completedInboxItems, activeInboxItems) = inboxItems.partition { item ->
+            val matchingBulletin = relevantBulletins.find { it.externalId == item.externalId }
+            if (matchingBulletin == null) {
+                false
+            } else {
+                val linkedDevs = deviceFeedLinks[matchingBulletin.canonicalFeedSlug].orEmpty().filter { dev ->
+                    deviceMatchesBulletin(dev, matchingBulletin)
+                }
+                // If there are devices linked to this bulletin and all of them are remediated (PortLifecycleState.OK)
+                linkedDevs.isNotEmpty() && linkedDevs.all { it.portState == PortLifecycleState.OK }
+            }
+        }
+
         val confirmedFeeds = matchedFeeds.filter { !provisionalOnlySlugs.contains(it.slug) }
         val activeFeedCount = confirmedFeeds.count { !mutedFeedSlugs.contains(it.slug) }
         val mutedFeedCount = matchedFeeds.count { mutedFeedSlugs.contains(it.slug) }
@@ -846,7 +860,8 @@ object BulletinsAndInventoryEngine {
             provisionalHighSevCount = provisionalHighSevCount,
             aiBullets = aiBullets,
             matchedFeeds = feedViews,
-            inbox = inboxItems
+            inbox = activeInboxItems,
+            completedBulletins = completedInboxItems
         )
     }
 
@@ -854,15 +869,9 @@ object BulletinsAndInventoryEngine {
         device: RackPortDevice,
         bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
     ): Int {
-        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE) return 0
+        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE || device.portState == PortLifecycleState.OK) return 0
         return bulletins.count { b ->
-            val isExcluded = device.excludedPurlPrefixes.any { ex ->
-                b.purlBase.startsWith(ex.removeSuffix("/*"))
-            }
-            !isExcluded && device.purls.any { dp ->
-                val cleanDp = dp.substringBefore("@").removeSuffix("/*")
-                b.purlBase.startsWith(cleanDp) || cleanDp.startsWith(b.purlBase)
-            }
+            deviceMatchesBulletin(device, b)
         }
     }
 
@@ -870,15 +879,20 @@ object BulletinsAndInventoryEngine {
         device: RackPortDevice,
         bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
     ): CuratedBulletinItem? {
-        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE) return null
+        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE || device.portState == PortLifecycleState.OK) return null
         return bulletins.firstOrNull { b ->
-            val isExcluded = device.excludedPurlPrefixes.any { ex ->
-                b.purlBase.startsWith(ex.removeSuffix("/*"))
-            }
-            !isExcluded && device.purls.any { dp ->
-                val cleanDp = dp.substringBefore("@").removeSuffix("/*")
-                b.purlBase.startsWith(cleanDp) || cleanDp.startsWith(b.purlBase)
-            }
+            deviceMatchesBulletin(device, b)
+        }
+    }
+
+    fun deviceMatchesBulletin(device: RackPortDevice, bulletin: CuratedBulletinItem): Boolean {
+        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE) return false
+        val isExcluded = device.excludedPurlPrefixes.any { ex ->
+            bulletin.purlBase.startsWith(ex.removeSuffix("/*"))
+        }
+        return !isExcluded && device.purls.any { dp ->
+            val cleanDp = dp.substringBefore("@").removeSuffix("/*")
+            bulletin.purlBase.startsWith(cleanDp) || cleanDp.startsWith(bulletin.purlBase)
         }
     }
 
