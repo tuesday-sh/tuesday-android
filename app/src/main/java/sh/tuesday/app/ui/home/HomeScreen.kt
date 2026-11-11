@@ -1187,8 +1187,12 @@ private fun StatusMatrixAndActionListScreen(
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
+                            val topBulletin = remember(dev.id, dev.purls) {
+                                BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
+                            }
+                            val detailBlurb = topBulletin?.stnTitle ?: "${dev.category.stnLabel} • ${dev.roomLocation}"
                             Text(
-                                text = dev.stnHeadline,
+                                text = detailBlurb,
                                 color = palette.textPrimary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
@@ -1254,6 +1258,16 @@ private fun StatusMatrixAndActionListScreen(
                             )
                         }
 
+                        val topBulletin = remember(dev.id, dev.purls) {
+                            BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
+                        }
+                        val detailBlurb = if (topBulletin != null) {
+                            if (isStn) topBulletin.stnTitle else topBulletin.proTitle
+                        } else {
+                            val catLabel = if (isStn) dev.category.stnLabel else dev.category.proLabel
+                            "$catLabel • ${dev.roomLocation}"
+                        }
+
                         Column(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -1265,8 +1279,8 @@ private fun StatusMatrixAndActionListScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (isStn) dev.stnHeadline else dev.proHeadline,
-                                color = stateColor,
+                                text = detailBlurb,
+                                color = if (topBulletin != null) stateColor else palette.textMuted,
                                 fontSize = 10.sp,
                                 lineHeight = 13.sp
                             )
@@ -2276,136 +2290,87 @@ private fun DeviceInspectorBottomSheet(
             }
         }
 
-        if (isStn) {
-            // STN-Home: Plain-English Headline + "What to Do Next" Numbered Action Steps
-            Text(
-                text = device.stnHeadline,
-                color = palette.textMuted,
-                fontSize = 12.sp,
-                lineHeight = 16.sp
-            )
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(palette.bg)
-                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+        // Timeline Candlestick Graph
+        val operationalCandle = remember(device.id, device.version, device.presenceState) {
+            BulletinsAndInventoryEngine.toOperationalCandle(device)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(palette.bg)
+                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                .padding(12.dp)
+                .uiSlot("candlestick-chart"),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "What to Do Next",
+                    text = "Timeline",
                     color = palette.textPrimary,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.Bold
                 )
-                val steps = listOf(
-                    "1. Check status: ${device.s4Advisories}",
-                    "2. Action step: ${device.s6Remediation}",
-                    "3. Verify support window: ${device.s3Lifecycle}"
-                )
-                steps.forEach { step ->
-                    Text(
-                        text = step,
-                        color = palette.textPrimary,
-                        fontSize = 11.5.sp,
-                        lineHeight = 15.sp
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier.uiSlot("s0-s6-stack"),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                InspectorSectionRow("ROOM & PLACEMENT", device.roomLocation, palette)
-                InspectorSectionRow("DEVICE LIFESPAN & MANUFACTURER SUPPORT", "${device.lifecycleTier} • ${device.s3Lifecycle}", palette)
-                InspectorSectionRow("PLUGGED INTO (ROUTER PORT / WI-FI)", "Port #%02d • %s".format(device.portIndex, device.s5Topology), palette)
-                InspectorSectionRow("WI-FI LANE", device.trustZone.stnLabel, palette)
-                InspectorSectionRow("SECURITY & ADVISORIES", device.s4Advisories, palette)
-            }
-        } else {
-            // STN-Pro: Operational Candlestick Timeline & Technical S0..S6 Stack
-            val operationalCandle = remember(device.id, device.version, device.presenceState) {
-                BulletinsAndInventoryEngine.toOperationalCandle(device)
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.bg)
-                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                    .padding(12.dp)
-                    .uiSlot("candlestick-chart"),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = "Timeline",
-                        color = palette.textPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(5.dp)
-                                .clip(RoundedCornerShape(2.5.dp))
-                                .background(Color.White)
-                        )
-                        Text(
-                            text = "Today",
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-
-                MiniCandleBar(
-                    candle = operationalCandle,
-                    modifier = Modifier.fillMaxWidth().height(16.dp),
-                    showTodayMarker = true
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Released ${operationalCandle.releaseDateStr ?: "Launch"} • Active ${operationalCandle.deployDateStr ?: "Install"}",
-                        color = palette.textMuted,
-                        fontSize = 10.sp
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(RoundedCornerShape(2.5.dp))
+                            .background(Color.White)
                     )
                     Text(
-                        text = "EOL: ${operationalCandle.eolDateStr ?: "TBD"}",
-                        color = if (operationalCandle.isPastEol) TuesdayTheme.CriticalRed else palette.textMuted,
+                        text = "Today",
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = 10.sp,
-                        fontWeight = if (operationalCandle.isPastEol) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
                     )
                 }
             }
 
-            Column(
-                modifier = Modifier.uiSlot("s0-s6-stack"),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            MiniCandleBar(
+                candle = operationalCandle,
+                modifier = Modifier.fillMaxWidth().height(16.dp),
+                showTodayMarker = true
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                InspectorSectionRow("S0 Identity", device.s0Identity, palette)
-                InspectorSectionRow("S1 Hardware", device.s1Hardware, palette)
-                InspectorSectionRow("S2 Software (PURL)", device.s2Software, palette)
-                InspectorSectionRow("S3 Lifecycle", device.s3Lifecycle, palette)
-                InspectorSectionRow("S4 Advisories", device.s4Advisories, palette)
-                InspectorSectionRow("S5 Topology", device.s5Topology, palette)
-                InspectorSectionRow("S6 Remediation", device.s6Remediation, palette)
+                Text(
+                    text = "Released ${operationalCandle.releaseDateStr ?: "Launch"} • Active ${operationalCandle.deployDateStr ?: "Install"}",
+                    color = palette.textMuted,
+                    fontSize = 10.sp
+                )
+                Text(
+                    text = "EOL: ${operationalCandle.eolDateStr ?: "TBD"}",
+                    color = if (operationalCandle.isPastEol) TuesdayTheme.CriticalRed else palette.textMuted,
+                    fontSize = 10.sp,
+                    fontWeight = if (operationalCandle.isPastEol) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+
+        // Real Device Details (From Add Device Flow & Device Metadata)
+        Column(
+            modifier = Modifier.uiSlot("device-details-stack"),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val catLabel = if (isStn) device.category.stnLabel else device.category.proLabel
+            InspectorSectionRow("CATEGORY", catLabel, palette)
+            InspectorSectionRow("ROOM & PLACEMENT", device.roomLocation, palette)
+            InspectorSectionRow("NETWORK LANE / ZONE", if (isStn) device.trustZone.stnLabel else "${device.trustZone.displayLabel} (${device.trustZone.shortCode})", palette)
+            if (device.purls.isNotEmpty()) {
+                InspectorSectionRow("CANONICAL PURL", device.purls.first(), palette)
             }
         }
 

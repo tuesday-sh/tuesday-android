@@ -349,15 +349,6 @@ class MonitoredDeviceTest {
                 lifecycleTier = "End of Life",
                 purls = listOf("pkg:generic/cisco/ws-c2960-8tc-l@1.0.0"),
                 confidenceTier = DeviceConfidenceTier.CONFIRMED,
-                proHeadline = "Cisco 2960 EOL",
-                stnHeadline = "Cisco 2960 EOL",
-                s0Identity = "STN-LAB-20",
-                s1Hardware = "Cisco",
-                s2Software = "IOS",
-                s3Lifecycle = "EOL",
-                s4Advisories = "1 EOL",
-                s5Topology = "Z1",
-                s6Remediation = "Replace"
             ),
             RackPortDevice(
                 id = "dev-synology",
@@ -375,15 +366,6 @@ class MonitoredDeviceTest {
                 purls = listOf("pkg:generic/synology/ds220-plus@1.0.0"),
                 confidenceTier = DeviceConfidenceTier.PROVISIONAL_GUESS,
                 candidateModels = listOf("DS220+", "DS218+", "DS720+"),
-                proHeadline = "Synology Guess",
-                stnHeadline = "Synology Guess",
-                s0Identity = "STN-LAB-21",
-                s1Hardware = "Synology",
-                s2Software = "DSM",
-                s3Lifecycle = "Guess",
-                s4Advisories = "1 CVE",
-                s5Topology = "Z1",
-                s6Remediation = "Verify sticker"
             ),
             RackPortDevice(
                 id = "dev-esp",
@@ -400,15 +382,6 @@ class MonitoredDeviceTest {
                 lifecycleTier = "Active",
                 purls = listOf("pkg:generic/espressif/esp8266mod@1.0.0"),
                 confidenceTier = DeviceConfidenceTier.CONFIRMED,
-                proHeadline = "ESP8266",
-                stnHeadline = "ESP8266",
-                s0Identity = "STN-LAB-22",
-                s1Hardware = "AI-Thinker",
-                s2Software = "ESPHome",
-                s3Lifecycle = "Active",
-                s4Advisories = "1 CVE",
-                s5Topology = "Z3",
-                s6Remediation = "Flash"
             ),
             RackPortDevice(
                 id = "dev-sonoff",
@@ -425,15 +398,6 @@ class MonitoredDeviceTest {
                 lifecycleTier = "Active",
                 purls = listOf("pkg:generic/sonoff/zbdongle-e@1.0.0"),
                 confidenceTier = DeviceConfidenceTier.CONFIRMED,
-                proHeadline = "ZBDongle-E",
-                stnHeadline = "ZBDongle-E",
-                s0Identity = "STN-LAB-23",
-                s1Hardware = "SONOFF",
-                s2Software = "EmberZNet",
-                s3Lifecycle = "Active",
-                s4Advisories = "1 Release",
-                s5Topology = "Z3",
-                s6Remediation = "Update"
             )
         )
 

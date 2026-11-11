@@ -267,16 +267,7 @@ data class RackPortDevice(
     val purls: List<String>,
     val confidenceTier: DeviceConfidenceTier = DeviceConfidenceTier.CONFIRMED,
     val candidateModels: List<String> = emptyList(),
-    val excludedPurlPrefixes: List<String> = emptyList(),
-    val proHeadline: String,
-    val stnHeadline: String,
-    val s0Identity: String,
-    val s1Hardware: String,
-    val s2Software: String,
-    val s3Lifecycle: String,
-    val s4Advisories: String,
-    val s5Topology: String,
-    val s6Remediation: String
+    val excludedPurlPrefixes: List<String> = emptyList()
 )
 
 @Serializable
@@ -875,6 +866,22 @@ object BulletinsAndInventoryEngine {
         }
     }
 
+    fun findTopBulletinForDevice(
+        device: RackPortDevice,
+        bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
+    ): CuratedBulletinItem? {
+        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE) return null
+        return bulletins.firstOrNull { b ->
+            val isExcluded = device.excludedPurlPrefixes.any { ex ->
+                b.purlBase.startsWith(ex.removeSuffix("/*"))
+            }
+            !isExcluded && device.purls.any { dp ->
+                val cleanDp = dp.substringBefore("@").removeSuffix("/*")
+                b.purlBase.startsWith(cleanDp) || cleanDp.startsWith(b.purlBase)
+            }
+        }
+    }
+
     fun defaultRackPortDevices(): List<RackPortDevice> = listOf(
         RackPortDevice(
             id = "0192d9f0-0008-7000-8000-000000000108",
@@ -897,15 +904,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/ui/unifi-os@4.0.20"),
-            proHeadline = "CVE-2026-50881 (0-Day • No Patch): Disable Direct Remote Connection",
-            stnHeadline = "Safety Workaround: Turn off Direct Remote Connection in UniFi settings",
-            s0Identity = "STN-GW-01 • Basement Rack U02 • Z0 Core",
-            s1Hardware = "Ubiquiti UDM-Pro • purchased 2022-11 (26 mo remaining)",
-            s2Software = "pkg:generic/ui/unifi-os@4.0.20 (Latest)",
-            s3Lifecycle = "Active Support • Zero-Day Workaround Required",
-            s4Advisories = "CVE-2026-50881 (CVSS 8.2, EPSS 0.34) • Unpatched 0-day",
-            s5Topology = "Z0 Core Gateway • WAN1 + 8 GbE RJ45 + 2 10G SFP+",
-            s6Remediation = "Disable Direct Remote Connection until UniFi OS 4.0.21 ships."
         ),
         RackPortDevice(
             id = "0192d9f0-0005-7000-8000-000000000105",
@@ -927,15 +925,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Legacy (EOL)",
             purls = listOf("pkg:generic/netgear/r7000@1.0.11.136"),
-            proHeadline = "CISA BOD 23-01 • Vendor EOL (2025-12-31) • Decommission from Z0 Core",
-            stnHeadline = "Retired Hardware (Age 9.5 yrs): Plan to replace with a modern Wi-Fi 7 access point",
-            s0Identity = "STN-AP-00 • Basement Workbench • Z0 Core",
-            s1Hardware = "Netgear Nighthawk R7000 • 2016-05 (PAST EOL 2025-12-31)",
-            s2Software = "pkg:generic/netgear/r7000@1.0.11.136 + openssl@1.0.2u",
-            s3Lifecycle = "Legacy / Obsolete (>8 yrs) • Zero vendor patches",
-            s4Advisories = "CISA BOD 23-01 EOL Directive • Unpatched OpenSSL 1.0.2u",
-            s5Topology = "Z0 Core AP • Recommend isolation or replacement",
-            s6Remediation = "Replace with UniFi U7 Pro or move to isolated lab VLAN."
         ),
         RackPortDevice(
             id = "0192d9f0-0009-7000-8000-000000000109",
@@ -958,15 +947,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/ui/u7-pro@7.0.66"),
-            proHeadline = "pkg:generic/ui/u7-pro@7.0.66 • 0 CVEs • Lifecycle Active (54 mo left)",
-            stnHeadline = "Up to date (7.0.66) • 4.5 years of manufacturer support remaining",
-            s0Identity = "STN-AP-01 • 1F Living Room • Z0 Core",
-            s1Hardware = "Ubiquiti U7-Pro • Wi-Fi 7 Tri-Band AP",
-            s2Software = "pkg:generic/ui/u7-pro@7.0.66",
-            s3Lifecycle = "Active Support (54 mo remaining)",
-            s4Advisories = "0 Active CVEs / KEVs",
-            s5Topology = "Z0 Core Access Point",
-            s6Remediation = "No action required."
         ),
         RackPortDevice(
             id = "0192d9f0-0004-7000-8000-000000000104",
@@ -992,15 +972,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/nintendo/horizon-os@19.0.1"),
-            proHeadline = "pkg:generic/nintendo/horizon-os@19.0.1 • Enrolled via Plug & Tag",
-            stnHeadline = "Up to date (19.0.1) • Warranty receipt saved",
-            s0Identity = "STN-SW-01 • 1F Media Console • Z1 Trusted",
-            s1Hardware = "Nintendo Switch 2 (BEE-001)",
-            s2Software = "pkg:generic/nintendo/horizon-os@19.0.1",
-            s3Lifecycle = "Active Support",
-            s4Advisories = "0 Active CVEs",
-            s5Topology = "Z1 Trusted Docked Ethernet",
-            s6Remediation = "No action required."
         ),
         RackPortDevice(
             id = "0192d9f0-0010-7000-8000-000000000110",
@@ -1023,15 +994,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/apple/macos@15.3.1"),
-            proHeadline = "Update Published: pkg:generic/apple/macos@15.3.1 → 15.3.2",
-            stnHeadline = "Software Update Ready: macOS 15.3.2 is available to install",
-            s0Identity = "STN-CL-02 • 2F Office Desk • Z1 Trusted",
-            s1Hardware = "Apple MacBook Pro 16 (M4 Max)",
-            s2Software = "pkg:generic/apple/macos@15.3.1 (15.3.2 available)",
-            s3Lifecycle = "Active Support (60 mo remaining)",
-            s4Advisories = "Routine maintenance update available",
-            s5Topology = "Z1 Trusted Workstation",
-            s6Remediation = "Install macOS 15.3.2 during Tuesday patch window."
         ),
         RackPortDevice(
             id = "0192d9f0-0001-7000-8000-000000000101",
@@ -1054,15 +1016,6 @@ object BulletinsAndInventoryEngine {
             lifecycleTier = "Unverified",
             purls = listOf("pkg:generic/unknown/*"),
             confidenceTier = DeviceConfidenceTier.OPAQUE_UNKNOWN,
-            proHeadline = "Opaque Unknown (42% MAC OUI D8:3A:DD): 0 Feeds Attached — Tag Model",
-            stnHeadline = "Unidentified Device: Snap a photo of the label so we can track updates",
-            s0Identity = "STN-LAB-09 • Basement Rack Shelf • Z2 Lab",
-            s1Hardware = "Raspberry Pi Foundation OUI (D8:3A:DD) • Confidence 42%",
-            s2Software = "Unverified OS / PURL",
-            s3Lifecycle = "Unknown until identified",
-            s4Advisories = "0 Feeds Attached (Opaque Unknown <50% confidence)",
-            s5Topology = "Z2 Lab Switch Port 6",
-            s6Remediation = "Use Plug & Tag camera or enroll tuesday-agent to verify OS."
         ),
         RackPortDevice(
             id = "0192d9f0-0002-7000-8000-000000000102",
@@ -1085,15 +1038,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/limetech/unraid@7.0.0"),
-            proHeadline = "pkg:generic/limetech/unraid@7.0.0 • Chainguard Golden Digests Match",
-            stnHeadline = "Up to date (Unraid 7.0.0) • All 14 apps healthy",
-            s0Identity = "STN-NAS-01 • Basement Rack U06 • Z2 Lab",
-            s1Hardware = "Custom 2U Rackmount NAS (lml)",
-            s2Software = "pkg:generic/limetech/unraid@7.0.0",
-            s3Lifecycle = "Active Support",
-            s4Advisories = "0 Active CVEs",
-            s5Topology = "Z2 Lab 10GbE Trunk",
-            s6Remediation = "No action required."
         ),
         RackPortDevice(
             id = "0192d9f0-0011-7000-8000-000000000111",
@@ -1116,15 +1060,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:deb/debian/proxmox-ve@8.3.1"),
-            proHeadline = "Update Published: pkg:deb/debian/proxmox-ve@8.3.1 → 8.3.2",
-            stnHeadline = "Update Available: Proxmox Server 8.3.2 ready for Tuesday window",
-            s0Identity = "STN-LAB-02 • Basement Rack U04 • Z2 Lab",
-            s1Hardware = "Minisforum MS-01 (pve-node-01)",
-            s2Software = "pkg:deb/debian/proxmox-ve@8.3.1 (8.3.2 available)",
-            s3Lifecycle = "Active Support",
-            s4Advisories = "QEMU maintenance update queued",
-            s5Topology = "Z2 Lab Hypervisor Trunk",
-            s6Remediation = "Apply apt dist-upgrade during Tuesday window."
         ),
         RackPortDevice(
             id = "0192d9f0-0006-7000-8000-000000000106",
@@ -1147,15 +1082,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/owlet/cam-2@1.0.4"),
-            proHeadline = "CPSC Recall #26-104 (Thermal Power Cord) + Firmware 1.0.4 → 2.1.0",
-            stnHeadline = "Safety Recall & Firmware Fix: Check power cord and update to 2.1.0",
-            s0Identity = "STN-CAM-01 • 2F Nursery • Z3 IoT",
-            s1Hardware = "Owlet Cam 2 • S/N 44A819002106",
-            s2Software = "pkg:generic/owlet/cam-2@1.0.4 (2.1.0 available)",
-            s3Lifecycle = "Active Support • Physical Safety Recall",
-            s4Advisories = "CPSC Recall #26-104 + RTSP Auth Bypass CVE",
-            s5Topology = "Z3 IoT Wi-Fi VLAN 30",
-            s6Remediation = "Order free replacement USB-C cord and update firmware to 2.1.0."
         ),
         RackPortDevice(
             id = "0192d9f0-0007-7000-8000-000000000107",
@@ -1178,15 +1104,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Vintage",
             purls = listOf("pkg:generic/lg/webos@8.1.0"),
-            proHeadline = "CISA KEV CVE-2026-21099 (EPSS 0.91): Patch 8.1.0 → 8.3.0 Available",
-            stnHeadline = "Security Update Ready: Update LG TV software from 8.1.0 to 8.3.0",
-            s0Identity = "STN-IOT-01 • 1F Living Room • Z3 IoT",
-            s1Hardware = "LG OLED65C3PUA • Vintage Tier",
-            s2Software = "pkg:generic/lg/webos@8.1.0 (8.3.0 available)",
-            s3Lifecycle = "Vintage Support (8 mo remaining)",
-            s4Advisories = "CISA KEV CVE-2026-21099 (CVSS 9.1, EPSS 0.91)",
-            s5Topology = "Z3 IoT Media VLAN",
-            s6Remediation = "Update TV firmware to 8.3.0 in Settings -> Support -> Software Update."
         ),
         RackPortDevice(
             id = "0192d9f0-0003-7000-8000-000000000103",
@@ -1212,15 +1129,6 @@ object BulletinsAndInventoryEngine {
             ),
             lifecycleTier = "Active",
             purls = listOf("pkg:generic/esphome/firmware@2026.9.0"),
-            proHeadline = "Update Published: pkg:generic/esphome/firmware@2026.9.0 → 2026.10.2",
-            stnHeadline = "Minor Feature Update: ESPHome 2026.10.2 available in Home Assistant",
-            s0Identity = "STN-IOT-04 • Garage Ceiling • Z3 IoT",
-            s1Hardware = "ESP32-WROOM-32D Relay Node",
-            s2Software = "pkg:generic/esphome/firmware@2026.9.0 (2026.10.2 available)",
-            s3Lifecycle = "Active Support",
-            s4Advisories = "0 Active CVEs • Minor Wi-Fi reconnect fix",
-            s5Topology = "Z3 IoT Wi-Fi",
-            s6Remediation = "Trigger OTA update via Home Assistant ESPHome dashboard."
         ),
         RackPortDevice(
             id = "0192d9f0-0012-7000-8000-000000000112",
@@ -1244,15 +1152,6 @@ object BulletinsAndInventoryEngine {
             purls = listOf("pkg:generic/ecobee/*"),
             confidenceTier = DeviceConfidenceTier.PROVISIONAL_GUESS,
             candidateModels = listOf("SmartThermostat Premium", "Ecobee3 Lite"),
-            proHeadline = "Best Guess (72% OUI 44:61:32 + _hap._tcp): Ecobee Family • Confirm Model",
-            stnHeadline = "Likely Ecobee Thermostat (72% Match): Confirm exact model on Bulletins tab",
-            s0Identity = "STN-IOT-09 • 1F Hallway • Z3 IoT",
-            s1Hardware = "Ecobee Inc. OUI (44:61:32) + HomeKit mDNS • 72% Guess",
-            s2Software = "pkg:generic/ecobee/* (Provisional Umbrella PURL)",
-            s3Lifecycle = "Provisional Guardrail Mode (High-Sev Alerts Only)",
-            s4Advisories = "CVE-2026-88901 HomeKit Pairing Bypass (Confirm Model to Verify)",
-            s5Topology = "Z3 IoT Wi-Fi",
-            s6Remediation = "Tap Confirm Model on Bulletins tab to lock exact hardware SKU."
         )
     )
 

@@ -432,9 +432,7 @@ class TuesdayRepository(context: Context) {
                     version = "4.8.7.210",
                     targetVersion = "4.8.7.220",
                     lifecycleTier = "Active",
-                    purls = listOf("pkg:generic/ecobee/smart-thermostat@4.8.7.210"),
-                    proHeadline = "Confirmed ($chosenModel): CVE-2026-88901 HomeKit Pairing Fix (4.8.7.220)",
-                    stnHeadline = "Confirmed ($chosenModel): Update thermostat firmware to 4.8.7.220"
+                    purls = listOf("pkg:generic/ecobee/smart-thermostat@4.8.7.210")
                 )
             } else dev
         }
@@ -455,9 +453,7 @@ class TuesdayRepository(context: Context) {
                 targetDeviceId = dev.id
                 dev.copy(
                     confidenceTier = DeviceConfidenceTier.OPAQUE_UNKNOWN,
-                    excludedPurlPrefixes = dev.excludedPurlPrefixes + "pkg:generic/ecobee/*",
-                    proHeadline = "Ecobee Family Excluded • Use Plug & Tag Camera to Identify Exact Model",
-                    stnHeadline = "Not an Ecobee • Snap a photo of the thermostat label to identify"
+                    excludedPurlPrefixes = dev.excludedPurlPrefixes + "pkg:generic/ecobee/*"
                 )
             } else dev
         }
@@ -599,15 +595,6 @@ class TuesdayRepository(context: Context) {
             purls = canonicalPurls,
             confidenceTier = if (isGuessed) DeviceConfidenceTier.PROVISIONAL_GUESS else DeviceConfidenceTier.CONFIRMED,
             candidateModels = if (isGuessed) listOf(discoveredMetadata?.modelNumber ?: "Generic IoT Node") else emptyList(),
-            proHeadline = osDetails,
-            stnHeadline = osDetails,
-            s0Identity = "STN-NEW-$nextPort • Newly Enrolled • Z3 IoT",
-            s1Hardware = discoveredMetadata?.manufacturer ?: hostname,
-            s2Software = osDetails,
-            s3Lifecycle = if (isGuessed) "Provisional Guess" else "Active Support",
-            s4Advisories = "0 Active CVEs",
-            s5Topology = "Z3 IoT",
-            s6Remediation = if (isGuessed) "Confirm exact model on Bulletins tab." else "No action required.",
             presenceState = DevicePresenceState.ACTIVE,
             isRetired = false
         )
@@ -679,9 +666,7 @@ class TuesdayRepository(context: Context) {
             if (it.id == deviceId) {
                 it.copy(
                     portState = PortLifecycleState.OK,
-                    version = it.targetVersion ?: it.version,
-                    proHeadline = "Patched & Verified OK • 0 Active Advisories",
-                    stnHeadline = "Everything OK • Latest software installed"
+                    version = it.targetVersion ?: it.version
                 )
             } else it
         }
@@ -1017,16 +1002,7 @@ class TuesdayRepository(context: Context) {
                             lifecycleTier = if (isGuess) "Provisional Guess" else (if (portState == PortLifecycleState.EOL) "End of Life" else "Active"),
                             purls = purls,
                             confidenceTier = if (isGuess) DeviceConfidenceTier.PROVISIONAL_GUESS else DeviceConfidenceTier.CONFIRMED,
-                            candidateModels = if (isGuess) listOf(hostname) else emptyList(),
-                            proHeadline = notif.title,
-                            stnHeadline = notif.body,
-                            s0Identity = "STN-LAB-${20 + i} • Enrolled Lab • Z1 Trusted",
-                            s1Hardware = hostname,
-                            s2Software = "Matched Bulletin: ${notif.bulletinExternalId}",
-                            s3Lifecycle = if (isGuess) "Provisional Guess" else "Active Monitoring",
-                            s4Advisories = "${notif.bulletinType.uppercase()}: ${notif.bulletinExternalId}",
-                            s5Topology = "Enrolled Inventory",
-                            s6Remediation = notif.body
+                            candidateModels = if (isGuess) listOf(hostname) else emptyList()
                         )
                     )
                 }
