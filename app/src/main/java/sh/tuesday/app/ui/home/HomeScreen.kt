@@ -2350,11 +2350,30 @@ private fun DeviceInspectorBottomSheet(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(RoundedCornerShape(2.5.dp))
+                                .background(Color.White)
+                        )
+                        Text(
+                            text = "Today",
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
 
                 MiniCandleBar(
                     candle = operationalCandle,
-                    modifier = Modifier.fillMaxWidth().height(16.dp)
+                    modifier = Modifier.fillMaxWidth().height(16.dp),
+                    showTodayMarker = true
                 )
 
                 Row(

@@ -983,11 +983,12 @@ private fun BatchAuditModal(
 @Composable
 fun MiniCandleBar(
     candle: OperationalCandle,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showTodayMarker: Boolean = false
 ) {
     Canvas(
         modifier = modifier
-            .height(12.dp)
+            .height(14.dp)
             .clip(RoundedCornerShape(3.dp))
             .background(Color(0xFF13171F))
     ) {
@@ -1126,6 +1127,21 @@ fun MiniCandleBar(
                 color = if (candle.isEolNearing) Color(0xFFF59E0B) else Color(0xFF94A3B8),
                 radius = 1.8.dp.toPx(),
                 center = Offset(xEol, yCenter)
+            )
+        }
+
+        // 5. Today / Current Date Pin Marker
+        if (showTodayMarker && !candle.isRetired) {
+            drawLine(
+                color = Color.White,
+                start = Offset(xDeployEnd, 0f),
+                end = Offset(xDeployEnd, h),
+                strokeWidth = 1.5.dp.toPx()
+            )
+            drawCircle(
+                color = Color.White,
+                radius = 2.5.dp.toPx(),
+                center = Offset(xDeployEnd, 1.dp.toPx())
             )
         }
     }
