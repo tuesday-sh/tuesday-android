@@ -1234,29 +1234,19 @@ private fun StatusMatrixAndActionListScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Port index + Category code badge
-                        Column(
+                        // Category silhouette icon badge
+                        Box(
                             modifier = Modifier
-                                .width(38.dp)
+                                .size(36.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(stateColor.copy(alpha = 0.16f))
-                                .border(1.dp, stateColor, RoundedCornerShape(6.dp))
-                                .padding(vertical = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .border(1.dp, stateColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "#%02d".format(dev.portIndex),
-                                color = stateColor,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = dev.category.code,
-                                color = palette.textMuted,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                            HardwareCategorySvgIcon(
+                                category = dev.category,
+                                tint = stateColor,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
