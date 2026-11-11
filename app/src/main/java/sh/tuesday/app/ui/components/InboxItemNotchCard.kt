@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -106,6 +107,27 @@ fun InboxItemNotchCard(
             fontSize = 11.5.sp,
             lineHeight = 15.5.sp
         )
+
+        if (!item.sourceUrl.isNullOrBlank()) {
+            val uriHandler = LocalUriHandler.current
+            Box(
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(palette.elevated)
+                    .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                    .clickable { runCatching { uriHandler.openUri(item.sourceUrl) } }
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "↗ View Original Notice",
+                    color = palette.accent,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
 
         if (item.matchedByGuess && item.candidateModels.isNotEmpty()) {
             Row(

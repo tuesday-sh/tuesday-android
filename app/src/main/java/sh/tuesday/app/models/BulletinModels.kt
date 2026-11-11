@@ -300,6 +300,7 @@ data class CanonicalFeedItem(
 data class CuratedBulletinItem(
     val externalId: String,
     val canonicalFeedSlug: String,
+    val sourceUrl: String? = null,
     val bulletinType: String,
     val isHighSev: Boolean,
     val purlBase: String,
@@ -325,6 +326,7 @@ data class MatchedFeedView(
 data class BulletinInboxView(
     val externalId: String,
     val feedSlug: String,
+    val sourceUrl: String? = null,
     val bulletinType: String,
     val isHighSev: Boolean,
     val brokeThroughMute: Boolean,
@@ -829,6 +831,7 @@ object BulletinsAndInventoryEngine {
             BulletinInboxView(
                 externalId = b.externalId,
                 feedSlug = b.canonicalFeedSlug,
+                sourceUrl = b.sourceUrl,
                 bulletinType = b.bulletinType,
                 isHighSev = b.isHighSev,
                 brokeThroughMute = fromMuted && b.isHighSev,
@@ -1363,6 +1366,7 @@ object BulletinsAndInventoryEngine {
         CuratedBulletinItem(
             externalId = "CVE-2026-50881",
             canonicalFeedSlug = "ubiquiti-advisories",
+            sourceUrl = "https://community.ui.com/releases/Security-Advisory-Bulletin-064-064/84811c09-4cf4-42ab-bd61-cc994445963b",
             bulletinType = "cve",
             isHighSev = true,
             purlBase = "pkg:generic/ui/unifi-os",
