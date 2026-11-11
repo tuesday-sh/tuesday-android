@@ -307,6 +307,16 @@ class TuesdayRepository(context: Context) {
         _activeDeviceCount.value = clamped
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
+        if (clamped == 0) {
+            _bulletinDismissed.value = false
+            _bulletinSnoozed.value = false
+            _bulletinMuted.value = false
+            prefs.edit()
+                .putBoolean("bulletin_dismissed", false)
+                .putBoolean("bulletin_snoozed", false)
+                .putBoolean("bulletin_muted", false)
+                .apply()
+        }
         _userNetworks.value = _userNetworks.value.map {
             if (it.id == _activeNetworkId.value) it.copy(devicesCount = clamped) else it
         }
