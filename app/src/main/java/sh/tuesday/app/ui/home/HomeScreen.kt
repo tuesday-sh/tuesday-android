@@ -779,16 +779,6 @@ private fun StatusMatrixAndActionListScreen(
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.uiSlot("title")
                             )
-                            if (scaleTier.showSummaryBadge) {
-                                Text(
-                                    text = "$okCount OK · $actionCount Action",
-                                    color = palette.accent,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.uiSlot("summary-badge")
-                                )
-                            }
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
