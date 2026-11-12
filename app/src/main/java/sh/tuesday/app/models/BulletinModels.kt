@@ -384,9 +384,15 @@ object BulletinsAndInventoryEngine {
             devices
         }
 
+        // Ordered by Category Topology (C1 Gateway -> C8 Guest), then tie-broken alphabetically
+        val topologicallyOrdered = filtered.sortedWith(
+            compareBy<RackPortDevice> { it.category.portSlot }
+                .thenBy { it.shortLabel.lowercase() }
+        )
+
         // Active assigned devices occupy slots 1..N
         var runningIndex = 1
-        filtered.forEach { dev ->
+        topologicallyOrdered.forEach { dev ->
             if (runningIndex <= 128) {
                 slots.add(
                     LedSlot(

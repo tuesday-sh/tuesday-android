@@ -1096,10 +1096,11 @@ private fun StatusMatrixAndActionListScreen(
                                 )
                                 Text("•", color = palette.border, fontSize = 10.sp)
                                 Text(
-                                    text = "Port #%02d".format(dev.portIndex),
+                                    text = dev.category.code,
                                     color = palette.textMuted,
                                     fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                             val topBulletin = remember(dev.id, dev.purls) {
@@ -1901,7 +1902,7 @@ private fun CategoryGalleryContextPanel(
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
-                                    text = "#%02d".format(dev.portIndex),
+                                    text = dev.trustZone.shortCode,
                                     color = palette.textMuted,
                                     fontSize = 8.sp,
                                     fontFamily = FontFamily.Monospace,
