@@ -179,12 +179,23 @@ fun NetworkPickerModalDialog(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = if (currentNetwork.id == "net-demo") "✨ Demo Network" else currentNetwork.name.ifBlank { "My Network" },
-                            color = palette.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(TuesdayTheme.LedOkGreen)
+                            )
+                            Text(
+                                text = currentNetwork.name.ifBlank { "My Network" },
+                                color = palette.textPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Text(
                             text = currentNetwork.role,
                             color = palette.textMuted,
@@ -250,7 +261,7 @@ fun NetworkPickerModalDialog(
                                 )
                                 Column {
                                     Text(
-                                        text = if (net.id == "net-demo") "✨ Demo Network" else net.name.ifBlank { "My Network" },
+                                        text = net.name.ifBlank { "My Network" },
                                         color = palette.textPrimary,
                                         fontSize = 13.5.sp,
                                         fontWeight = FontWeight.SemiBold

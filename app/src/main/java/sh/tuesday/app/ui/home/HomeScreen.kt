@@ -332,26 +332,23 @@ fun HomeScreen(
                         onClick = { showNetworkPicker = true },
                         shape = RoundedCornerShape(14.dp),
                         color = palette.elevated,
-                        border = if (isDemoActive) androidx.compose.foundation.BorderStroke(1.dp, TuesdayTheme.LedOkGreen.copy(alpha = 0.5f)) else null,
                         modifier = Modifier
                             .padding(end = 6.dp)
                             .uiAction("openNetworkPicker")
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            if (isDemoActive) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(TuesdayTheme.LedOkGreen)
-                                )
-                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.textMuted.copy(alpha = 0.7f))
+                            )
                             Text(
-                                text = if (isDemoActive) "✨ Demo Network" else activeNetwork.name.ifBlank { "My Network" },
+                                text = activeNetwork.name.ifBlank { "My Network" },
                                 color = palette.textPrimary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
