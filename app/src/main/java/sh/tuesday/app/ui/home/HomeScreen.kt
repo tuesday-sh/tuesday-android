@@ -771,7 +771,7 @@ private fun StatusMatrixAndActionListScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = if (visibleDevices.isEmpty()) "Inventory • 0 / 128" else "Inventory",
+                            text = "Inventory",
                             color = palette.textPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
@@ -1575,11 +1575,10 @@ private fun InventoryChassisCard(
                 }
             }
 
-            // Bottom-snapped monochrome pixel art overlay (Sprout / 3 Pines / 9-Tree PNW Horizon)
+            // Bottom-snapped monochrome pixel art overlay (Mountain Horizon / Sprout / 3 Pines / 9-Tree Horizon)
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
+                    .matchParentSize()
                     .uiComponent("MatrixBotanicalPixelArtOverlay")
                     .uiSlot("botanical-overlay")
             ) {
@@ -2312,29 +2311,30 @@ private fun MatrixBotanicalPixelArtOverlay(
 
     when (scaleTier) {
         InventoryScaleTier.DAY_ZERO -> {
-            // PNW Misty Mountain Horizon (Pre-Dawn Silhouette) across the empty 128-port grid
+            // PNW Misty Mountain Horizon with centered status pill
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(68.dp),
-                contentAlignment = Alignment.BottomCenter
+                modifier = Modifier.fillMaxSize()
             ) {
+                // Mountain silhouette resting along bottom
                 PixelArtMountainHorizon(
                     color = fgColor.copy(alpha = if (isStn) 0.38f else 0.42f),
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .align(Alignment.BottomCenter)
                 )
 
-                // Subtle status pill anchored above horizon
+                // Status pill positioned at the vertical middle so it doesn't cover the illustration
                 Box(
                     modifier = Modifier
-                        .padding(bottom = 6.dp)
+                        .align(Alignment.Center)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (isStn) Color.White.copy(alpha = 0.92f) else Color(0xFF0F172A).copy(alpha = 0.88f))
+                        .background(if (isStn) Color.White.copy(alpha = 0.94f) else Color(0xFF0F172A).copy(alpha = 0.90f))
                         .border(1.dp, if (isStn) Color(0xFFCBD5E1) else Color(0xFF334155), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 7.dp, vertical = 2.5.dp)
+                        .padding(horizontal = 8.dp, vertical = 3.5.dp)
                 ) {
                     Text(
-                        text = "WAITING FOR FIRST BEACON • 0 / 128",
+                        text = "Inventory Empty • 0 / 128",
                         color = if (isStn) Color(0xFF475569) else Color(0xFF94A3B8),
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -2344,63 +2344,78 @@ private fun MatrixBotanicalPixelArtOverlay(
             }
         }
         InventoryScaleTier.PEA -> {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                PixelArtSprout(
-                    color = fgColor.copy(alpha = 0.85f),
-                    size = 32.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
+                Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isStn) Color.White.copy(alpha = 0.9f) else Color(0xFF0F172A).copy(alpha = 0.85f))
-                        .border(1.dp, if (isStn) Color(0xFFCBD5E1) else Color(0xFF334155), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "$activeCount ACTIVE • ${128 - activeCount} SLOTS AVAILABLE",
-                        color = if (isStn) Color(0xFF475569) else Color(0xFF94A3B8),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                    PixelArtSprout(
+                        color = fgColor.copy(alpha = 0.85f),
+                        size = 32.dp
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (isStn) Color.White.copy(alpha = 0.9f) else Color(0xFF0F172A).copy(alpha = 0.85f))
+                            .border(1.dp, if (isStn) Color(0xFFCBD5E1) else Color(0xFF334155), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "$activeCount ACTIVE • ${128 - activeCount} SLOTS AVAILABLE",
+                            color = if (isStn) Color(0xFF475569) else Color(0xFF94A3B8),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }
         InventoryScaleTier.GARDEN -> {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.Bottom
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 24.dp, height = 34.dp)
-                PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 30.dp, height = 42.dp)
-                PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 20.dp, height = 28.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 24.dp, height = 34.dp)
+                    PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 30.dp, height = 42.dp)
+                    PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 20.dp, height = 28.dp)
+                }
             }
         }
         InventoryScaleTier.FOREST -> {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.Bottom
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                repeat(9) { idx ->
-                    val isTall = idx % 2 == 0
-                    PixelArtPineTree(
-                        color = fgColor.copy(alpha = 0.45f),
-                        width = if (isTall) 22.dp else 18.dp,
-                        height = if (isTall) 32.dp else 26.dp
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    repeat(9) { idx ->
+                        val isTall = idx % 2 == 0
+                        PixelArtPineTree(
+                            color = fgColor.copy(alpha = 0.45f),
+                            width = if (isTall) 22.dp else 18.dp,
+                            height = if (isTall) 32.dp else 26.dp
+                        )
+                    }
                 }
             }
         }
