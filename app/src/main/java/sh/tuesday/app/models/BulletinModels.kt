@@ -38,7 +38,7 @@ enum class InventoryScaleTier(
     DAY_ZERO("day_zero", "Day 0", 0, 0, false, false, false, false, ""),
     PEA("pea", "Pea", 1, 2, false, false, false, false, "🌱"),
     GARDEN("garden", "Garden", 3, 7, true, false, false, false, "🪴"),
-    FOREST("forest", "Forest", 8, 128, true, true, true, true, "🌲");
+    FOREST("forest", "Forest", 8, 128, true, true, true, false, "🌲");
 
     companion object {
         // Backward-compatibility aliases for existing tests
