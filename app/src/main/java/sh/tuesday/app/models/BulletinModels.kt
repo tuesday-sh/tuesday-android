@@ -885,6 +885,16 @@ object BulletinsAndInventoryEngine {
         }
     }
 
+    fun findBulletinsForDevice(
+        device: RackPortDevice,
+        bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
+    ): List<CuratedBulletinItem> {
+        if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE || device.portState == PortLifecycleState.OK) return emptyList()
+        return bulletins.filter { b ->
+            deviceMatchesBulletin(device, b)
+        }
+    }
+
     fun deviceMatchesBulletin(device: RackPortDevice, bulletin: CuratedBulletinItem): Boolean {
         if (device.isRetired || device.presenceState != DevicePresenceState.ACTIVE) return false
         val isExcluded = device.excludedPurlPrefixes.any { ex ->
@@ -1007,7 +1017,7 @@ object BulletinsAndInventoryEngine {
                 DeviceLifecycleCandle("15.3.1", 0.48f, 0.52f, 0.90f, 0.78f, null)
             ),
             lifecycleTier = "Active",
-            purls = listOf("pkg:generic/apple/macos@15.3.1"),
+            purls = listOf("pkg:generic/apple/macbook-pro-16"),
         ),
         RackPortDevice(
             id = "0192d9f0-0001-7000-8000-000000000101",
@@ -1194,9 +1204,9 @@ object BulletinsAndInventoryEngine {
         CanonicalFeedItem(
             id = "f-04",
             slug = "apple-proxmox-upstream",
-            proName = "Apple macOS & Debian Proxmox Releases",
-            stnName = "MacBook & Home Server Software Updates",
-            purlPrefixes = listOf("pkg:generic/apple/macos", "pkg:deb/debian/proxmox-ve")
+            proName = "Apple Hardware & Silicon Advisories",
+            stnName = "Apple MacBook & Silicon Notices",
+            purlPrefixes = listOf("pkg:generic/apple/macbook-pro-16", "pkg:generic/apple/macos", "pkg:deb/debian/proxmox-ve")
         ),
         CanonicalFeedItem(
             id = "f-05",
@@ -1322,18 +1332,47 @@ object BulletinsAndInventoryEngine {
             publishedAt = "1d ago"
         ),
         CuratedBulletinItem(
-            externalId = "REL-macos-15.3.2-pve-8.3.2",
+            externalId = "RECALL-apple-mbp16-battery",
             canonicalFeedSlug = "apple-proxmox-upstream",
-            bulletinType = "release",
+            bulletinType = "recall",
+            isHighSev = true,
+            purlBase = "pkg:generic/apple/macbook-pro-16",
+            proTitle = "Apple Service Advisory: MacBook Pro 16 Battery & Thermal Safety Notice",
+            proBody = "Voluntary Apple battery safety recall applicable to select MacBook Pro 16 enclosures. Check hardware serial on Apple Support to confirm eligibility for free battery replacement.",
+            stnTitle = "Safety Recall: MacBook Pro 16 Battery Service Notice",
+            stnBody = "Apple issued a battery inspection advisory for MacBook Pro 16 models. Tap to check your serial number with Apple for a free battery service.",
+            aiProBullet = "1 Safety Recall (Port #05): MacBook Pro 16 battery thermal service advisory.",
+            aiStnBullet = "Battery Safety Recall: Check your MacBook Pro 16 serial number for free battery service.",
+            publishedAt = "2d ago",
+            sourceUrl = "https://support.apple.com/service-programs"
+        ),
+        CuratedBulletinItem(
+            externalId = "VULN-apple-silicon-m-series",
+            canonicalFeedSlug = "apple-proxmox-upstream",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/apple/macbook-pro-16",
+            proTitle = "Hardware Advisory: Apple Silicon M-Series Data Memory-Dependent Prefetcher (GoFetch)",
+            proBody = "Microarchitectural side-channel vulnerability in Apple Silicon (M1/M2/M3/M4) CPU cores. Mitigation: enable runtime pointer authentication and audit cryptographic key isolations.",
+            stnTitle = "Security Advisory: Apple Silicon Chip Defense",
+            stnBody = "Researchers identified a chip-level security advisory affecting Apple Silicon processors. Update macOS to ensure security mitigations are enabled.",
+            aiProBullet = "1 Silicon Advisory (Port #05): Apple Silicon M-series prefetcher microarchitecture defense.",
+            aiStnBullet = "Apple Chip Security Alert: Ensure your MacBook Pro has the latest macOS updates applied.",
+            publishedAt = "3d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "EOL-apple-vintage-hardware",
+            canonicalFeedSlug = "apple-proxmox-upstream",
+            bulletinType = "eol",
             isHighSev = false,
-            purlBase = "pkg:generic/apple/macos",
-            proTitle = "Upstream Releases: macOS 15.3.2 & Proxmox VE 8.3.2 Available",
-            proBody = "Routine maintenance releases published for Port #05 (MacBook Pro M4: 15.3.1 -> 15.3.2) and Port #08 (pve-node-01: 8.3.1 -> 8.3.2).",
-            stnTitle = "New Software Releases: MacBook Pro & Home Server",
-            stnBody = "Routine stability updates are ready for Aaron's MacBook Pro (macOS 15.3.2) and your Proxmox Home Server (8.3.2).",
-            aiProBullet = "2 Routine Releases (Ports #05, #08): macOS 15.3.2 and Proxmox VE 8.3.2 available.",
-            aiStnBullet = "2 Routine Software Updates: New maintenance releases for MacBook Pro and Home Server.",
-            publishedAt = "1d ago"
+            purlBase = "pkg:generic/apple/macbook-pro-16",
+            proTitle = "Apple Hardware Lifecycle: Support Vintage Window Transition",
+            proBody = "Hardware support window tracking. Apple considers products Vintage 5 years after distribution ceases; authorized parts and battery service transition to limited availability.",
+            stnTitle = "Hardware Support Status: MacBook Pro Service Window",
+            stnBody = "Track your laptop's official Apple service lifespan. Apple provides hardware repairs and parts for up to 5–7 years from release.",
+            aiProBullet = "1 Lifecycle Notice (Port #05): MacBook Pro 16 manufacturer support runway tracking.",
+            aiStnBullet = "Hardware Lifespan: Apple manufacturer service window tracking active.",
+            publishedAt = "5d ago"
         ),
         CuratedBulletinItem(
             externalId = "REL-esphome-2026.10.2",

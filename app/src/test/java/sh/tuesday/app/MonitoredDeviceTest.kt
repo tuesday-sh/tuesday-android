@@ -150,10 +150,10 @@ class MonitoredDeviceTest {
         assertEquals(1, payload.provisionalHighSevCount)
 
         // Top-level AI summary excludes muted feeds and provisional guess feeds
-        assertEquals(4, payload.aiBullets.size)
+        assertEquals(6, payload.aiBullets.size)
 
-        // Inbox has 6 items: 4 unmuted confirmed + 1 muted high-sev breakthrough + 1 provisional high-sev
-        assertEquals(6, payload.inbox.size)
+        // Inbox has 8 items: 6 unmuted confirmed (including 3 Apple notices) + 1 muted high-sev breakthrough + 1 provisional high-sev
+        assertEquals(8, payload.inbox.size)
         val lgBreakthrough = payload.inbox.find { it.externalId == "CVE-2026-21099" }
         assertNotNull(lgBreakthrough)
         assertTrue(lgBreakthrough!!.brokeThroughMute)
@@ -519,5 +519,45 @@ class MonitoredDeviceTest {
         )
         assertFalse(remediatedPayload.inbox.any { it.externalId == "CVE-2026-50881" })
         assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "CVE-2026-50881" })
+    }
+
+    @Test
+    fun testMacBookProMultipleNoticesPileUpAndSimulateAllRemediated() {
+        val macbook = BulletinsAndInventoryEngine.defaultRackPortDevices().find { it.id == "0192d9f0-0010-7000-8000-000000000110" }!!
+        assertEquals("pkg:generic/apple/macbook-pro-16", macbook.purls.first())
+
+        // 1. Should have 3 notices attached to this MacBook
+        val macBulletins = BulletinsAndInventoryEngine.findBulletinsForDevice(macbook)
+        assertEquals(3, macBulletins.size)
+        assertEquals(3, BulletinsAndInventoryEngine.countBulletinsForDevice(macbook))
+        val topBul = BulletinsAndInventoryEngine.findTopBulletinForDevice(macbook)
+        assertNotNull(topBul)
+        assertEquals("RECALL-apple-mbp16-battery", topBul!!.externalId)
+
+        // 2. Initial assembleBulletins includes all 3 in inbox
+        val payload = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = listOf(macbook),
+            mutedFeedSlugs = emptySet()
+        )
+        assertEquals(3, payload.inbox.size)
+        assertEquals(0, payload.completedBulletins.size)
+
+        // 3. Remediate the device (set portState = OK) -> All 3 move to completedBulletins
+        val remediatedMac = macbook.copy(portState = PortLifecycleState.OK)
+        assertEquals(0, BulletinsAndInventoryEngine.countBulletinsForDevice(remediatedMac))
+        assertNull(BulletinsAndInventoryEngine.findTopBulletinForDevice(remediatedMac))
+        assertEquals(emptyList<CuratedBulletinItem>(), BulletinsAndInventoryEngine.findBulletinsForDevice(remediatedMac))
+
+        val remediatedPayload = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = listOf(remediatedMac),
+            mutedFeedSlugs = emptySet()
+        )
+        assertEquals(0, remediatedPayload.inbox.size)
+        assertEquals(3, remediatedPayload.completedBulletins.size)
+        assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "RECALL-apple-mbp16-battery" })
+        assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "VULN-apple-silicon-m-series" })
+        assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "EOL-apple-vintage-hardware" })
     }
 }

@@ -2374,6 +2374,81 @@ private fun DeviceInspectorBottomSheet(
             }
         }
 
+        // Active Bulletins Stack (when multiple notices pile up on this device)
+        val activeBulletins = remember(device.id, device.purls, device.portState) {
+            BulletinsAndInventoryEngine.findBulletinsForDevice(device)
+        }
+        if (activeBulletins.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiSlot("device-active-bulletins-stack"),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "ACTIVE NOTICES (${activeBulletins.size})",
+                    color = palette.textMuted,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
+                )
+                activeBulletins.forEach { b ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                            .clickable { onNavigateToBulletins() }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val bTypeColor = when (b.bulletinType.lowercase()) {
+                                    "recall", "cisa_kev", "cve" -> TuesdayTheme.LedCveRed
+                                    "eol" -> TuesdayTheme.LedEolAmber
+                                    else -> TuesdayTheme.LedUpdateBlue
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(bTypeColor)
+                                )
+                                Text(
+                                    text = b.bulletinType.uppercase(),
+                                    color = bTypeColor,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Text(
+                                text = if (isStn) b.stnTitle else b.proTitle,
+                                color = palette.textPrimary,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                        Text(
+                            text = "→",
+                            color = palette.accent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         if (device.portState != PortLifecycleState.OK && device.portState != PortLifecycleState.UNASSIGNED) {
             Button(
                 onClick = onApplyPatch,
