@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.NetworkSite
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
@@ -36,12 +37,21 @@ fun NetworkPickerModalDialog(
     networks: List<NetworkSite>,
     activeNetworkId: String,
     palette: BrandPalette,
+    entitlementTier: String = "free",
+    flavor: AppBrandFlavor = AppBrandFlavor.TUESDAY_PRO,
     onSelectNetwork: (String) -> Unit,
     onCreateNetwork: (String) -> Unit,
+    onUpgradeMultiSite: () -> Unit = {},
     onOpenNetworkSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var showSetupModal by remember { mutableStateOf(false) }
+    var showUpgradePrompt by remember { mutableStateOf(false) }
+
+    // In Free tier: only 1 real network + 1 demo network allowed. Creating additional real networks requires Multi-Site (Tier 1) on Tuesday.sh Pro.
+    val isMultiSiteAllowed = entitlementTier == "multisite_tier_1" || entitlementTier == "pro_tier_1"
+    val realNetworksCount = networks.count { it.id != "net-demo" }
+    val canAddNetworkWithoutUpgrade = isMultiSiteAllowed || realNetworksCount < 1
 
     val currentNetwork = remember(networks, activeNetworkId) {
         networks.find { it.id == activeNetworkId } ?: networks.firstOrNull() ?: NetworkSite(
@@ -274,9 +284,74 @@ fun NetworkPickerModalDialog(
                 }
             }
 
-            // "Add a network" Button -> Opens "Setup a network" Modal
+            // Multi-Site Entitlement Upgrade Card (when attempting to add > 1 real network on Free)
+            if (showUpgradePrompt) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(palette.elevated)
+                        .border(1.dp, palette.accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("⚡", fontSize = 16.sp)
+                        Text(
+                            text = "Tuesday Multi-Site",
+                            color = palette.textPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                    Text(
+                        text = "Free accounts can manage 1 primary network and 1 demo sandbox. Upgrade to Multi-Site to track unlimited locations with live cloud sync and cross-site telemetry.",
+                        color = palette.textMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                onUpgradeMultiSite()
+                                showUpgradePrompt = false
+                                showSetupModal = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = palette.accent,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("Upgrade & Continue", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { showUpgradePrompt = false },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, palette.border)
+                        ) {
+                            Text("Dismiss", color = palette.textMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // "Add a network" Button -> Opens "Setup a network" Modal (or triggers Multi-Site prompt if on Free)
             Button(
-                onClick = { showSetupModal = true },
+                onClick = {
+                    if (canAddNetworkWithoutUpgrade) {
+                        showSetupModal = true
+                    } else {
+                        showUpgradePrompt = true
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiAction("openSetupNetworkModal"),
@@ -293,7 +368,7 @@ fun NetworkPickerModalDialog(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Add a network",
+                    text = if (canAddNetworkWithoutUpgrade) "Add a network" else "Add a network (Multi-Site)",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )

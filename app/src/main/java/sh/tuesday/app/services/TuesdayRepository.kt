@@ -330,6 +330,22 @@ class TuesdayRepository(context: Context) {
         _selectedPortStateFilter.value = null
     }
 
+    fun switchToNextNetwork() {
+        val list = _userNetworks.value
+        if (list.size <= 1) return
+        val currentIdx = list.indexOfFirst { it.id == _activeNetworkId.value }
+        val nextIdx = if (currentIdx < 0 || currentIdx >= list.size - 1) 0 else currentIdx + 1
+        selectNetwork(list[nextIdx].id)
+    }
+
+    fun switchToPreviousNetwork() {
+        val list = _userNetworks.value
+        if (list.size <= 1) return
+        val currentIdx = list.indexOfFirst { it.id == _activeNetworkId.value }
+        val prevIdx = if (currentIdx <= 0) list.size - 1 else currentIdx - 1
+        selectNetwork(list[prevIdx].id)
+    }
+
     fun renameActiveNetwork(newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return
@@ -679,9 +695,9 @@ class TuesdayRepository(context: Context) {
         persistDevices()
     }
 
-    fun upgradeToProTier1(productId: String = "sh.tuesday.pro.tier1.annual") {
-        _entitlementTier.value = "pro_tier_1"
-        prefs.edit().putString("entitlement_tier", "pro_tier_1").apply()
+    fun upgradeToMultiSiteTier1(productId: String = "sh.tuesday.multisite.tier1.annual") {
+        _entitlementTier.value = "multisite_tier_1"
+        prefs.edit().putString("entitlement_tier", "multisite_tier_1").apply()
         ioScope.launch {
             try {
                 val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
@@ -702,6 +718,11 @@ class TuesdayRepository(context: Context) {
                 Log.w("TuesdayRepoSync", "Billing verification queued offline: ${e.message}")
             }
         }
+    }
+
+    // Alias for backward compatibility with existing tests and scripts
+    fun upgradeToProTier1(productId: String = "sh.tuesday.multisite.tier1.annual") {
+        upgradeToMultiSiteTier1(productId)
     }
 
     private fun syncDeviceCreateToServerAsync(dev: RackPortDevice, meta: DiscoveredDeviceMetadata?) {

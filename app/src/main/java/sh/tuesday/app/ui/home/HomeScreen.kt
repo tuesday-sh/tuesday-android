@@ -44,6 +44,8 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import sh.tuesday.app.R
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.ConnectivityMonitor
@@ -499,7 +501,9 @@ fun HomeScreen(
                     onLoadDemoFleet = { repository.enableDemoMode() },
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
-                    }
+                    },
+                    onSwipeNextNetwork = { repository.switchToNextNetwork() },
+                    onSwipePreviousNetwork = { repository.switchToPreviousNetwork() }
                 )
                 MainNavTab.BULLETINS -> BulletinsScreen(
                     flavor = brandFlavor,
@@ -657,6 +661,8 @@ fun HomeScreen(
             networks = userNetworks,
             activeNetworkId = activeNetworkId,
             palette = palette,
+            entitlementTier = entitlementTier,
+            flavor = brandFlavor,
             onSelectNetwork = { id ->
                 repository.selectNetwork(id)
                 showNetworkPicker = false
@@ -664,6 +670,9 @@ fun HomeScreen(
             onCreateNetwork = { name ->
                 repository.createNetwork(name)
                 showNetworkPicker = false
+            },
+            onUpgradeMultiSite = {
+                repository.upgradeToMultiSiteTier1()
             },
             onOpenNetworkSettings = {
                 expandNetworkInSettings = true
@@ -713,7 +722,9 @@ private fun StatusMatrixAndActionListScreen(
     bulletinMuted: Boolean = false,
     onSetBulletinMuted: (Boolean) -> Unit = {},
     onLoadDemoFleet: () -> Unit,
-    onInspectDevice: (String) -> Unit
+    onInspectDevice: (String) -> Unit,
+    onSwipeNextNetwork: () -> Unit = {},
+    onSwipePreviousNetwork: () -> Unit = {}
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     val okCount = visibleDevices.count { it.portState == PortLifecycleState.OK }
@@ -855,7 +866,9 @@ private fun StatusMatrixAndActionListScreen(
                                 isStn = isStn,
                                 palette = palette,
                                 onInspectDevice = onInspectDevice,
-                                onNavigateToAddDevice = onNavigateToAddDevice
+                                onNavigateToAddDevice = onNavigateToAddDevice,
+                                onSwipeNextNetwork = onSwipeNextNetwork,
+                                onSwipePreviousNetwork = onSwipePreviousNetwork
                             )
                             HorizontalDivider(color = palette.border, thickness = 1.dp)
                         }
@@ -1519,15 +1532,38 @@ private fun PortCategoryFaceplateStrip(
     isStn: Boolean,
     palette: BrandPalette,
     onInspectDevice: (String) -> Unit,
-    onNavigateToAddDevice: () -> Unit
+    onNavigateToAddDevice: () -> Unit,
+    onSwipeNextNetwork: () -> Unit = {},
+    onSwipePreviousNetwork: () -> Unit = {}
 ) {
     var activeContextCategory by remember { mutableStateOf<StnHardwareCategory?>(null) }
     var selectedAnchorXInStripPx by remember { mutableFloatStateOf(0f) }
     var stripWidthPx by remember { mutableFloatStateOf(0f) }
+    var totalDragX by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDragX = 0f },
+                    onHorizontalDrag = { _, dragAmount ->
+                        totalDragX += dragAmount
+                    },
+                    onDragEnd = {
+                        val swipeThresholdPx = 48.dp.toPx()
+                        if (totalDragX < -swipeThresholdPx) {
+                            // Swiped Left -> Next Network
+                            onSwipeNextNetwork()
+                        } else if (totalDragX > swipeThresholdPx) {
+                            // Swiped Right -> Previous Network
+                            onSwipePreviousNetwork()
+                        }
+                        totalDragX = 0f
+                    },
+                    onDragCancel = { totalDragX = 0f }
+                )
+            }
             .onGloballyPositioned { coords ->
                 stripWidthPx = coords.size.width.toFloat()
             }
