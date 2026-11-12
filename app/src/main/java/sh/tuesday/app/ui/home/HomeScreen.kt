@@ -930,28 +930,77 @@ private fun StatusMatrixAndActionListScreen(
             }
         }
 
-        // Welcome Bulletin Card (kept visible on home screen above inventory for continuity)
-        item {
-            WelcomeCard(
-                palette = palette,
-                activeDeviceCount = visibleDevices.size,
-                remindersEnabled = remindersEnabled,
-                dispatchSubscribed = dispatchSubscribed,
-                onSetDispatchSubscribed = onSetDispatchSubscribed,
-                bulletinDismissed = bulletinDismissed,
-                onSetBulletinDismissed = onSetBulletinDismissed,
-                bulletinSnoozed = bulletinSnoozed,
-                onSetBulletinSnoozed = onSetBulletinSnoozed,
-                bulletinMuted = bulletinMuted,
-                onSetBulletinMuted = onSetBulletinMuted,
-                onAddRouter = onAddRouter,
-                onAddAnyDevice = onAddAnyDevice,
-                onLoadDemoFleet = onLoadDemoFleet,
-                onOpenReferenceGuide = onOpenReferenceGuide,
-                onNavigateToBulletins = onNavigateToBulletins,
-                onNavigateToAccount = onNavigateToAccount,
-                onEnableReminders = onEnableReminders
-            )
+        // Day 0 Router Intake & Demo Seeding Callout (shown below inventory grid on empty network)
+        if (visibleDevices.isEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiSlot("router-advisory-tip")
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.accent.copy(alpha = 0.10f))
+                            .border(1.dp, palette.accent.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "💡 Best place to start: Your Router",
+                            color = palette.accent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Your router is the front door to your home network and the single highest-impact device to keep updated.",
+                            color = palette.textMuted,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+
+                    Button(
+                        onClick = onAddRouter,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = palette.accent,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("openAddDevice")
+                    ) {
+                        Text("Add Your Router (Recommended) →", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onAddAnyDevice,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("openAddDevice")
+                    ) {
+                        Text("+ Add Any Device", color = palette.textPrimary, fontSize = 11.5.sp)
+                    }
+
+                    TextButton(
+                        onClick = onLoadDemoFleet,
+                        modifier = Modifier
+                            .uiAction("enableDemoMode")
+                            .uiAction("setSimulatedDeviceCount")
+                    ) {
+                        Text(
+                            text = "Enable Demo Mode (seed Forest fleet)",
+                            color = palette.accent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
             // 1B. Tracked Hardware Profiles Strip (Forest Tier >= 8 devices on STN-Pro)
@@ -1290,191 +1339,6 @@ fun RiskMeter(
 
 private fun palette_textMuted_or(activeColor: Color, isStn: Boolean): Color {
     return if (isStn) Color(0xFF94A3B8) else Color(0xFF6B7280)
-}
-
-@Composable
-private fun WelcomeCard(
-    palette: BrandPalette,
-    activeDeviceCount: Int = 0,
-    remindersEnabled: Boolean = false,
-    dispatchSubscribed: Boolean = false,
-    onSetDispatchSubscribed: (Boolean) -> Unit = {},
-    bulletinDismissed: Boolean = false,
-    onSetBulletinDismissed: (Boolean) -> Unit = {},
-    bulletinSnoozed: Boolean = false,
-    onSetBulletinSnoozed: (Boolean) -> Unit = {},
-    bulletinMuted: Boolean = false,
-    onSetBulletinMuted: (Boolean) -> Unit = {},
-    onAddRouter: () -> Unit,
-    onAddAnyDevice: () -> Unit,
-    onLoadDemoFleet: () -> Unit,
-    onOpenReferenceGuide: () -> Unit = {},
-    onNavigateToBulletins: () -> Unit = {},
-    onNavigateToAccount: () -> Unit = {},
-    onEnableReminders: () -> Unit = onNavigateToAccount
-) {
-    var showIgnoreDialog by remember { mutableStateOf(false) }
-
-    if (showIgnoreDialog) {
-        sh.tuesday.app.ui.components.BulletinPreferencesDialog(
-            palette = palette,
-            onDismissRequest = { showIgnoreDialog = false },
-            onConfirmMute = {
-                showIgnoreDialog = false
-                onSetBulletinMuted(true)
-                onSetBulletinDismissed(true)
-            },
-            onConfirmIgnoreUntilNextMonth = {
-                showIgnoreDialog = false
-                onSetBulletinSnoozed(true)
-                onSetBulletinDismissed(true)
-            }
-        )
-    }
-
-    val step1Done = activeDeviceCount > 0
-    val step2Done = remindersEnabled
-    val step3Done = dispatchSubscribed
-    val allStepsDone = step1Done && step2Done && step3Done
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiComponent("WelcomeCard", "tier=day_zero;active=0")
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        val showReadinessCard = !bulletinDismissed && !bulletinSnoozed
-        if (showReadinessCard) {
-            val context = LocalContext.current
-            val steps = listOf(
-                BulletinChecklistStep(
-                    id = "step1",
-                    num = "1",
-                    title = "Inventory Your Network",
-                    description = "Kick off Plug & Tag intake to map active routers, switches, NAS, and IoT nodes.",
-                    linkText = if (step1Done) "✓ Added" else "Add Device →",
-                    isDone = step1Done,
-                    onClick = onAddRouter
-                ),
-                BulletinChecklistStep(
-                    id = "step2",
-                    num = "2",
-                    title = "Enable Push Reminders",
-                    description = "Receive an alert at 10:00 AM PT on Patch Tuesday with your prioritized triage list.",
-                    linkText = if (step2Done) "✓ Active" else "Enable →",
-                    isDone = step2Done,
-                    onClick = onEnableReminders
-                ),
-                BulletinChecklistStep(
-                    id = "step3",
-                    num = "3",
-                    title = "Subscribe to the Dispatch",
-                    description = "Get human-curated patch analysis and firmware changelogs delivered every cycle.",
-                    linkText = if (step3Done) "✓ Subscribed" else "Dispatch ↗",
-                    isDone = step3Done,
-                    onClick = {
-                        onSetDispatchSubscribed(true)
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tuesday.sh/dispatch"))
-                        context.startActivity(intent)
-                    }
-                )
-            )
-
-            NotchBulletinCard(
-                palette = palette,
-                title = "Patch Tuesday Readiness",
-                description = if (bulletinSnoozed) {
-                    "💤 Reminder snoozed until tomorrow at 10:00 AM PT. Get your perimeter cataloged before vendors push critical firmware fixes."
-                } else {
-                    "Get your perimeter cataloged before vendors push critical firmware and OS fixes."
-                },
-                leftNotchLabel = "BULLETIN",
-                onLeftNotchClick = onNavigateToBulletins,
-                rightNotchLabel = "RHYTHM",
-                onRightNotchClick = onOpenReferenceGuide,
-                steps = steps,
-                allStepsDone = allStepsDone,
-                primaryActionLabel = "Snooze 24h",
-                completeActionLabel = "Mark Complete",
-                secondaryActionLabel = "Ignore",
-                onPrimaryAction = {
-                    if (allStepsDone) {
-                        onSetBulletinDismissed(true)
-                    } else {
-                        onSetBulletinSnoozed(true)
-                    }
-                },
-                onSecondaryAction = { showIgnoreDialog = true }
-            )
-        }
-
-        if ((bulletinDismissed || bulletinSnoozed) && activeDeviceCount == 0) {
-            // Router recommendation tip row and Add Device CTA block (visible once welcome bulletin is dismissed or snoozed on Day 0)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("router-advisory-tip")
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.accent.copy(alpha = 0.10f))
-                    .border(1.dp, palette.accent.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                Text(
-                    text = "💡 Best place to start: Your Router",
-                    color = palette.accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Your router is the front door to your home network and the single highest-impact device to keep updated.",
-                    color = palette.textMuted,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp
-                )
-            }
-
-            Button(
-                onClick = onAddRouter,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = palette.accent,
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiAction("openAddDevice")
-            ) {
-                Text("Add Your Router (Recommended) →", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
-
-            OutlinedButton(
-                onClick = onAddAnyDevice,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiAction("openAddDevice")
-            ) {
-                Text("+ Add Any Device", color = palette.textPrimary, fontSize = 11.5.sp)
-            }
-        }
-
-        if (activeDeviceCount == 0) {
-            TextButton(
-                onClick = onLoadDemoFleet,
-                modifier = Modifier
-                    .uiAction("enableDemoMode")
-                    .uiAction("setSimulatedDeviceCount")
-            ) {
-                Text(
-                    text = "Enable Demo Mode (seed Forest fleet)",
-                    color = palette.accent,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
 }
 
 @Composable
