@@ -2311,7 +2311,38 @@ private fun MatrixBotanicalPixelArtOverlay(
     val fgColor = if (isStn) Color(0xFF94A3B8) else Color(0xFF475569)
 
     when (scaleTier) {
-        InventoryScaleTier.DAY_ZERO -> {}
+        InventoryScaleTier.DAY_ZERO -> {
+            // PNW Misty Mountain Horizon (Pre-Dawn Silhouette) across the empty 128-port grid
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(68.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                PixelArtMountainHorizon(
+                    color = fgColor.copy(alpha = if (isStn) 0.38f else 0.42f),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                )
+
+                // Subtle status pill anchored above horizon
+                Box(
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (isStn) Color.White.copy(alpha = 0.92f) else Color(0xFF0F172A).copy(alpha = 0.88f))
+                        .border(1.dp, if (isStn) Color(0xFFCBD5E1) else Color(0xFF334155), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.5.dp)
+                ) {
+                    Text(
+                        text = "WAITING FOR FIRST BEACON • 0 / 128",
+                        color = if (isStn) Color(0xFF475569) else Color(0xFF94A3B8),
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
         InventoryScaleTier.PEA -> {
             Row(
                 modifier = Modifier
@@ -2390,6 +2421,69 @@ private fun PixelArtSprout(color: Color, size: Dp) {
         rect(10, 1, 3, 1); rect(9, 2, 5, 1); rect(9, 3, 6, 1); rect(9, 4, 5, 1); rect(8, 5, 4, 1); rect(8, 6, 2, 1)
         // Stem & Soil mound
         rect(6, 7, 3, 1); rect(7, 8, 2, 4); rect(6, 12, 3, 1); rect(5, 13, 5, 1); rect(3, 14, 9, 1); rect(4, 15, 7, 1)
+    }
+}
+
+@Composable
+private fun PixelArtMountainHorizon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cols = 64
+        val colW = w / cols.toFloat()
+        val rowH = h / 20f
+
+        fun peak(cx: Float, peakY: Float, baseWidthCols: Int) {
+            val half = baseWidthCols / 2
+            for (step in -half..half) {
+                val frac = 1f - kotlin.math.abs(step).toFloat() / half.toFloat()
+                val topY = h - (h - peakY) * frac
+                val x = cx + step * colW
+                drawRect(
+                    color = color,
+                    topLeft = Offset(x, topY),
+                    size = Size(colW + 0.5f, h - topY)
+                )
+            }
+        }
+
+        // Secondary background ridge (fainter)
+        val bgCol = color.copy(alpha = color.alpha * 0.45f)
+        val pathBg = Path().apply {
+            moveTo(0f, h)
+            lineTo(0f, h * 0.55f)
+            lineTo(w * 0.22f, h * 0.35f)
+            lineTo(w * 0.38f, h * 0.52f)
+            lineTo(w * 0.72f, h * 0.22f) // Prominent Cascade peak
+            lineTo(w * 0.88f, h * 0.42f)
+            lineTo(w, h * 0.38f)
+            lineTo(w, h)
+            close()
+        }
+        drawPath(path = pathBg, color = bgCol)
+
+        // Stepped pixel ridge line
+        for (i in 0 until cols) {
+            val fracX = i.toFloat() / cols.toFloat()
+            // Mount Rainier silhouette formula: sharp crest at 0.68, shoulder at 0.30
+            val elev = when {
+                fracX in 0.15f..0.45f -> {
+                    val p = 1f - kotlin.math.abs(fracX - 0.30f) / 0.15f
+                    p * 0.55f
+                }
+                fracX in 0.52f..0.84f -> {
+                    val p = 1f - kotlin.math.abs(fracX - 0.68f) / 0.16f
+                    p * 0.82f
+                }
+                else -> 0.15f
+            }
+            val stepY = h - elev * h
+            drawRect(
+                color = color,
+                topLeft = Offset(i * colW, stepY),
+                size = Size(colW + 0.5f, h - stepY)
+            )
+        }
     }
 }
 
