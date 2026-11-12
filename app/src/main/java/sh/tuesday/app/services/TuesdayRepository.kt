@@ -52,9 +52,6 @@ class TuesdayRepository(context: Context) {
         }
     }
 
-    private val _devices = MutableStateFlow<List<MonitoredDevice>>(emptyList())
-    val devices: StateFlow<List<MonitoredDevice>> = _devices.asStateFlow()
-
     private val _rackDevices = MutableStateFlow<List<RackPortDevice>>(BulletinsAndInventoryEngine.defaultRackPortDevices())
     val rackDevices: StateFlow<List<RackPortDevice>> = _rackDevices.asStateFlow()
 
@@ -91,15 +88,10 @@ class TuesdayRepository(context: Context) {
     private val _userSignature = MutableStateFlow(
         prefs.getString("user_signature", null) ?: "Aaron Bronow (sig_4b9a8c)"
     )
-    val userSignature: StateFlow<String> = _userSignature.asStateFlow()
-
-    fun setUserSignature(signature: String) {
-        _userSignature.value = signature
-        prefs.edit().putString("user_signature", signature).apply()
-    }
 
     fun getAppEnvironmentString(): String {
-        return "Tuesday Android v${BuildConfig.VERSION_NAME} (Pixel 9 • ${_activeNetworkId.value})"
+        val deviceModel = android.os.Build.MODEL.takeIf { it.isNotBlank() } ?: "Android"
+        return "Tuesday Android v${BuildConfig.VERSION_NAME} ($deviceModel • ${_activeNetworkId.value})"
     }
 
     private val _attestations = MutableStateFlow<List<DeviceAttestation>>(initialDefaultAttestations())
@@ -241,10 +233,19 @@ class TuesdayRepository(context: Context) {
     val hacsConfig: StateFlow<HacsConfig> = _hacsConfig.asStateFlow()
 
     private val _isSyncing = MutableStateFlow(false)
-    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
     private val _entitlementTier = MutableStateFlow(prefs.getString("entitlement_tier", "free") ?: "free")
     val entitlementTier: StateFlow<String> = _entitlementTier.asStateFlow()
+
+    private val _activeSubscriptionSku = MutableStateFlow(
+        prefs.getString("active_subscription_sku", TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL)
+            ?: TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL
+    )
+    val activeSubscriptionSku: StateFlow<String> = _activeSubscriptionSku.asStateFlow()
+
+    fun isProTier1Entitled(tier: String = _entitlementTier.value): Boolean {
+        return tier == "pro_tier_1" || tier == "multisite_tier_1" || tier == "fleet"
+    }
 
     private val _remindersEnabled = MutableStateFlow(prefs.getBoolean("monthly_reminders_enabled", false))
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
@@ -261,9 +262,14 @@ class TuesdayRepository(context: Context) {
     private val _bulletinMuted = MutableStateFlow(prefs.getBoolean("bulletin_muted", false))
     val bulletinMuted: StateFlow<Boolean> = _bulletinMuted.asStateFlow()
 
+    private val _showStateFilterStrip = MutableStateFlow(prefs.getBoolean("pref_show_state_filter_strip", false))
+    val showStateFilterStrip: StateFlow<Boolean> = _showStateFilterStrip.asStateFlow()
+
+    private val _showZoneFilterStrip = MutableStateFlow(prefs.getBoolean("pref_show_zone_filter_strip", false))
+    val showZoneFilterStrip: StateFlow<Boolean> = _showZoneFilterStrip.asStateFlow()
+
     init {
         loadConfig()
-        loadDevices()
     }
 
     fun toggleBrandFlavor() {
@@ -328,22 +334,6 @@ class TuesdayRepository(context: Context) {
         _activeDeviceCount.value = target.devicesCount
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
-    }
-
-    fun switchToNextNetwork() {
-        val list = _userNetworks.value
-        if (list.size <= 1) return
-        val currentIdx = list.indexOfFirst { it.id == _activeNetworkId.value }
-        val nextIdx = if (currentIdx < 0 || currentIdx >= list.size - 1) 0 else currentIdx + 1
-        selectNetwork(list[nextIdx].id)
-    }
-
-    fun switchToPreviousNetwork() {
-        val list = _userNetworks.value
-        if (list.size <= 1) return
-        val currentIdx = list.indexOfFirst { it.id == _activeNetworkId.value }
-        val prevIdx = if (currentIdx <= 0) list.size - 1 else currentIdx - 1
-        selectNetwork(list[prevIdx].id)
     }
 
     fun renameActiveNetwork(newName: String) {
@@ -436,6 +426,22 @@ class TuesdayRepository(context: Context) {
         }
     }
 
+    fun setShowStateFilterStrip(enabled: Boolean) {
+        _showStateFilterStrip.value = enabled
+        prefs.edit().putBoolean("pref_show_state_filter_strip", enabled).apply()
+        if (!enabled) {
+            _selectedPortStateFilter.value = null
+        }
+    }
+
+    fun setShowZoneFilterStrip(enabled: Boolean) {
+        _showZoneFilterStrip.value = enabled
+        prefs.edit().putBoolean("pref_show_zone_filter_strip", enabled).apply()
+        if (!enabled) {
+            _selectedZoneFilter.value = null
+        }
+    }
+
     fun confirmProvisionalDeviceModel(chosenModel: String) {
         var targetDeviceId: String? = null
         _rackDevices.value = _rackDevices.value.map { dev ->
@@ -497,24 +503,6 @@ class TuesdayRepository(context: Context) {
         }
     }
 
-    private fun loadDevices() {
-        val raw = prefs.getString("devices_list", null)
-        if (raw != null) {
-            try {
-                val list = json.decodeFromString<List<MonitoredDevice>>(raw)
-                _devices.value = list
-                return
-            } catch (_: Exception) {}
-        }
-        _devices.value = emptyList()
-        persistDevices()
-    }
-
-    private fun persistDevices() {
-        val raw = json.encodeToString(_devices.value)
-        prefs.edit().putString("devices_list", raw).apply()
-    }
-
     private fun persistConfig() {
         val raw = json.encodeToString(_hacsConfig.value)
         prefs.edit().putString("hacs_config", raw).apply()
@@ -532,17 +520,6 @@ class TuesdayRepository(context: Context) {
         persistConfig()
     }
 
-    suspend fun refreshTelemetry() {
-        _isSyncing.value = true
-        kotlinx.coroutines.delay(250)
-        val now = System.currentTimeMillis()
-        _devices.value = _devices.value.map { it.copy(lastCheckInEpochMs = now) }
-        _hacsConfig.value = _hacsConfig.value.copy(lastSyncedEpochMs = now)
-        _isSyncing.value = false
-        persistDevices()
-        persistConfig()
-    }
-
     suspend fun enrollDevice(
         hostname: String,
         osDetails: String,
@@ -554,49 +531,15 @@ class TuesdayRepository(context: Context) {
         _isSyncing.value = true
         kotlinx.coroutines.delay(200)
         val now = System.currentTimeMillis()
-        val sampleUpdates = if (inventoryState == InventoryConfidenceState.INCOMPLETE_OR_GUESSED) {
-            listOf(
-                PackageUpdate(
-                    name = "firmware/inventory-audit",
-                    currentVersion = "unverified",
-                    availableVersion = "verify-model",
-                    isSecurityCritical = false,
-                    advisoryNote = "Incomplete/guessed inventory record — confirm model/MAC when convenient"
-                )
-            )
-        } else {
-            listOf(
-                PackageUpdate(
-                    name = if (packageManager == PackageManagerType.BREW) "git" else (if (packageManager == PackageManagerType.FIRMWARE) "vendor-firmware" else "ca-certificates"),
-                    currentVersion = "2026.01.1",
-                    availableVersion = "2026.10.1"
-                )
-            )
-        }
+        val newDeviceId = UUID.randomUUID().toString()
 
-        val initialScore = if (inventoryState == InventoryConfidenceState.INCOMPLETE_OR_GUESSED) 64.0 else 84.0
-        val newDevice = MonitoredDevice(
-            hostname = hostname,
-            osDetails = osDetails,
-            packageManager = packageManager,
-            lastCheckInEpochMs = now,
-            pendingUpdates = sampleUpdates,
-            healthScore = initialScore,
-            inventoryState = inventoryState,
-            discoveredMetadata = discoveredMetadata
-        )
-
-        val updated = mutableListOf(newDevice)
-        updated.addAll(_devices.value)
-        _devices.value = updated
-
-        // Also add to rackDevices so it reflects in the 128-LED Matrix & Action-First list
+        // Add to rackDevices so it reflects in the 128-LED Matrix & Action-First list
         val nextPort = (_rackDevices.value.maxOfOrNull { it.portIndex } ?: 12) + 1
         val isGuessed = inventoryState == InventoryConfidenceState.INCOMPLETE_OR_GUESSED
         val canonicalPurls = buildCanonicalPurls(hostname, discoveredMetadata)
         val inferredCategory = inferRackCategory(discoveredMetadata)
         val newRackDev = RackPortDevice(
-            id = newDevice.id,
+            id = newDeviceId,
             portIndex = nextPort,
             category = inferredCategory,
             portState = if (isGuessed) PortLifecycleState.GUESSED else PortLifecycleState.OK,
@@ -622,7 +565,7 @@ class TuesdayRepository(context: Context) {
         val attId = "att-" + java.util.UUID.randomUUID().toString().take(8)
         val proof = BulletinsAndInventoryEngine.computeAttestationProof(
             id = attId,
-            deviceId = newDevice.id,
+            deviceId = newDeviceId,
             type = AttestationType.PRESENCE_AUDIT,
             auditDate = todayStr,
             userSignature = _userSignature.value,
@@ -631,7 +574,7 @@ class TuesdayRepository(context: Context) {
         )
         val initialAttestation = DeviceAttestation(
             id = attId,
-            deviceId = newDevice.id,
+            deviceId = newDeviceId,
             deviceLabel = hostname.take(10),
             type = AttestationType.PRESENCE_AUDIT,
             presenceState = DevicePresenceState.ACTIVE,
@@ -655,29 +598,9 @@ class TuesdayRepository(context: Context) {
         syncDeviceCreateToServerAsync(finalRackDev, discoveredMetadata)
 
         _isSyncing.value = false
-        persistDevices()
-    }
-
-    fun triggerDeviceCheckIn(deviceId: String) {
-        val now = System.currentTimeMillis()
-        _devices.value = _devices.value.map {
-            if (it.id == deviceId) it.copy(lastCheckInEpochMs = now) else it
-        }
-        persistDevices()
     }
 
     fun markDeviceUpdatesApplied(deviceId: String) {
-        val now = System.currentTimeMillis()
-        _devices.value = _devices.value.map {
-            if (it.id == deviceId) {
-                it.copy(
-                    lastCheckInEpochMs = now,
-                    pendingUpdates = emptyList(),
-                    healthScore = 100.0,
-                    status = NodeHealthStatus.HEALTHY
-                )
-            } else it
-        }
         _rackDevices.value = _rackDevices.value.map {
             if (it.id == deviceId) {
                 it.copy(
@@ -692,19 +615,78 @@ class TuesdayRepository(context: Context) {
                 put("mark_remediated", true)
             }
         )
-        persistDevices()
     }
 
-    fun upgradeToMultiSiteTier1(productId: String = "sh.tuesday.multisite.tier1.annual") {
-        _entitlementTier.value = "multisite_tier_1"
-        prefs.edit().putString("entitlement_tier", "multisite_tier_1").apply()
+    fun updateDeviceDetails(
+        deviceId: String,
+        name: String,
+        shortLabel: String,
+        roomLocation: String,
+        trustZone: TrustZone,
+        assetTag: String
+    ): RackPortDevice? {
+        var updated: RackPortDevice? = null
+        _rackDevices.value = _rackDevices.value.map { dev ->
+            if (dev.id == deviceId) {
+                val next = dev.copy(
+                    name = name.trim().ifBlank { dev.name },
+                    shortLabel = shortLabel.trim().ifBlank { dev.shortLabel },
+                    roomLocation = roomLocation.trim().ifBlank { dev.roomLocation },
+                    trustZone = trustZone,
+                    assetTag = assetTag.trim()
+                )
+                updated = next
+                next
+            } else dev
+        }
+        updated?.let { next ->
+            syncDevicePatchToServerAsync(
+                deviceId = deviceId,
+                payload = JSONObject().apply {
+                    put("name", next.name)
+                    put("short_label", next.shortLabel)
+                    put("room_location", next.roomLocation)
+                    put("trust_zone", next.trustZone.key)
+                    put("asset_tag", next.assetTag)
+                }
+            )
+        }
+        return updated
+    }
+
+    fun upgradeToProTier1(
+        productId: String = TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL,
+        purchaseToken: String? = null
+    ) {
+        val canonicalSku = when (productId) {
+            "sh.tuesday.multisite.tier1.monthly", "sh.tuesday.pro.monthly" -> TuesdayBillingManager.SKU_PRO_TIER1_MONTHLY
+            "sh.tuesday.multisite.tier1.annual", "sh.tuesday.pro.yearly" -> TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL
+            else -> productId
+        }
+        _entitlementTier.value = "pro_tier_1"
+        _activeSubscriptionSku.value = canonicalSku
+        prefs.edit()
+            .putString("entitlement_tier", "pro_tier_1")
+            .putString("active_subscription_sku", canonicalSku)
+            .apply()
+
+        emitTelemetryEventAsync(
+            eventName = "billing.tier1_upgraded",
+            targetEntityType = "NetworkSite",
+            targetEntityId = _activeNetworkId.value,
+            properties = mapOf(
+                "productId" to canonicalSku,
+                "entitlementTier" to "pro_tier_1"
+            )
+        )
+
         ioScope.launch {
             try {
                 val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
                 val payload = JSONObject().apply {
                     put("platform", "android")
-                    put("product_id", productId)
-                    put("purchase_token", "gp_token_${UUID.randomUUID()}")
+                    put("product_id", canonicalSku)
+                    put("purchase_token", purchaseToken?.takeIf { it.isNotBlank() } ?: "gp_token_${UUID.randomUUID()}")
                 }
                 val req = Request.Builder()
                     .url("$baseUrl/api/v1/billing/verify")
@@ -713,16 +695,55 @@ class TuesdayRepository(context: Context) {
                     .addHeader("X-Tuesday-Client-Platform", "android")
                     .post(payload.toString().toRequestBody("application/json".toMediaType()))
                     .build()
-                httpClient.newCall(req).execute().close()
+                httpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val bodyStr = resp.body?.string().orEmpty()
+                        if (bodyStr.isNotBlank()) {
+                            val root = JSONObject(bodyStr)
+                            val serverTier = root.optString("entitlementTier", "pro_tier_1")
+                            if (serverTier.isNotBlank()) {
+                                _entitlementTier.value = serverTier
+                                prefs.edit().putString("entitlement_tier", serverTier).apply()
+                            }
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 Log.w("TuesdayRepoSync", "Billing verification queued offline: ${e.message}")
             }
         }
     }
 
-    // Alias for backward compatibility with existing tests and scripts
-    fun upgradeToProTier1(productId: String = "sh.tuesday.multisite.tier1.annual") {
-        upgradeToMultiSiteTier1(productId)
+    fun downgradeToFreeTier() {
+        _entitlementTier.value = "free"
+        prefs.edit().putString("entitlement_tier", "free").apply()
+    }
+
+    suspend fun fetchServerEntitlementStatus(): String = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+            val req = Request.Builder()
+                .url("$baseUrl/api/v1/billing/status")
+                .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val bodyStr = resp.body?.string().orEmpty()
+                    val root = JSONObject(bodyStr)
+                    val serverTier = root.optString("entitlementTier", "")
+                    if (serverTier.isNotBlank()) {
+                        _entitlementTier.value = serverTier
+                        prefs.edit().putString("entitlement_tier", serverTier).apply()
+                        return@withContext serverTier
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("TuesdayRepoSync", "Billing status check failed: ${e.message}")
+        }
+        _entitlementTier.value
     }
 
     private fun syncDeviceCreateToServerAsync(dev: RackPortDevice, meta: DiscoveredDeviceMetadata?) {
@@ -853,31 +874,6 @@ class TuesdayRepository(context: Context) {
             combined.contains("camera") || combined.contains("protect") -> StnHardwareCategory.C5_CAMERA
             combined.contains("workstation") || combined.contains("macbook") || combined.contains("laptop") -> StnHardwareCategory.C7_CLIENT
             else -> StnHardwareCategory.C6_IOT
-        }
-    }
-
-    fun registerPushTokenAsync(pushToken: String = "fcm-local-$clientDeviceId") {
-        ioScope.launch {
-            try {
-                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
-                val payload = JSONObject().apply {
-                    put("client_device_id", clientDeviceId)
-                    put("platform", "android")
-                    put("push_token", pushToken)
-                    put("app_flavor", if (_brandFlavor.value == AppBrandFlavor.SURETHING_HOME) "surething" else "tuesday")
-                    put("notifications_enabled", true)
-                }
-                val req = Request.Builder()
-                    .url("$baseUrl/api/v1/notifications/register_token")
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
-                    .addHeader("X-Tuesday-Client-Platform", "android")
-                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
-                    .build()
-                httpClient.newCall(req).execute().close()
-            } catch (e: Exception) {
-                Log.w("TuesdayRepoPush", "Push token registration skipped: ${e.message}")
-            }
         }
     }
 
@@ -1099,7 +1095,6 @@ class TuesdayRepository(context: Context) {
     }
 
     fun resetDemoData() {
-        _devices.value = defaultSeedDevices()
         _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
         _mutedFeedSlugs.value = setOf("lg-esphome-iot")
         _includeOkDevices.value = false
@@ -1111,6 +1106,10 @@ class TuesdayRepository(context: Context) {
         _bulletinMuted.value = false
         _remindersEnabled.value = false
         _dispatchSubscribed.value = false
+        _showStateFilterStrip.value = false
+        _showZoneFilterStrip.value = false
+        _entitlementTier.value = "free"
+        _userNetworks.value = defaultUserNetworks()
         _hacsConfig.value = HacsConfig()
         selectNetwork("net-default")
         prefs.edit()
@@ -1119,8 +1118,10 @@ class TuesdayRepository(context: Context) {
             .putBoolean("bulletin_muted", false)
             .putBoolean("monthly_reminders_enabled", false)
             .putBoolean("dispatch_subscribed", false)
+            .putBoolean("pref_show_state_filter_strip", false)
+            .putBoolean("pref_show_zone_filter_strip", false)
+            .putString("entitlement_tier", "free")
             .apply()
-        persistDevices()
         persistConfig()
     }
 
@@ -1196,90 +1197,5 @@ class TuesdayRepository(context: Context) {
             NetworkSite(id = "net-default", name = "My Network", devicesCount = 0, role = "Primary Site"),
             NetworkSite(id = "net-demo", name = "Demo Network", devicesCount = 12, role = "Evaluation Homelab (Demo Mode)")
         )
-
-        fun defaultSeedDevices(now: Long = System.currentTimeMillis()): List<MonitoredDevice> {
-            return listOf(
-                MonitoredDevice(
-                    id = "device-ubuntu-dev",
-                    hostname = "ubuntu-dev",
-                    osDetails = "Ubuntu 24.04.1 LTS (Linux 6.8.0-45 x86_64)",
-                    agentVersion = "0.2.1",
-                    packageManager = PackageManagerType.APT,
-                    lastCheckInEpochMs = now - 12 * 60 * 1000,
-                    pendingUpdates = listOf(
-                        PackageUpdate(
-                            name = "openssl",
-                            currentVersion = "3.0.13-1",
-                            availableVersion = "3.0.13-4",
-                            isSecurityCritical = true,
-                            advisoryNote = "CVE-2026-4102 High Severity TLS Fix"
-                        ),
-                        PackageUpdate(
-                            name = "openssh-server",
-                            currentVersion = "9.6p1-3",
-                            availableVersion = "9.6p1-5",
-                            isSecurityCritical = true,
-                            advisoryNote = "USN-6891-1 sshd auth hardening"
-                        ),
-                        PackageUpdate(
-                            name = "docker-ce",
-                            currentVersion = "27.1.1-1",
-                            availableVersion = "27.3.1-1"
-                        ),
-                        PackageUpdate(
-                            name = "jq",
-                            currentVersion = "1.7-1",
-                            availableVersion = "1.7.1-1"
-                        )
-                    ),
-                    healthScore = 34.0
-                ),
-                MonitoredDevice(
-                    id = "device-homeassistant",
-                    hostname = "homeassistant.local",
-                    osDetails = "Home Assistant OS 14.2 (Tuesday HACS Add-on)",
-                    agentVersion = "0.4.2-hacs",
-                    packageManager = PackageManagerType.HACS,
-                    lastCheckInEpochMs = now - 3 * 60 * 1000,
-                    pendingUpdates = listOf(
-                        PackageUpdate(
-                            name = "hacs/tuesday-server",
-                            currentVersion = "0.4.1",
-                            availableVersion = "0.4.2"
-                        ),
-                        PackageUpdate(
-                            name = "esphome",
-                            currentVersion = "2026.9.1",
-                            availableVersion = "2026.10.0"
-                        )
-                    ),
-                    healthScore = 78.0
-                ),
-                MonitoredDevice(
-                    id = "device-lml",
-                    hostname = "lml.local",
-                    osDetails = "Unraid NAS 6.12.14 (Docker & APK)",
-                    agentVersion = "0.2.1",
-                    packageManager = PackageManagerType.DOCKER,
-                    lastCheckInEpochMs = now - 38 * 60 * 1000,
-                    pendingUpdates = listOf(
-                        PackageUpdate(name = "couchdb", currentVersion = "3.3.3", availableVersion = "3.4.1"),
-                        PackageUpdate(name = "traefik", currentVersion = "v3.1.2", availableVersion = "v3.1.6"),
-                        PackageUpdate(name = "tailscale", currentVersion = "1.72.1", availableVersion = "1.76.1")
-                    ),
-                    healthScore = 68.0
-                ),
-                MonitoredDevice(
-                    id = "device-aaronpro18",
-                    hostname = "aaronpro18",
-                    osDetails = "macOS Sequoia 15.7.9 (Darwin 24.6.0 x86_64)",
-                    agentVersion = "0.2.1",
-                    packageManager = PackageManagerType.BREW,
-                    lastCheckInEpochMs = now - 5 * 60 * 1000,
-                    pendingUpdates = emptyList(),
-                    healthScore = 100.0
-                )
-            )
-        }
     }
 }

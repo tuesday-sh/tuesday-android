@@ -32,9 +32,12 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,7 +53,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.input.pointer.pointerInput
 import sh.tuesday.app.R
 import sh.tuesday.app.models.*
+import sh.tuesday.app.services.BillingUiState
 import sh.tuesday.app.services.ConnectivityMonitor
+import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.services.TuesdayNotificationManager
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.BrandPalette
@@ -81,11 +86,15 @@ fun HomeScreen(
     repository: TuesdayRepository,
     connectivity: ConnectivityMonitor,
     notificationManager: TuesdayNotificationManager? = null,
+    billingManager: TuesdayBillingManager? = null,
     onRequestNotificationPermission: () -> Unit = {},
     onNavigateToAddDevice: (mode: String?, synth: String?, query: String?, clues: String?, autoSearch: Boolean) -> Unit,
+    onNavigateToEditDevice: (deviceId: String) -> Unit = {},
     pendingDestination: sh.tuesday.app.navigation.DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
     val rackDevices by repository.rackDevices.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
     val mutedFeedSlugs by repository.mutedFeedSlugs.collectAsState()
@@ -98,21 +107,32 @@ fun HomeScreen(
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
     val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
     val entitlementTier by repository.entitlementTier.collectAsState()
+    val activeSubscriptionSku by repository.activeSubscriptionSku.collectAsState()
+    val billingUiState = if (billingManager != null) {
+        val state by billingManager.uiState.collectAsState()
+        state
+    } else {
+        BillingUiState()
+    }
     val remindersEnabled by repository.remindersEnabled.collectAsState()
     val dispatchSubscribed by repository.dispatchSubscribed.collectAsState()
     val bulletinDismissed by repository.bulletinDismissed.collectAsState()
     val bulletinSnoozed by repository.bulletinSnoozed.collectAsState()
     val bulletinMuted by repository.bulletinMuted.collectAsState()
+    val showStateFilterStrip by repository.showStateFilterStrip.collectAsState()
+    val showZoneFilterStrip by repository.showZoneFilterStrip.collectAsState()
     val hacsConfig by repository.hacsConfig.collectAsState()
     val isWifiConnected by connectivity.isWifiConnected.collectAsState()
-    val isSimulatingWifi by connectivity.simulateWifiDisconnected.collectAsState()
 
     var activeTab by remember { mutableStateOf(MainNavTab.STATUS) }
     var expandNetworkInSettings by remember { mutableStateOf(false) }
+    var expandPlanInSettings by remember { mutableStateOf(false) }
     var expandRemindersInSettings by remember { mutableStateOf(false) }
+    var expandPreferencesInSettings by remember { mutableStateOf(false) }
     var inspectedDevice by remember { mutableStateOf<RackPortDevice?>(null) }
     var showHacsSheet by remember { mutableStateOf(false) }
     var showNetworkPicker by remember { mutableStateOf(false) }
+    var networkPickerInitialUpgradePrompt by remember { mutableStateOf(false) }
     var showReferenceGuide by remember { mutableStateOf(false) }
     var pendingTimelineModal by remember { mutableStateOf<String?>(null) }
 
@@ -160,7 +180,20 @@ fun HomeScreen(
                 onConsumePendingDestination()
             }
             sh.tuesday.app.navigation.DeepLinkDestination.NetworkPicker -> {
+                networkPickerInitialUpgradePrompt = false
                 showNetworkPicker = true
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.UpgradePrompt -> {
+                pendingDestination.sku?.let { billingManager?.selectPlan(it) }
+                if (pendingDestination.source == "account") {
+                    showNetworkPicker = false
+                    expandPlanInSettings = true
+                    activeTab = MainNavTab.ACCOUNT
+                } else {
+                    networkPickerInitialUpgradePrompt = true
+                    showNetworkPicker = true
+                }
                 onConsumePendingDestination()
             }
             sh.tuesday.app.navigation.DeepLinkDestination.ReferenceGuide -> {
@@ -188,10 +221,25 @@ fun HomeScreen(
             sh.tuesday.app.navigation.DeepLinkDestination.ResetDemo -> {
                 showHacsSheet = false
                 showNetworkPicker = false
+                networkPickerInitialUpgradePrompt = false
                 showReferenceGuide = false
                 inspectedDevice = null
+                expandNetworkInSettings = false
+                expandPlanInSettings = false
+                expandRemindersInSettings = false
+                expandPreferencesInSettings = false
+                billingManager?.clearStatusMessage()
                 repository.resetDemoData()
                 activeTab = MainNavTab.STATUS
+                onConsumePendingDestination()
+            }
+            is sh.tuesday.app.navigation.DeepLinkDestination.Preferences -> {
+                pendingDestination.showStateFilterStrip?.let { repository.setShowStateFilterStrip(it) }
+                pendingDestination.showZoneFilterStrip?.let { repository.setShowZoneFilterStrip(it) }
+                if (pendingDestination.openSettings) {
+                    expandPreferencesInSettings = true
+                    activeTab = MainNavTab.ACCOUNT
+                }
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.VisionDebug -> {
@@ -274,101 +322,128 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
+                    .uiComponent("TopAppBar", "flavor=${brandFlavor.badge};network=${activeNetwork.id}")
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
-                        .padding(horizontal = 12.dp),
+                        .heightIn(min = 56.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left Brand title + toggle badge
+                    // Left Brand Identity Cluster + Flavor Toggle Pill
                     Row(
+                        modifier = Modifier.uiSlot("brand-identity"),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (!isStn) {
                             TuesdayCalendarHeartIcon(
                                 tint = TuesdayTheme.ProAccent,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .uiSlot("brand-mark")
                             )
                             Text(
                                 text = "tuesday.sh",
                                 color = palette.textPrimary,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.5.sp
+                                fontSize = 15.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.uiSlot("brand-title")
                             )
                         } else {
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
+                                    .size(22.dp)
                                     .clip(CircleShape)
-                                    .background(palette.accent),
+                                    .background(palette.accent)
+                                    .uiSlot("brand-mark"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Inventory2,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(11.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                             Text(
                                 text = brandFlavor.title,
                                 color = palette.textPrimary,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.uiSlot("brand-title")
                             )
                         }
-                        Surface(
-                            onClick = { repository.toggleBrandFlavor() },
-                            shape = RoundedCornerShape(5.dp),
-                            color = palette.elevated,
-                            modifier = Modifier.uiAction("toggleBrandFlavor")
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .heightIn(min = 36.dp)
+                                .widthIn(min = 54.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.elevated)
+                                .clickable { repository.toggleBrandFlavor() }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .uiAction("toggleBrandFlavor")
                         ) {
                             Text(
                                 text = brandFlavor.badge,
                                 color = palette.accent,
-                                fontSize = 8.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                maxLines = 1,
+                                modifier = Modifier.uiSlot("brand-badge")
                             )
                         }
                     }
 
-                    // Right Actions: Network Switcher + HACS/Menu Button
+                    // Right Scope & Action Cluster: Network Switcher + HACS/Menu Button
                     Row(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .padding(start = 8.dp)
+                            .uiSlot("scope-actions"),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Multi-Network Site Switcher Pill
+                        // Multi-Network Site Switcher Pill (flexible width up to remaining space, ellipses long names)
                         Surface(
                             onClick = { showNetworkPicker = true },
-                            shape = RoundedCornerShape(13.dp),
+                            shape = RoundedCornerShape(18.dp),
                             color = palette.elevated,
                             modifier = Modifier
-                                .height(26.dp)
+                                .weight(1f, fill = false)
+                                .heightIn(min = 36.dp)
+                                .widthIn(min = 64.dp)
                                 .uiAction("openNetworkPicker")
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.padding(horizontal = 8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .uiSlot("network-switcher-pill")
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(5.dp)
+                                        .size(6.dp)
                                         .clip(CircleShape)
                                         .background(palette.textMuted.copy(alpha = 0.7f))
                                 )
                                 Text(
                                     text = activeNetwork.name.ifBlank { "My Network" },
                                     color = palette.textPrimary,
-                                    fontSize = 9.5.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -376,27 +451,29 @@ fun HomeScreen(
                         // HACS & Data Management Button (Hamburger icon with status dot)
                         Surface(
                             onClick = { showHacsSheet = true },
-                            shape = RoundedCornerShape(13.dp),
+                            shape = RoundedCornerShape(18.dp),
                             color = palette.elevated,
                             modifier = Modifier
-                                .height(26.dp)
+                                .heightIn(min = 36.dp)
                                 .uiAction("openHacsSettings")
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.padding(horizontal = 8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .uiSlot("hacs-menu-pill")
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(5.dp)
-                                        .border(1.dp, palette.textMuted.copy(alpha = 0.7f), CircleShape)
+                                        .size(6.dp)
+                                        .border(1.2.dp, palette.textMuted.copy(alpha = 0.7f), CircleShape)
                                 )
                                 Icon(
                                     imageVector = Icons.Default.Menu,
                                     contentDescription = "Menu and HACS Settings",
                                     tint = palette.textPrimary,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -408,32 +485,39 @@ fun HomeScreen(
             NavigationBar(
                 containerColor = palette.surface,
                 tonalElevation = 0.dp,
-                modifier = Modifier.uiComponent("BottomNavigationBar")
+                modifier = Modifier.uiComponent("BottomNavigationBar", "activeTab=${activeTab.name}")
             ) {
                 MainNavTab.entries.forEach { tab ->
                     val selected = activeTab == tab
+                    val slotName = "nav-tab-${tab.name.lowercase()}"
                     NavigationBarItem(
                         selected = selected,
                         onClick = { activeTab = tab },
                         modifier = Modifier.uiAction("switchTab"),
                         icon = {
                             BadgedBox(
+                                modifier = Modifier.uiSlot(slotName),
                                 badge = {
                                     if (tab == MainNavTab.BULLETINS) {
                                         val hasIncompleteWelcomeBulletin = !bulletinDismissed && !bulletinMuted && !bulletinSnoozed &&
                                             (visibleDevices.isEmpty() || !remindersEnabled || !dispatchSubscribed)
                                         if (bulletinsPayload.inbox.isNotEmpty()) {
-                                            Badge(containerColor = TuesdayTheme.LedCveRed) {
+                                            Badge(
+                                                containerColor = TuesdayTheme.LedCveRed,
+                                                modifier = Modifier.uiSlot("bulletins-badge", "count=${bulletinsPayload.inbox.size}")
+                                            ) {
                                                 Text(
                                                     text = bulletinsPayload.inbox.size.toString(),
                                                     color = Color.White,
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1
                                                 )
                                             }
                                         } else if (hasIncompleteWelcomeBulletin) {
                                             Badge(
-                                                containerColor = TuesdayTheme.LedCveRed
+                                                containerColor = TuesdayTheme.LedCveRed,
+                                                modifier = Modifier.uiSlot("bulletins-badge", "dot=welcome")
                                             )
                                         }
                                     }
@@ -447,16 +531,19 @@ fun HomeScreen(
                                         MainNavTab.CHECKUP -> Icons.Default.Checklist
                                         MainNavTab.ACCOUNT -> Icons.Default.Person
                                     },
-                                    contentDescription = tab.name,
-                                    modifier = Modifier.size(18.dp)
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         },
                         label = {
                             Text(
                                 text = if (isStn) tab.labelStn else tab.labelPro,
-                                fontSize = 9.5.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                fontSize = 10.5.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
@@ -476,6 +563,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .uiSlot("content-area", "activeTab=${activeTab.name}")
         ) {
             when (activeTab) {
                 MainNavTab.STATUS -> StatusMatrixAndActionListScreen(
@@ -499,6 +587,9 @@ fun HomeScreen(
                     onAddAnyDevice = {
                         onNavigateToAddDevice(null, null, null, null, false)
                     },
+                    onAddCategoryDevice = { cat ->
+                        onNavigateToAddDevice(null, null, null, cat.defaultIntakeClue, false)
+                    },
                     onNavigateToBulletins = { activeTab = MainNavTab.BULLETINS },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
                     onEnableReminders = {
@@ -515,6 +606,8 @@ fun HomeScreen(
                     onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
                     bulletinMuted = bulletinMuted,
                     onSetBulletinMuted = { repository.setBulletinMuted(it) },
+                    showStateFilterStrip = showStateFilterStrip,
+                    showZoneFilterStrip = showZoneFilterStrip,
                     onLoadDemoFleet = { repository.enableDemoMode() },
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
@@ -555,13 +648,11 @@ fun HomeScreen(
                 )
                 MainNavTab.TIMELINE -> {
                     val attestations by repository.attestations.collectAsState()
-                    val userSignature by repository.userSignature.collectAsState()
                     TimelineScreen(
                         flavor = brandFlavor,
                         palette = palette,
                         devices = visibleDevices,
                         attestations = attestations,
-                        userSignature = userSignature,
                         initialModal = pendingTimelineModal,
                         onConsumeInitialModal = { pendingTimelineModal = null },
                         onOpenReferenceGuide = { showReferenceGuide = true },
@@ -589,11 +680,35 @@ fun HomeScreen(
                         activeDeviceCount = visibleDevices.size,
                         isDeveloperMode = isDeveloperMode,
                         entitlementTier = entitlementTier,
+                        activeSubscriptionSku = activeSubscriptionSku,
+                        plans = billingUiState.plans,
+                        selectedProductId = billingUiState.selectedProductId,
+                        onSelectPlan = { sku -> billingManager?.selectPlan(sku) },
+                        isPurchasing = billingUiState.isPurchasing,
+                        isRestoring = billingUiState.isRestoring,
+                        billingStatusMessage = billingUiState.statusMessage,
                         matchedFeeds = bulletinsPayload.matchedFeeds,
                         remindersEnabled = remindersEnabled,
                         onToggleReminders = { repository.setRemindersEnabled(it) },
                         onToggleMuteFeed = { repository.toggleMuteFeed(it) },
-                        onUpgradeProTier1 = { repository.upgradeToProTier1() },
+                        onUpgradeProTier1 = { sku ->
+                            if (billingManager != null) {
+                                billingManager.launchPurchaseFlow(activity = activity, productId = sku)
+                            } else {
+                                repository.upgradeToProTier1(productId = sku)
+                            }
+                        },
+                        onRestorePurchases = {
+                            if (billingManager != null) {
+                                billingManager.restorePurchases()
+                            } else {
+                                repository.upgradeToProTier1()
+                            }
+                        },
+                        onDowngradeFreeTier = {
+                            billingManager?.clearStatusMessage()
+                            repository.downgradeToFreeTier()
+                        },
                         onSaveNetworkName = { repository.renameActiveNetwork(it) },
                         onToggleDeveloperMode = { repository.toggleDeveloperMode(it) },
                         isVisionDebugEnabled = isVisionDebugEnabled,
@@ -603,7 +718,13 @@ fun HomeScreen(
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
                         onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
                         initialExpandNetwork = expandNetworkInSettings,
+                        initialExpandPlan = expandPlanInSettings,
                         initialExpandReminders = expandRemindersInSettings,
+                        initialExpandPreferences = expandPreferencesInSettings,
+                        showStateFilterStrip = showStateFilterStrip,
+                        onToggleShowStateFilterStrip = { repository.setShowStateFilterStrip(it) },
+                        showZoneFilterStrip = showZoneFilterStrip,
+                        onToggleShowZoneFilterStrip = { repository.setShowZoneFilterStrip(it) },
                         onResendInventoryNotifications = {
                             if (notificationManager != null) {
                                 repository.syncPendingNotifications(
@@ -651,6 +772,10 @@ fun HomeScreen(
                     repository.markDeviceUpdatesApplied(device.id)
                     inspectedDevice = null
                 },
+                onEditDevice = {
+                    inspectedDevice = null
+                    onNavigateToEditDevice(device.id)
+                },
                 onNavigateToBulletins = {
                     inspectedDevice = null
                     activeTab = MainNavTab.BULLETINS
@@ -662,13 +787,15 @@ fun HomeScreen(
 
     if (showHacsSheet) {
         HacsSettingsSheet(
-            config = hacsConfig,
-            simulateWifiDisconnected = isSimulatingWifi,
-            onSaveConfig = { repository.updateHacsConfig(it) },
-            onToggleSimulateWifi = { connectivity.setSimulateDisconnected(it) },
-            onResetDemoData = {
-                repository.resetDemoData()
-                connectivity.setSimulateDisconnected(false)
+            entitlementTier = entitlementTier,
+            activeNetworkName = activeNetwork.name,
+            onOpenUpgradeModal = {
+                networkPickerInitialUpgradePrompt = true
+                showNetworkPicker = true
+            },
+            onOpenNetworkPicker = {
+                networkPickerInitialUpgradePrompt = false
+                showNetworkPicker = true
             },
             onExportBackupJson = { repository.exportInventoryBackupJson() },
             onImportBackupJson = { jsonStr -> repository.importInventoryBackupJson(jsonStr) },
@@ -683,22 +810,37 @@ fun HomeScreen(
             palette = palette,
             entitlementTier = entitlementTier,
             flavor = brandFlavor,
+            plans = billingUiState.plans,
+            selectedProductId = billingUiState.selectedProductId,
+            onSelectPlan = { sku -> billingManager?.selectPlan(sku) },
+            isPurchasing = billingUiState.isPurchasing,
+            billingStatusMessage = billingUiState.statusMessage,
+            initialShowUpgradePrompt = networkPickerInitialUpgradePrompt,
             onSelectNetwork = { id ->
                 repository.selectNetwork(id)
+                networkPickerInitialUpgradePrompt = false
                 showNetworkPicker = false
             },
             onCreateNetwork = { name ->
                 repository.createNetwork(name)
+                networkPickerInitialUpgradePrompt = false
                 showNetworkPicker = false
             },
-            onUpgradeMultiSite = {
-                repository.upgradeToMultiSiteTier1()
+            onUpgradeMultiSite = { sku ->
+                if (billingManager != null) {
+                    billingManager.launchPurchaseFlow(activity = activity, productId = sku)
+                } else {
+                    repository.upgradeToProTier1(productId = sku)
+                }
             },
             onOpenNetworkSettings = {
                 expandNetworkInSettings = true
                 activeTab = MainNavTab.ACCOUNT
             },
-            onDismiss = { showNetworkPicker = false }
+            onDismiss = {
+                networkPickerInitialUpgradePrompt = false
+                showNetworkPicker = false
+            }
         )
     }
 
@@ -707,2060 +849,6 @@ fun HomeScreen(
             flavor = brandFlavor,
             palette = palette,
             onDismiss = { showReferenceGuide = false }
-        )
-    }
-}
-
-@Composable
-private fun StatusMatrixAndActionListScreen(
-    flavor: AppBrandFlavor,
-    palette: BrandPalette,
-    scaleTier: InventoryScaleTier,
-    visibleDevices: List<RackPortDevice>,
-    ledSlots: List<LedSlot>,
-    actionDevices: List<RackPortDevice>,
-    includeOkDevices: Boolean,
-    selectedZoneFilter: TrustZone?,
-    selectedPortStateFilter: PortLifecycleState?,
-    onSelectZone: (TrustZone?) -> Unit,
-    onSelectPortState: (PortLifecycleState?) -> Unit,
-    onToggleIncludeOk: () -> Unit,
-    onOpenReferenceGuide: () -> Unit,
-    onNavigateToAddDevice: () -> Unit,
-    onAddRouter: () -> Unit = onNavigateToAddDevice,
-    onAddAnyDevice: () -> Unit = onNavigateToAddDevice,
-    onNavigateToBulletins: () -> Unit,
-    onNavigateToAccount: () -> Unit = {},
-    onEnableReminders: () -> Unit = onNavigateToAccount,
-    remindersEnabled: Boolean = false,
-    dispatchSubscribed: Boolean = false,
-    onSetDispatchSubscribed: (Boolean) -> Unit = {},
-    bulletinDismissed: Boolean = false,
-    onSetBulletinDismissed: (Boolean) -> Unit = {},
-    bulletinSnoozed: Boolean = false,
-    onSetBulletinSnoozed: (Boolean) -> Unit = {},
-    bulletinMuted: Boolean = false,
-    onSetBulletinMuted: (Boolean) -> Unit = {},
-    onLoadDemoFleet: () -> Unit,
-    onInspectDevice: (String) -> Unit,
-    networks: List<NetworkSite> = emptyList(),
-    activeNetworkId: String = "",
-    onSelectNetwork: (String) -> Unit = {}
-) {
-    val isStn = flavor == AppBrandFlavor.SURETHING_HOME
-    val okCount = visibleDevices.count { it.portState == PortLifecycleState.OK }
-    val cveCount = visibleDevices.count { it.portState == PortLifecycleState.CVE_KEV }
-    val eolCount = visibleDevices.count { it.portState == PortLifecycleState.EOL }
-    val guessedCount = visibleDevices.count { it.portState == PortLifecycleState.GUESSED }
-    val updateCount = visibleDevices.count { it.portState == PortLifecycleState.UPDATE }
-    val actionCount = visibleDevices.size - okCount
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(vertical = 12.dp)
-    ) {
-        // 1. Inventory Card (8-Port Category Strip + 16x8 LED Matrix + Botanical Overlay)
-        // Always rendered even on Day 0 (visibleDevices.isEmpty()) to maintain continuous physical chassis anchoring during swipe
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiComponent("InventoryMatrixCard", "tier=${scaleTier.id};active=${visibleDevices.size}")
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(palette.surface)
-                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Header: "Inventory" + Summary Badge + "+ Add Device" CTA + "?" Reference Guide button
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("header"),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Inventory",
-                            color = palette.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.uiSlot("title")
-                        )
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Always-present "+ Add Device" CTA button
-                        Row(
-                            modifier = Modifier
-                                .uiSlot("add-device-cta")
-                                .uiAction("openAddDevice")
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(palette.accent)
-                                .clickable { onNavigateToAddDevice() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = "Add Device",
-                                tint = Color.White,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Text(
-                                text = "+ Add Device",
-                                color = Color.White,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .uiSlot("help-button")
-                                .uiAction("openReferenceGuide")
-                                .clip(CircleShape)
-                                .background(palette.elevated)
-                                .border(1.dp, palette.border, CircleShape)
-                                .clickable { onOpenReferenceGuide() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "?",
-                                color = palette.textMuted,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-
-                // Unified ubnt-chassis container with HorizontalPager swipe between networks
-                val pagerNetworks = remember(networks) {
-                    if (networks.isNotEmpty()) networks else listOf(NetworkSite("net-default", "My Network", 0, "Primary"))
-                }
-                val currentNetworkIndex = remember(pagerNetworks, activeNetworkId) {
-                    pagerNetworks.indexOfFirst { it.id == activeNetworkId }.coerceAtLeast(0)
-                }
-                val pagerState = rememberPagerState(
-                    initialPage = currentNetworkIndex,
-                    pageCount = { pagerNetworks.size }
-                )
-
-                LaunchedEffect(pagerState.settledPage) {
-                    val targetNet = pagerNetworks.getOrNull(pagerState.settledPage)
-                    if (targetNet != null && targetNet.id != activeNetworkId) {
-                        onSelectNetwork(targetNet.id)
-                    }
-                }
-
-                LaunchedEffect(currentNetworkIndex) {
-                    if (pagerState.currentPage != currentNetworkIndex) {
-                        pagerState.animateScrollToPage(currentNetworkIndex)
-                    }
-                }
-
-                HorizontalPager(
-                    state = pagerState,
-                    beyondViewportPageCount = 1,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                ) { page ->
-                    val net = pagerNetworks[page]
-                    val isCurrent = net.id == activeNetworkId
-                    val pageDevices = if (isCurrent) {
-                        visibleDevices
-                    } else if (net.id == "net-demo") {
-                        BulletinsAndInventoryEngine.defaultRackPortDevices()
-                    } else {
-                        emptyList()
-                    }
-                    val pageScaleTier = InventoryScaleTier.forCount(pageDevices.size)
-                    val pageSlots = BulletinsAndInventoryEngine.build128LedMatrix(pageDevices, selectedZoneFilter)
-
-                    InventoryChassisCard(
-                        network = net,
-                        devices = pageDevices,
-                        ledSlots = pageSlots,
-                        scaleTier = pageScaleTier,
-                        isStn = isStn,
-                        palette = palette,
-                        onInspectDevice = onInspectDevice,
-                        onNavigateToAddDevice = onNavigateToAddDevice
-                    )
-                }
-
-                // 5-State Color Legend Row (shown when filter chips are active)
-                if (scaleTier.showFilterChips) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("legend-row")
-                            .padding(top = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        LedLegendDot("OK ($okCount)", TuesdayTheme.LedOkGreen, palette)
-                        LedLegendDot("CVE/KEV ($cveCount)", TuesdayTheme.LedCveRed, palette)
-                        LedLegendDot("EOL ($eolCount)", TuesdayTheme.LedEolAmber, palette)
-                        LedLegendDot("Guessed ($guessedCount)", TuesdayTheme.LedGuessedGrey, palette)
-                        LedLegendDot("Update ($updateCount)", TuesdayTheme.LedUpdateBlue, palette)
-                    }
-                }
-
-                // Trust Zone Filter Pills (shown at >= 8 devices)
-                if (scaleTier.showTrustZonePills) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("zone-filter-strip")
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        ZoneFilterPill(
-                            label = "All Zones",
-                            selected = selectedZoneFilter == null,
-                            palette = palette,
-                            onClick = { onSelectZone(null) }
-                        )
-                        TrustZone.entries.forEach { zone ->
-                            ZoneFilterPill(
-                                label = if (isStn) zone.stnLabel else "${zone.shortCode} ${zone.stnLabel}",
-                                selected = selectedZoneFilter == zone,
-                                palette = palette,
-                                onClick = { onSelectZone(zone) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Day 0 Router Intake & Demo Seeding Callout (shown below inventory grid on empty network)
-        if (visibleDevices.isEmpty()) {
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("router-advisory-tip")
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.accent.copy(alpha = 0.10f))
-                            .border(1.dp, palette.accent.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            text = "💡 Best place to start: Your Router",
-                            color = palette.accent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Your router is the front door to your home network and the single highest-impact device to keep updated.",
-                            color = palette.textMuted,
-                            fontSize = 10.sp,
-                            lineHeight = 14.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = onAddRouter,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = palette.accent,
-                            contentColor = Color.White
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiAction("openAddDevice")
-                    ) {
-                        Text("Add Your Router (Recommended) →", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = onAddAnyDevice,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiAction("openAddDevice")
-                    ) {
-                        Text("+ Add Any Device", color = palette.textPrimary, fontSize = 11.5.sp)
-                    }
-
-                    TextButton(
-                        onClick = onLoadDemoFleet,
-                        modifier = Modifier
-                            .uiAction("enableDemoMode")
-                            .uiAction("setSimulatedDeviceCount")
-                    ) {
-                        Text(
-                            text = "Enable Demo Mode (seed Forest fleet)",
-                            color = palette.accent,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-            // 1B. Tracked Hardware Profiles Strip (Forest Tier >= 8 devices on STN-Pro)
-            if (scaleTier == InventoryScaleTier.FOREST && !isStn && visibleDevices.isNotEmpty()) {
-                item {
-                    TrackedHardwareProfilesCard(
-                        devices = visibleDevices,
-                        palette = palette,
-                        onInspectDevice = onInspectDevice
-                    )
-                }
-            }
-
-            // 2. Top-of-Inventory Action-First Header + Show/Hide OK Toggle (for >= 2 devices)
-            if (scaleTier.showFilterChips) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("action-list-header"),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = when {
-                                selectedPortStateFilter != null -> "FILTERED: ${(if (isStn) selectedPortStateFilter.stnLabel else selectedPortStateFilter.proLabel).uppercase()} (${actionDevices.size})"
-                                includeOkDevices -> "ALL NAMED DEVICES (${actionDevices.size})"
-                                else -> "NEEDS ATTENTION (${actionDevices.size})"
-                            },
-                            color = palette.textMuted,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-
-                        if (selectedPortStateFilter == null) {
-                            Box(
-                                modifier = Modifier
-                                    .uiAction("toggleIncludeOk")
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(palette.elevated)
-                                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                                    .clickable { onToggleIncludeOk() }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = if (includeOkDevices) "Hide OK Devices" else "Show OK (+$okCount)",
-                                    color = palette.accent,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Device Rows (Pea & Garden tiers show all enrolled devices; Forest shows Action-First filtered list)
-            val devicesToShow = if (!scaleTier.showFilterChips) visibleDevices else actionDevices
-            items(devicesToShow, key = { it.id }) { dev ->
-                val stateColor = TuesdayTheme.ledColorFor(dev.portState, isStn)
-                if (isStn) {
-                    // STN-Home Consumer Card: 5dp colored left border + Room/Lane chips + Plain-English Headline + Action CTA
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("device-row", "port=${dev.portIndex};state=${dev.portState.key};cat=${dev.category.code}")
-                            .uiAction("inspectDevice")
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                            .clickable { onInspectDevice(dev.id) }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(5.dp)
-                                .heightIn(min = 92.dp)
-                                .background(stateColor)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = dev.name,
-                                    color = palette.textPrimary,
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(stateColor.copy(alpha = 0.14f))
-                                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = dev.portState.stnLabel,
-                                        color = stateColor,
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "📍 ${dev.roomLocation}",
-                                    color = palette.textMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text("•", color = palette.border, fontSize = 10.sp)
-                                Text(
-                                    text = dev.trustZone.stnLabel,
-                                    color = palette.accent,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text("•", color = palette.border, fontSize = 10.sp)
-                                Text(
-                                    text = dev.category.code,
-                                    color = palette.textMuted,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            val topBulletin = remember(dev.id, dev.purls) {
-                                BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
-                            }
-                            val detailBlurb = topBulletin?.stnTitle ?: "${dev.category.stnLabel} • ${dev.roomLocation}"
-                            Text(
-                                text = detailBlurb,
-                                color = palette.textPrimary,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (dev.portState != PortLifecycleState.OK) stateColor else stateColor.copy(alpha = 0.12f))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = when (dev.portState) {
-                                        PortLifecycleState.CVE_KEV -> "Read Safety Recall & Next Steps"
-                                        PortLifecycleState.EOL -> "Why This Device Can't Be Updated"
-                                        PortLifecycleState.GUESSED -> "Identify & Verify With Camera"
-                                        PortLifecycleState.UPDATE -> "How to Update This Device"
-                                        else -> "Verified & Protected"
-                                    },
-                                    color = if (dev.portState != PortLifecycleState.OK) Color.White else stateColor,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "→",
-                                    color = if (dev.portState != PortLifecycleState.OK) Color.White else stateColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // STN-Pro Row: Port Square + Device Name + Asset Tag Pill + Tabular Spine Metadata + 3-Bar Risk Meter
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("device-row", "port=${dev.portIndex};state=${dev.portState.key};cat=${dev.category.code}")
-                            .uiAction("inspectDevice")
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                            .clickable { onInspectDevice(dev.id) }
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Category silhouette icon badge
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(stateColor.copy(alpha = 0.16f))
-                                .border(1.dp, stateColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            HardwareCategorySvgIcon(
-                                category = dev.category,
-                                tint = stateColor,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        val topBulletin = remember(dev.id, dev.purls) {
-                            BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
-                        }
-                        val detailBlurb = if (topBulletin != null) {
-                            if (isStn) topBulletin.stnTitle else topBulletin.proTitle
-                        } else {
-                            val catLabel = if (isStn) dev.category.stnLabel else dev.category.proLabel
-                            "$catLabel • ${dev.roomLocation}"
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = dev.name,
-                                color = palette.textPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = detailBlurb,
-                                color = if (topBulletin != null) stateColor else palette.textMuted,
-                                fontSize = 10.sp,
-                                lineHeight = 13.sp
-                            )
-                        }
-
-                        val noticeCount = remember(dev.id, dev.purls) {
-                            BulletinsAndInventoryEngine.countBulletinsForDevice(dev)
-                        }
-                        RiskMeter(portState = dev.portState, isStn = isStn, noticeCount = noticeCount)
-                    }
-                }
-            }
-
-            // Secondary "+ Add Another Device" CTA shown in Pea (1..2) and Garden (3..7) tiers
-            if (!scaleTier.showFilterChips) {
-                item {
-                    OutlinedButton(
-                        onClick = onNavigateToAddDevice,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiAction("openAddDevice")
-                            .padding(top = 4.dp)
-                    ) {
-                        Text(
-                            text = "+ Add Another Device",
-                            color = palette.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-@Composable
-fun RiskMeter(
-    portState: PortLifecycleState,
-    isStn: Boolean = false,
-    noticeCount: Int = 0
-) {
-    val activeBars = when (portState) {
-        PortLifecycleState.CVE_KEV -> 3
-        PortLifecycleState.EOL -> 3
-        PortLifecycleState.GUESSED -> 2
-        PortLifecycleState.UPDATE -> 2
-        PortLifecycleState.OK -> 1
-        PortLifecycleState.UNASSIGNED -> 0
-    }
-    val activeColor = TuesdayTheme.ledColorFor(portState, isStn)
-    val inactiveColor = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2D323E)
-
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        // Sev Bars Diagram
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.5.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(3.5.dp)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(if (activeBars >= 1) activeColor else inactiveColor)
-            )
-            Box(
-                modifier = Modifier
-                    .width(3.5.dp)
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(if (activeBars >= 2) activeColor else inactiveColor)
-            )
-            Box(
-                modifier = Modifier
-                    .width(3.5.dp)
-                    .height(14.dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(if (activeBars >= 3) activeColor else inactiveColor)
-            )
-        }
-
-        // Relevant Advisories Count Badge / Notice Counter
-        if (noticeCount > 0) {
-            Text(
-                text = if (noticeCount == 1) "1 notice" else "$noticeCount notices",
-                color = activeColor,
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        } else {
-            Text(
-                text = "0 notices",
-                color = palette_textMuted_or(activeColor, isStn),
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-    }
-}
-
-private fun palette_textMuted_or(activeColor: Color, isStn: Boolean): Color {
-    return if (isStn) Color(0xFF94A3B8) else Color(0xFF6B7280)
-}
-
-@Composable
-private fun LedLegendDot(label: String, color: Color, palette: BrandPalette) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
-        Text(
-            text = label,
-            color = palette.textMuted,
-            fontSize = 9.sp,
-            fontFamily = FontFamily.Monospace
-        )
-    }
-}
-
-@Composable
-private fun InventoryChassisCard(
-    network: NetworkSite,
-    devices: List<RackPortDevice>,
-    ledSlots: List<LedSlot>,
-    scaleTier: InventoryScaleTier,
-    isStn: Boolean,
-    palette: BrandPalette,
-    onInspectDevice: (String) -> Unit,
-    onNavigateToAddDevice: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF0B0D11))
-            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // 8-Port Hardware Category Faceplate Strip (C1..C8)
-        // Show faceplate strip across all tiers (including Day 0 empty state) for consistent hardware silhouette
-        PortCategoryFaceplateStrip(
-            devices = devices,
-            isStn = isStn,
-            palette = palette,
-            onInspectDevice = onInspectDevice,
-            onNavigateToAddDevice = onNavigateToAddDevice
-        )
-        HorizontalDivider(color = palette.border, thickness = 1.dp)
-
-        // 16 columns x 8 rows compact LED grid with bottom-snapped PNW monochrome pixel art overlay
-        val rows = ledSlots.chunked(16)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiComponent("LedMatrix128Grid")
-                .uiSlot("led-grid-128")
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                rows.forEach { rowSlots ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        rowSlots.forEach { slot ->
-                            val ledColor = TuesdayTheme.ledColorFor(slot.state, isStn)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f)
-                                    .uiAction("inspectDevice")
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(
-                                        ledColor.copy(
-                                            alpha = when (slot.state) {
-                                                PortLifecycleState.UNASSIGNED -> 0.55f
-                                                PortLifecycleState.OK -> 0.85f
-                                                else -> 1f
-                                            }
-                                        )
-                                    )
-                                    .clickable(enabled = slot.deviceId != null) {
-                                        slot.deviceId?.let { onInspectDevice(it) }
-                                    }
-                            )
-                        }
-                        repeat((16 - rowSlots.size).coerceAtLeast(0)) {
-                            Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
-                        }
-                    }
-                }
-            }
-
-            // Bottom-snapped monochrome pixel art overlay (Mountain Horizon / Sprout / 3 Pines / 9-Tree Horizon)
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .uiComponent("MatrixBotanicalPixelArtOverlay")
-                    .uiSlot("botanical-overlay")
-            ) {
-                MatrixBotanicalPixelArtOverlay(
-                    scaleTier = scaleTier,
-                    activeCount = devices.size,
-                    isStn = isStn
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PortCategoryFaceplateStrip(
-    devices: List<RackPortDevice>,
-    isStn: Boolean,
-    palette: BrandPalette,
-    onInspectDevice: (String) -> Unit,
-    onNavigateToAddDevice: () -> Unit
-) {
-    var activeContextCategory by remember { mutableStateOf<StnHardwareCategory?>(null) }
-    var selectedAnchorXInStripPx by remember { mutableFloatStateOf(0f) }
-    var stripWidthPx by remember { mutableFloatStateOf(0f) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onGloballyPositioned { coords ->
-                stripWidthPx = coords.size.width.toFloat()
-            }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiComponent("PortCategoryFaceplateStrip")
-                .uiSlot("c1-c8-strip"),
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            StnHardwareCategory.entries.forEach { category ->
-                val matchingDevs = devices.filter { it.category == category }
-                val count = matchingDevs.size
-                val hasDevices = count > 0
-
-                // Worst severity in category (lowest severityPriority number = worst severity)
-                val worstState = matchingDevs
-                    .minByOrNull { it.portState.severityPriority }
-                    ?.portState
-
-                val stateColor = if (worstState != null) {
-                    TuesdayTheme.ledColorFor(worstState, isStn)
-                } else {
-                    if (isStn) Color(0xFF94A3B8) else Color(0xFF4B5563)
-                }
-
-                val isCategorySelected = activeContextCategory == category
-                val emptyBorder = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2D323E)
-                val iconBoxBg = if (isCategorySelected) {
-                    palette.accent.copy(alpha = 0.22f)
-                } else if (isStn) {
-                    Color(0xFFF8FAFC)
-                } else {
-                    Color(0xFF20232B)
-                }
-                val iconBorderColor = if (isCategorySelected) {
-                    palette.accent
-                } else if (hasDevices) {
-                    stateColor.copy(alpha = 0.53f)
-                } else {
-                    emptyBorder
-                }
-                val tickColor = if (hasDevices) stateColor.copy(alpha = 0.53f) else emptyBorder
-                val tileBgColor = if (hasDevices) stateColor else if (isStn) Color(0xFFE2E8F0) else Color(0xFF20232A)
-                val tileTextColor = when {
-                    !hasDevices -> Color(0xFF6B7280)
-                    !isStn && (worstState == PortLifecycleState.OK || worstState == PortLifecycleState.EOL) -> Color(0xFF090D0A)
-                    else -> Color.White
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .uiSlot("category-col", "cat=${category.code};count=$count")
-                        .uiAction("inspectCategoryDevice")
-                        .onGloballyPositioned { coords ->
-                            if (activeContextCategory == category) {
-                                selectedAnchorXInStripPx = coords.positionInParent().x + coords.size.width / 2f
-                            }
-                        }
-                        .clickable {
-                            if (activeContextCategory == category) {
-                                activeContextCategory = null
-                            } else {
-                                activeContextCategory = category
-                            }
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // 1. Top 1:1 Square Hardware Silhouette Box (.ubnt-diagram-icon)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(iconBoxBg)
-                            .border(1.dp, iconBorderColor, RoundedCornerShape(6.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        HardwareCategorySvgIcon(
-                            category = category,
-                            tint = stateColor,
-                            modifier = Modifier.fillMaxSize(0.56f)
-                        )
-                    }
-
-                    // 2. Middle Vertical Connector Tick (.ubnt-diagram-tick: 1dp x 6dp)
-                    Box(
-                        modifier = Modifier
-                            .padding(vertical = 2.dp)
-                            .width(1.dp)
-                            .height(6.dp)
-                            .background(tickColor)
-                    )
-
-                    // 3. Bottom 1:1 Square Port Count Tile (.ubnt-diagram-port-tile)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(tileBgColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = count.toString(),
-                            color = tileTextColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-        }
-
-        // Context Panel Callout Popup
-        if (activeContextCategory != null) {
-            val cat = activeContextCategory!!
-            val matchingDevs = devices.filter { it.category == cat }
-            val density = LocalDensity.current
-
-            Popup(
-                alignment = Alignment.TopStart,
-                offset = with(density) {
-                    // Position below the strip (faceplate height is ~86dp)
-                    IntOffset(0, 92.dp.roundToPx())
-                },
-                onDismissRequest = { activeContextCategory = null },
-                properties = PopupProperties(focusable = true)
-            ) {
-                CategoryGalleryContextPanel(
-                    category = cat,
-                    devices = matchingDevs,
-                    isStn = isStn,
-                    palette = palette,
-                    anchorXInStripPx = selectedAnchorXInStripPx,
-                    stripWidthPx = stripWidthPx,
-                    onInspectDevice = { devId ->
-                        activeContextCategory = null
-                        onInspectDevice(devId)
-                    },
-                    onAddDevice = {
-                        activeContextCategory = null
-                        onNavigateToAddDevice()
-                    },
-                    onClose = { activeContextCategory = null }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CategoryGalleryContextPanel(
-    category: StnHardwareCategory,
-    devices: List<RackPortDevice>,
-    isStn: Boolean,
-    palette: BrandPalette,
-    anchorXInStripPx: Float,
-    stripWidthPx: Float,
-    onInspectDevice: (String) -> Unit,
-    onAddDevice: () -> Unit,
-    onClose: () -> Unit
-) {
-    val density = LocalDensity.current
-    val pointerXFraction = if (stripWidthPx > 0f) {
-        (anchorXInStripPx / stripWidthPx).coerceIn(0.08f, 0.92f)
-    } else 0.5f
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp)
-            .uiComponent("CategoryGalleryContextPanel")
-    ) {
-        // Upward pointing arrow triangle pointing to the tapped diagram button
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-        ) {
-            val arrowCenterX = size.width * pointerXFraction
-            val arrowWidth = 14.dp.toPx()
-            val arrowHeight = 8.dp.toPx()
-            val path = Path().apply {
-                moveTo(arrowCenterX - arrowWidth / 2f, arrowHeight)
-                lineTo(arrowCenterX, 0f)
-                lineTo(arrowCenterX + arrowWidth / 2f, arrowHeight)
-                close()
-            }
-            drawPath(
-                path = path,
-                color = if (isStn) Color(0xFFE2E8F0) else Color(0xFF282C37)
-            )
-            val fillPath = Path().apply {
-                moveTo(arrowCenterX - arrowWidth / 2f + 1f, arrowHeight)
-                lineTo(arrowCenterX, 1f)
-                lineTo(arrowCenterX + arrowWidth / 2f - 1f, arrowHeight)
-                close()
-            }
-            drawPath(
-                path = fillPath,
-                color = if (isStn) Color(0xFFFFFFFF) else Color(0xFF14171F)
-            )
-        }
-
-        // Panel Card Chassis
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .border(
-                    width = 1.dp,
-                    color = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2E3442),
-                    shape = RoundedCornerShape(12.dp)
-                ),
-            color = if (isStn) Color(0xFFFFFFFF) else Color(0xFF14171F),
-            shadowElevation = 8.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Header: Category Icon + Title + Device Count Badge + Close Button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(7.dp))
-                                .background(palette.accent.copy(alpha = 0.15f))
-                                .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(7.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            HardwareCategorySvgIcon(
-                                category = category,
-                                tint = palette.accent,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        Column {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = if (isStn) category.stnLabel else category.proLabel,
-                                    color = palette.textPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${category.code} · ${category.osiLayer}",
-                                    color = palette.textMuted,
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            Text(
-                                text = if (devices.isEmpty()) "0 devices in inventory"
-                                else "${devices.size} ${if (category == StnHardwareCategory.C8_GUEST) "user(s)" else "device(s)"} enrolled",
-                                color = palette.textMuted,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
-
-                    // Close (X) button
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = palette.textMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                HorizontalDivider(
-                    color = if (isStn) Color(0xFFE2E8F0) else Color(0xFF222631),
-                    thickness = 1.dp
-                )
-
-                // Squircle Gallery of Devices in Category
-                if (devices.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "No devices enrolled in this category.",
-                            color = palette.textMuted,
-                            fontSize = 11.sp
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(palette.accent)
-                                .clickable { onAddDevice() }
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                text = "+ Add ${category.shortName} Device",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        devices.forEach { dev ->
-                            val devStateColor = TuesdayTheme.ledColorFor(dev.portState, isStn)
-                            Column(
-                                modifier = Modifier
-                                    .width(62.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onInspectDevice(dev.id) }
-                                    .padding(vertical = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF1E222B))
-                                        .border(
-                                            width = 1.5.dp,
-                                            color = devStateColor.copy(alpha = 0.8f),
-                                            shape = RoundedCornerShape(12.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    HardwareCategorySvgIcon(
-                                        category = dev.category,
-                                        tint = devStateColor,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Text(
-                                    text = dev.shortLabel,
-                                    color = palette.textPrimary,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = dev.trustZone.shortCode,
-                                    color = palette.textMuted,
-                                    fontSize = 8.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HardwareCategorySvgIcon(
-    category: StnHardwareCategory,
-    tint: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val sx = w / 24f
-        val sy = h / 24f
-        val stroke = Stroke(
-            width = 1.8f * sx,
-            cap = StrokeCap.Round,
-            join = StrokeJoin.Round
-        )
-
-        when (category) {
-            StnHardwareCategory.C1_GATEWAY -> {
-                // <rect x="2" y="7" width="20" height="10" rx="2"/>
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(2f * sx, 7f * sy),
-                    size = Size(20f * sx, 10f * sy),
-                    cornerRadius = CornerRadius(2f * sx, 2f * sy),
-                    style = stroke
-                )
-                // <circle cx="6" cy="12" r="1.2"/>
-                drawCircle(
-                    color = tint,
-                    radius = 1.3f * sx,
-                    center = Offset(6f * sx, 12f * sy),
-                    style = stroke
-                )
-                // <path d="M11 10h8v4h-8z"/>
-                drawRect(
-                    color = tint,
-                    topLeft = Offset(11f * sx, 10f * sy),
-                    size = Size(8f * sx, 4f * sy),
-                    style = stroke
-                )
-            }
-            StnHardwareCategory.C2_SWITCH -> {
-                // <rect x="2" y="6" width="20" height="12" rx="2"/>
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(2f * sx, 6f * sy),
-                    size = Size(20f * sx, 12f * sy),
-                    cornerRadius = CornerRadius(2f * sx, 2f * sy),
-                    style = stroke
-                )
-                // 2x3 port squares inside chassis
-                val xs = listOf(5.5f, 10.5f, 15.5f)
-                val ys = listOf(8.8f, 13.2f)
-                ys.forEach { y ->
-                    xs.forEach { x ->
-                        drawRoundRect(
-                            color = tint,
-                            topLeft = Offset(x * sx, y * sy),
-                            size = Size(2.6f * sx, 2.2f * sy),
-                            cornerRadius = CornerRadius(0.5f * sx, 0.5f * sy),
-                            style = Stroke(width = 1.3f * sx)
-                        )
-                    }
-                }
-            }
-            StnHardwareCategory.C3_AP -> {
-                // <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>
-                drawCircle(
-                    color = tint,
-                    radius = 9f * sx,
-                    center = Offset(12f * sx, 12f * sy),
-                    style = stroke
-                )
-                drawCircle(
-                    color = tint,
-                    radius = 3.5f * sx,
-                    center = Offset(12f * sx, 12f * sy),
-                    style = stroke
-                )
-            }
-            StnHardwareCategory.C4_SERVER -> {
-                // <rect x="3" y="4" width="18" height="6" rx="1.5"/>
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(3f * sx, 4f * sy),
-                    size = Size(18f * sx, 6f * sy),
-                    cornerRadius = CornerRadius(1.5f * sx, 1.5f * sy),
-                    style = stroke
-                )
-                // <rect x="3" y="14" width="18" height="6" rx="1.5"/>
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(3f * sx, 14f * sy),
-                    size = Size(18f * sx, 6f * sy),
-                    cornerRadius = CornerRadius(1.5f * sx, 1.5f * sy),
-                    style = stroke
-                )
-                drawCircle(color = tint, radius = 1.1f * sx, center = Offset(7f * sx, 7f * sy))
-                drawCircle(color = tint, radius = 1.1f * sx, center = Offset(7f * sx, 17f * sy))
-            }
-            StnHardwareCategory.C5_CAMERA -> {
-                // Camera body + prism + center lens
-                val path = Path().apply {
-                    moveTo(14.5f * sx, 4f * sy)
-                    lineTo(9.5f * sx, 4f * sy)
-                    lineTo(7f * sx, 7f * sy)
-                    lineTo(4f * sx, 7f * sy)
-                    lineTo(4f * sx, 20f * sy)
-                    lineTo(20f * sx, 20f * sy)
-                    lineTo(20f * sx, 7f * sy)
-                    lineTo(17f * sx, 7f * sy)
-                    close()
-                }
-                drawPath(path = path, color = tint, style = stroke)
-                drawCircle(
-                    color = tint,
-                    radius = 3.5f * sx,
-                    center = Offset(12f * sx, 13.5f * sy),
-                    style = stroke
-                )
-            }
-            StnHardwareCategory.C6_IOT -> {
-                // <rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 12h6M12 9v6"/>
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(4f * sx, 4f * sy),
-                    size = Size(16f * sx, 16f * sy),
-                    cornerRadius = CornerRadius(3f * sx, 3f * sy),
-                    style = stroke
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(9f * sx, 12f * sy),
-                    end = Offset(15f * sx, 12f * sy),
-                    strokeWidth = 1.8f * sx,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(12f * sx, 9f * sy),
-                    end = Offset(12f * sx, 15f * sy),
-                    strokeWidth = 1.8f * sx,
-                    cap = StrokeCap.Round
-                )
-            }
-            StnHardwareCategory.C7_CLIENT -> {
-                // <rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20M9 19v-4M15 19v-4"/>
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(4f * sx, 4f * sy),
-                    size = Size(16f * sx, 11f * sy),
-                    cornerRadius = CornerRadius(1.5f * sx, 1.5f * sy),
-                    style = stroke
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(2f * sx, 19f * sy),
-                    end = Offset(22f * sx, 19f * sy),
-                    strokeWidth = 1.8f * sx,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(9f * sx, 15f * sy),
-                    end = Offset(9f * sx, 19f * sy),
-                    strokeWidth = 1.8f * sx
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(15f * sx, 15f * sy),
-                    end = Offset(15f * sx, 19f * sy),
-                    strokeWidth = 1.8f * sx
-                )
-            }
-            StnHardwareCategory.C8_GUEST -> {
-                // <circle cx="12" cy="7" r="4"/><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                drawCircle(
-                    color = tint,
-                    radius = 4f * sx,
-                    center = Offset(12f * sx, 7.5f * sy),
-                    style = stroke
-                )
-                val body = Path().apply {
-                    moveTo(5f * sx, 21f * sy)
-                    lineTo(5f * sx, 18.5f * sy)
-                    cubicTo(5f * sx, 16f * sy, 7f * sx, 15f * sy, 9.5f * sx, 15f * sy)
-                    lineTo(14.5f * sx, 15f * sy)
-                    cubicTo(17f * sx, 15f * sy, 19f * sx, 16f * sy, 19f * sx, 18.5f * sy)
-                    lineTo(19f * sx, 21f * sy)
-                }
-                drawPath(path = body, color = tint, style = stroke)
-            }
-        }
-    }
-}
-
-@Composable
-private fun TuesdayCalendarHeartIcon(
-    tint: Color,
-    modifier: Modifier = Modifier
-) {
-    Icon(
-        painter = painterResource(id = R.drawable.ic_tuesday_mark),
-        contentDescription = "Tuesday.sh",
-        tint = tint,
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun TrackedHardwareProfilesCard(
-    devices: List<RackPortDevice>,
-    palette: BrandPalette,
-    onInspectDevice: (String) -> Unit
-) {
-    val featured = remember(devices) {
-        BulletinsAndInventoryEngine.sortDevicesByRecentChanges(devices)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiComponent("TrackedHardwareProfilesCard")
-            .clip(RoundedCornerShape(10.dp))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiSlot("tracked-profiles-header"),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Tracked Hardware Profiles",
-                color = palette.textMuted,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Recent changes",
-                color = palette.textMuted,
-                fontSize = 9.sp
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiSlot("tracked-profiles-strip")
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            featured.forEachIndexed { idx, dev ->
-                val stateColor = TuesdayTheme.ledColorFor(dev.portState, isStn = false)
-                val isSelected = idx == 0
-                Column(
-                    modifier = Modifier
-                        .width(52.dp)
-                        .uiSlot("tracked-profile-squircle")
-                        .uiAction("inspectDevice")
-                        .clickable { onInspectDevice(dev.id) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(
-                                if (isSelected) palette.accent.copy(alpha = 0.14f)
-                                else Color(0xFF1F222A)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) palette.accent else stateColor.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(11.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        HardwareCategorySvgIcon(
-                            category = dev.category,
-                            tint = stateColor,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                    Text(
-                        text = dev.shortLabel,
-                        color = palette.textPrimary,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MatrixBotanicalPixelArtOverlay(
-    scaleTier: InventoryScaleTier,
-    activeCount: Int,
-    isStn: Boolean
-) {
-    val fgColor = if (isStn) Color(0xFF94A3B8) else Color(0xFF475569)
-
-    when (scaleTier) {
-        InventoryScaleTier.DAY_ZERO -> {
-            // PNW Misty Mountain Horizon with centered status pill
-            Box(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Mountain silhouette resting along bottom
-                PixelArtMountainHorizon(
-                    color = fgColor.copy(alpha = if (isStn) 0.38f else 0.42f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .align(Alignment.BottomCenter)
-                )
-
-                // Status pill positioned at the vertical middle so it doesn't cover the illustration
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isStn) Color.White.copy(alpha = 0.94f) else Color(0xFF0F172A).copy(alpha = 0.90f))
-                        .border(1.dp, if (isStn) Color(0xFFCBD5E1) else Color(0xFF334155), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.5.dp)
-                ) {
-                    Text(
-                        text = "Inventory Empty • 0 / 128",
-                        color = if (isStn) Color(0xFF475569) else Color(0xFF94A3B8),
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-        InventoryScaleTier.PEA -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 4.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    PixelArtSprout(
-                        color = fgColor.copy(alpha = 0.85f),
-                        size = 32.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (isStn) Color.White.copy(alpha = 0.9f) else Color(0xFF0F172A).copy(alpha = 0.85f))
-                            .border(1.dp, if (isStn) Color(0xFFCBD5E1) else Color(0xFF334155), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = "$activeCount ACTIVE • ${128 - activeCount} SLOTS AVAILABLE",
-                            color = if (isStn) Color(0xFF475569) else Color(0xFF94A3B8),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-        }
-        InventoryScaleTier.GARDEN -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 24.dp, height = 34.dp)
-                    PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 30.dp, height = 42.dp)
-                    PixelArtPineTree(color = fgColor.copy(alpha = 0.75f), width = 20.dp, height = 28.dp)
-                }
-            }
-        }
-        InventoryScaleTier.FOREST -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    repeat(9) { idx ->
-                        val isTall = idx % 2 == 0
-                        PixelArtPineTree(
-                            color = fgColor.copy(alpha = 0.45f),
-                            width = if (isTall) 22.dp else 18.dp,
-                            height = if (isTall) 32.dp else 26.dp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PixelArtSprout(color: Color, size: Dp) {
-    Canvas(modifier = Modifier.size(size)) {
-        val px = this.size.width / 16f
-        val py = this.size.height / 16f
-        fun rect(x: Int, y: Int, w: Int, h: Int) {
-            drawRect(color = color, topLeft = Offset(x * px, y * py), size = Size(w * px, h * py))
-        }
-        // Left leaf
-        rect(2, 3, 3, 1); rect(1, 4, 5, 1); rect(1, 5, 5, 1); rect(2, 6, 4, 1); rect(4, 7, 2, 1)
-        // Right leaf
-        rect(10, 1, 3, 1); rect(9, 2, 5, 1); rect(9, 3, 6, 1); rect(9, 4, 5, 1); rect(8, 5, 4, 1); rect(8, 6, 2, 1)
-        // Stem & Soil mound
-        rect(6, 7, 3, 1); rect(7, 8, 2, 4); rect(6, 12, 3, 1); rect(5, 13, 5, 1); rect(3, 14, 9, 1); rect(4, 15, 7, 1)
-    }
-}
-
-@Composable
-private fun PixelArtMountainHorizon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val cols = 64
-        val colW = w / cols.toFloat()
-        val rowH = h / 20f
-
-        fun peak(cx: Float, peakY: Float, baseWidthCols: Int) {
-            val half = baseWidthCols / 2
-            for (step in -half..half) {
-                val frac = 1f - kotlin.math.abs(step).toFloat() / half.toFloat()
-                val topY = h - (h - peakY) * frac
-                val x = cx + step * colW
-                drawRect(
-                    color = color,
-                    topLeft = Offset(x, topY),
-                    size = Size(colW + 0.5f, h - topY)
-                )
-            }
-        }
-
-        // Secondary background ridge (fainter)
-        val bgCol = color.copy(alpha = color.alpha * 0.45f)
-        val pathBg = Path().apply {
-            moveTo(0f, h)
-            lineTo(0f, h * 0.55f)
-            lineTo(w * 0.22f, h * 0.35f)
-            lineTo(w * 0.38f, h * 0.52f)
-            lineTo(w * 0.72f, h * 0.22f) // Prominent Cascade peak
-            lineTo(w * 0.88f, h * 0.42f)
-            lineTo(w, h * 0.38f)
-            lineTo(w, h)
-            close()
-        }
-        drawPath(path = pathBg, color = bgCol)
-
-        // Stepped pixel ridge line
-        for (i in 0 until cols) {
-            val fracX = i.toFloat() / cols.toFloat()
-            // Mount Rainier silhouette formula: sharp crest at 0.68, shoulder at 0.30
-            val elev = when {
-                fracX in 0.15f..0.45f -> {
-                    val p = 1f - kotlin.math.abs(fracX - 0.30f) / 0.15f
-                    p * 0.55f
-                }
-                fracX in 0.52f..0.84f -> {
-                    val p = 1f - kotlin.math.abs(fracX - 0.68f) / 0.16f
-                    p * 0.82f
-                }
-                else -> 0.15f
-            }
-            val stepY = h - elev * h
-            drawRect(
-                color = color,
-                topLeft = Offset(i * colW, stepY),
-                size = Size(colW + 0.5f, h - stepY)
-            )
-        }
-    }
-}
-
-@Composable
-private fun PixelArtPineTree(color: Color, width: Dp, height: Dp) {
-    Canvas(modifier = Modifier.size(width, height)) {
-        val px = this.size.width / 16f
-        val py = this.size.height / 22f
-        fun rect(x: Int, y: Int, w: Int, h: Int) {
-            drawRect(color = color, topLeft = Offset(x * px, y * py), size = Size(w * px, h * py))
-        }
-        rect(7, 0, 2, 2)
-        rect(6, 2, 4, 2)
-        rect(5, 4, 6, 2)
-        rect(6, 6, 4, 2)
-        rect(4, 8, 8, 2)
-        rect(3, 10, 10, 2)
-        rect(5, 12, 6, 2)
-        rect(2, 14, 12, 2)
-        rect(1, 16, 14, 2)
-        rect(7, 18, 2, 4)
-    }
-}
-
-@Composable
-private fun StateFilterChip(
-    label: String,
-    dotColor: Color?,
-    selected: Boolean,
-    palette: BrandPalette,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .uiAction("filterPortState")
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (selected) palette.accent.copy(alpha = 0.18f) else palette.surface)
-            .border(1.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(6.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        if (dotColor != null) {
-            Box(
-                modifier = Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(dotColor)
-            )
-        }
-        Text(
-            text = label,
-            color = if (selected) palette.accent else palette.textPrimary,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace
-        )
-    }
-}
-
-@Composable
-private fun ZoneFilterPill(
-    label: String,
-    selected: Boolean,
-    palette: BrandPalette,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .uiAction("filterZone")
-            .clip(RoundedCornerShape(5.dp))
-            .background(if (selected) palette.accent.copy(alpha = 0.18f) else palette.elevated)
-            .border(1.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(5.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            color = if (selected) palette.accent else palette.textMuted,
-            fontSize = 8.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-    }
-}
-
-@Composable
-private fun DeviceInspectorBottomSheet(
-    device: RackPortDevice,
-    palette: BrandPalette,
-    isStn: Boolean,
-    onApplyPatch: () -> Unit,
-    onNavigateToBulletins: () -> Unit = {},
-    onClose: () -> Unit
-) {
-    val stateColor = TuesdayTheme.ledColorFor(device.portState, isStn)
-    val noticeCount = remember(device.id, device.purls) {
-        BulletinsAndInventoryEngine.countBulletinsForDevice(device)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiComponent("DeviceInspectorSheet", "device=${device.id};state=${device.portState.key}")
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .uiSlot("inspector-header"),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = device.name,
-                color = palette.textPrimary,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(
-                onClick = onClose,
-                modifier = Modifier.uiAction("closeDeviceInspector")
-            ) {
-                Text(if (isStn) "Done" else "Close", color = palette.accent)
-            }
-        }
-
-        // Clickable banner/button near the top of the drawer navigating to the Bulletins tab
-        if (noticeCount > 0) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(stateColor.copy(alpha = 0.12f))
-                    .border(1.dp, stateColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                    .clickable { onNavigateToBulletins() }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "📢",
-                        fontSize = 13.sp
-                    )
-                    Column {
-                        Text(
-                            text = if (noticeCount == 1) "1 Advisory Bulletin for this device" else "$noticeCount Advisory Bulletins for this device",
-                            color = palette.textPrimary,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Tap to view in Bulletins feed",
-                            color = stateColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-                Text(
-                    text = "View →",
-                    color = stateColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        // Timeline Candlestick Graph
-        val operationalCandle = remember(device.id, device.version, device.presenceState) {
-            BulletinsAndInventoryEngine.toOperationalCandle(device)
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(palette.bg)
-                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                .padding(12.dp)
-                .uiSlot("candlestick-chart"),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Timeline",
-                    color = palette.textPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(5.dp)
-                            .clip(RoundedCornerShape(2.5.dp))
-                            .background(Color.White)
-                    )
-                    Text(
-                        text = "Today",
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-
-            MiniCandleBar(
-                candle = operationalCandle,
-                modifier = Modifier.fillMaxWidth().height(16.dp),
-                showTodayMarker = true
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Released ${operationalCandle.releaseDateStr ?: "Launch"} • Active ${operationalCandle.deployDateStr ?: "Install"}",
-                    color = palette.textMuted,
-                    fontSize = 10.sp
-                )
-                Text(
-                    text = "EOL: ${operationalCandle.eolDateStr ?: "TBD"}",
-                    color = if (operationalCandle.isPastEol) TuesdayTheme.CriticalRed else palette.textMuted,
-                    fontSize = 10.sp,
-                    fontWeight = if (operationalCandle.isPastEol) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-        }
-
-        // Real Device Details (From Add Device Flow & Device Metadata)
-        Column(
-            modifier = Modifier.uiSlot("device-details-stack"),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val catLabel = if (isStn) device.category.stnLabel else device.category.proLabel
-            InspectorSectionRow("CATEGORY", catLabel, palette)
-            InspectorSectionRow("ROOM & PLACEMENT", device.roomLocation, palette)
-            InspectorSectionRow("NETWORK LANE / ZONE", if (isStn) device.trustZone.stnLabel else "${device.trustZone.displayLabel} (${device.trustZone.shortCode})", palette)
-            if (device.purls.isNotEmpty()) {
-                InspectorSectionRow("CANONICAL PURL", device.purls.first(), palette)
-            }
-        }
-
-        // Active Bulletins Stack (when multiple notices pile up on this device)
-        val activeBulletins = remember(device.id, device.purls, device.portState) {
-            BulletinsAndInventoryEngine.findBulletinsForDevice(device)
-        }
-        if (activeBulletins.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("device-active-bulletins-stack"),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "ACTIVE NOTICES (${activeBulletins.size})",
-                    color = palette.textMuted,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 0.5.sp
-                )
-                activeBulletins.forEach { b ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                            .clickable { onNavigateToBulletins() }
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val bTypeColor = when (b.bulletinType.lowercase()) {
-                                    "recall", "cisa_kev", "cve" -> TuesdayTheme.LedCveRed
-                                    "eol" -> TuesdayTheme.LedEolAmber
-                                    else -> TuesdayTheme.LedUpdateBlue
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(bTypeColor)
-                                )
-                                Text(
-                                    text = b.bulletinType.uppercase(),
-                                    color = bTypeColor,
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Text(
-                                text = if (isStn) b.stnTitle else b.proTitle,
-                                color = palette.textPrimary,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
-                            )
-                        }
-                        Text(
-                            text = "→",
-                            color = palette.accent,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 6.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        if (device.portState != PortLifecycleState.OK && device.portState != PortLifecycleState.UNASSIGNED) {
-            Button(
-                onClick = onApplyPatch,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TuesdayTheme.LedOkGreen,
-                    contentColor = if (isStn) Color.White else Color.Black
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("remediation-cta")
-                    .uiAction("markRemediationComplete")
-                    .padding(top = 4.dp, bottom = 14.dp)
-            ) {
-                Text(
-                    text = if (isStn) "✓ Mark Remediation Complete (Set Device OK)" else "✓ Mark Remediation Complete (Set Port OK)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-            }
-        } else {
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-    }
-}
-
-@Composable
-private fun InspectorSectionRow(label: String, value: String, palette: BrandPalette) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(palette.elevated)
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = label.uppercase(),
-            color = palette.accent,
-            fontSize = 8.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-        Text(
-            text = value,
-            color = palette.textPrimary,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace
         )
     }
 }

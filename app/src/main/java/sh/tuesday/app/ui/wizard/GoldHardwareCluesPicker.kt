@@ -46,6 +46,7 @@ fun GoldHardwareCluesPicker(
     modifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
+    var isCluesExpanded by remember { mutableStateOf(false) }
     var menuDismissedForQuery by remember { mutableStateOf<String?>(null) }
 
     val suggestions = remember(clueIndex, queryText, selectedClues) {
@@ -99,27 +100,63 @@ fun GoldHardwareCluesPicker(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { isCluesExpanded = !isCluesExpanded }
+                .padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "HARDWARE CLUES",
-                color = palette.textMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.6.sp
-            )
-            if (clueIndex != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = "GOLD LAKE v${clueIndex.datalakeVersion}",
-                    color = TuesdayTheme.HealthyGreen.copy(alpha = 0.85f),
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace
+                    text = "CLUES",
+                    color = palette.textMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp
+                )
+                if (!isCluesExpanded) {
+                    Text(
+                        text = if (selectedClues.isNotEmpty()) "(${selectedClues.size} selected · Tap to add)" else "(Tap to add)",
+                        color = TuesdayTheme.HacsCyan.copy(alpha = 0.85f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (clueIndex != null) {
+                    Text(
+                        text = "SureThingNet Insights v${clueIndex.datalakeVersion}",
+                        color = TuesdayTheme.HealthyGreen.copy(alpha = 0.85f),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Icon(
+                    imageVector = if (isCluesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isCluesExpanded) "Collapse Clues" else "Expand Clues",
+                    tint = palette.textMuted,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
+
+        if (isCluesExpanded) {
+
+        Text(
+            text = "Choose context clues to help identify your device.",
+            color = palette.textMuted,
+            fontSize = 12.sp
+        )
 
         // Optional 1-tap bridge if Manual Device Name matched a Gold SKU
         if (inferredFromDeviceName != null) {
@@ -300,18 +337,10 @@ fun GoldHardwareCluesPicker(
 
         // Dynamic Contextual Material 3 SuggestionChip Strip (Faceted Narrowing: Type -> Brand -> Model)
         if (quickPicks.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = quickPickContextLabel,
-                    color = palette.textMuted.copy(alpha = 0.85f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.uiSlot("gold-quick-pick-chips")
-                ) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.uiSlot("gold-quick-pick-chips")
+            ) {
                     items(quickPicks, key = { it.id }) { pick ->
                         SuggestionChip(
                             onClick = { onAddClue(pick) },
@@ -341,23 +370,16 @@ fun GoldHardwareCluesPicker(
                 }
             }
         }
+        } // end if (isCluesExpanded)
 
         // Selected Multi-Item Clues: Material 3 FlowRow + InputChip Group
-        if (selectedClues.isNotEmpty()) {
+        if (false && selectedClues.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "SELECTED CLUES (${selectedClues.size})",
-                        color = palette.textMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                    if (selectedClues.size > 1) {
+                if (selectedClues.size > 1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
                         Text(
                             text = "Clear Clues",
                             color = TuesdayTheme.CriticalRed.copy(alpha = 0.85f),
@@ -428,7 +450,6 @@ fun GoldHardwareCluesPicker(
             }
         }
     }
-}
 
 private fun iconForClueKind(kind: GoldClueKind, hasWarning: Boolean) = when {
     hasWarning -> Icons.Default.WarningAmber

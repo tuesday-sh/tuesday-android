@@ -91,15 +91,15 @@ class MonitoredDeviceTest {
         val matrix = BulletinsAndInventoryEngine.build128LedMatrix(devices, zoneFilter = null)
 
         assertEquals(128, matrix.size)
-        assertEquals(3, matrix.count { it.state == PortLifecycleState.OK })
+        assertEquals(4, matrix.count { it.state == PortLifecycleState.OK })
         assertEquals(116, matrix.count { it.state == PortLifecycleState.UNASSIGNED })
-        assertEquals(3, matrix.count { it.state == PortLifecycleState.CVE_KEV })
+        assertEquals(2, matrix.count { it.state == PortLifecycleState.CVE_KEV })
         assertEquals(1, matrix.count { it.state == PortLifecycleState.EOL })
         assertEquals(2, matrix.count { it.state == PortLifecycleState.GUESSED })
         assertEquals(3, matrix.count { it.state == PortLifecycleState.UPDATE })
 
         val actionList = BulletinsAndInventoryEngine.filterActionFirstDevices(devices, includeOk = false)
-        assertEquals(9, actionList.size)
+        assertEquals(8, actionList.size)
         assertTrue(actionList.none { it.portState == PortLifecycleState.OK })
         assertEquals(PortLifecycleState.CVE_KEV, actionList.first().portState)
 
@@ -111,7 +111,7 @@ class MonitoredDeviceTest {
             includeOk = false,
             portStateFilter = PortLifecycleState.CVE_KEV
         )
-        assertEquals(3, cveOnly.size)
+        assertEquals(2, cveOnly.size)
     }
 
     @Test
@@ -152,8 +152,9 @@ class MonitoredDeviceTest {
         // Top-level AI summary excludes muted feeds and provisional guess feeds
         assertEquals(6, payload.aiBullets.size)
 
-        // Inbox has 8 items: 6 unmuted confirmed (including 3 Apple notices) + 1 muted high-sev breakthrough + 1 provisional high-sev
-        assertEquals(8, payload.inbox.size)
+        // Inbox has 7 active items: 5 unmuted confirmed (including 3 Apple notices; UDM-Pro is OK so its advisory is in completedBulletins) + 1 muted high-sev breakthrough + 1 provisional high-sev
+        assertEquals(7, payload.inbox.size)
+        assertEquals(1, payload.completedBulletins.size)
         val lgBreakthrough = payload.inbox.find { it.externalId == "CVE-2026-21099" }
         assertNotNull(lgBreakthrough)
         assertTrue(lgBreakthrough!!.brokeThroughMute)
@@ -195,8 +196,8 @@ class MonitoredDeviceTest {
         // 2. Dynamic scrubber version interpolation
         val udmPro = devices.first { it.portIndex == 1 }
         assertEquals("3.2.12", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, 0.25f))
-        assertEquals("4.0.20", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, 0.65f))
-        assertEquals("4.0.20", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, null))
+        assertEquals("4.0.21", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, 0.65f))
+        assertEquals("4.0.21", BulletinsAndInventoryEngine.getEstimatedVersionAtCursor(udmPro, null))
 
         // 3. Recent changes sort: max 12 items, highest severity first, then newest purchaseDate
         val recentChanges = BulletinsAndInventoryEngine.sortDevicesByRecentChanges(devices)
@@ -563,5 +564,37 @@ class MonitoredDeviceTest {
         assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "RECALL-apple-mbp16-battery" })
         assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "VULN-apple-silicon-m-series" })
         assertTrue(remediatedPayload.completedBulletins.any { it.externalId == "EOL-apple-vintage-hardware" })
+    }
+
+    @Test
+    fun testProTier1PlanOffersAndBackupSerializationRoundTrip() {
+        // 1. Verify default Pro Tier 1 plan offers (Annual + Monthly)
+        val offers = sh.tuesday.app.services.TuesdayBillingManager.defaultPlanOffers()
+        assertEquals(2, offers.size)
+        val annual = offers.find { it.productId == sh.tuesday.app.services.TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL }
+        val monthly = offers.find { it.productId == sh.tuesday.app.services.TuesdayBillingManager.SKU_PRO_TIER1_MONTHLY }
+        assertNotNull(annual)
+        assertNotNull(monthly)
+        assertEquals("$49.00", annual!!.formattedPrice)
+        assertEquals("$4.99", monthly!!.formattedPrice)
+
+        // 2. Verify NetworkInventoryBackup JSON round-trip serialization
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val sampleDevices = BulletinsAndInventoryEngine.defaultRackPortDevices().take(3)
+        val sampleNetworks = sh.tuesday.app.services.TuesdayRepository.defaultUserNetworks()
+        val backup = NetworkInventoryBackup(
+            version = "1.0.0",
+            exportedAt = "2026-11-11T12:00:00Z",
+            activeNetworkId = "net-demo",
+            networks = sampleNetworks,
+            devices = sampleDevices,
+            mutedFeedSlugs = listOf("lg-esphome-iot")
+        )
+        val encoded = json.encodeToString(NetworkInventoryBackup.serializer(), backup)
+        val decoded = json.decodeFromString(NetworkInventoryBackup.serializer(), encoded)
+        assertEquals("net-demo", decoded.activeNetworkId)
+        assertEquals(2, decoded.networks.size)
+        assertEquals(3, decoded.devices.size)
+        assertEquals(listOf("lg-esphome-iot"), decoded.mutedFeedSlugs)
     }
 }

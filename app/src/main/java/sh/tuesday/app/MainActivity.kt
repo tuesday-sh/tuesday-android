@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import sh.tuesday.app.navigation.DeepLinkDestination
 import sh.tuesday.app.services.ConnectivityMonitor
 import sh.tuesday.app.services.GeminiDiscoveryService
+import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.services.TuesdayNotificationManager
 import sh.tuesday.app.services.TuesdayRepository
 import sh.tuesday.app.theme.TuesdayAppTheme
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var connectivity: ConnectivityMonitor
     private lateinit var discoveryService: GeminiDiscoveryService
     private lateinit var notificationManager: TuesdayNotificationManager
+    private lateinit var billingManager: TuesdayBillingManager
 
     private val _pendingDestination = MutableStateFlow<DeepLinkDestination?>(null)
     val pendingDestination = _pendingDestination.asStateFlow()
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
         connectivity = ConnectivityMonitor(applicationContext)
         discoveryService = GeminiDiscoveryService(applicationContext)
         notificationManager = TuesdayNotificationManager(applicationContext)
+        billingManager = TuesdayBillingManager(applicationContext, repository)
 
         handleIntent(intent)
 
@@ -50,6 +53,7 @@ class MainActivity : ComponentActivity() {
                     connectivity = connectivity,
                     discoveryService = discoveryService,
                     notificationManager = notificationManager,
+                    billingManager = billingManager,
                     onRequestNotificationPermission = {
                         requestNotificationPermissionIfNeeded()
                     },
@@ -66,6 +70,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
+    }
+
+    fun handleDeepLinkUri(uriString: String) {
+        val destination = DeepLinkDestination.fromUri(uriString)
+        if (destination != null) {
+            _pendingDestination.value = destination
+        }
     }
 
     fun requestNotificationPermissionIfNeeded() {
@@ -103,6 +114,7 @@ fun AppNavigation(
     connectivity: ConnectivityMonitor,
     discoveryService: GeminiDiscoveryService,
     notificationManager: TuesdayNotificationManager? = null,
+    billingManager: TuesdayBillingManager? = null,
     onRequestNotificationPermission: () -> Unit = {},
     pendingDestination: DeepLinkDestination? = null,
     onConsumePendingDestination: () -> Unit = {}
@@ -115,6 +127,7 @@ fun AppNavigation(
                 repository = repository,
                 connectivity = connectivity,
                 notificationManager = notificationManager,
+                billingManager = billingManager,
                 onRequestNotificationPermission = onRequestNotificationPermission,
                 onNavigateToAddDevice = { mode, synth, query, clues, autoSearch ->
                     val params = buildList {
@@ -126,6 +139,9 @@ fun AppNavigation(
                     }
                     val route = if (params.isEmpty()) "add_device" else "add_device?${params.joinToString("&")}"
                     navController.navigate(route)
+                },
+                onNavigateToEditDevice = { deviceId ->
+                    navController.navigate("edit_device/${android.net.Uri.encode(deviceId)}")
                 },
                 pendingDestination = if (pendingDestination is DeepLinkDestination.AddDevice) null else pendingDestination,
                 onConsumePendingDestination = onConsumePendingDestination
@@ -174,6 +190,16 @@ fun AppNavigation(
                 initialClueQuery = queryArg,
                 initialCluesCsv = cluesArg,
                 initialAutoSearch = searchArg,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable("edit_device/{deviceId}") { backStackEntry ->
+            val deviceId = backStackEntry.arguments?.getString("deviceId").orEmpty()
+            sh.tuesday.app.ui.home.EditDeviceScreen(
+                deviceId = deviceId,
+                repository = repository,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

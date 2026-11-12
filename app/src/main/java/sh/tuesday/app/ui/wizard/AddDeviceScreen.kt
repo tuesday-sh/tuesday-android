@@ -96,6 +96,7 @@ fun AddDeviceScreen(
 
     val clueIndex by GoldClueSuggestionRepository.indexFlow.collectAsState()
     LaunchedEffect(hacsConfig.tuesdayApiBaseUrl) {
+        GoldClueSuggestionRepository.ensureLocalLoaded(context)
         GoldClueSuggestionRepository.ensureLoaded(context, hacsConfig.tuesdayApiBaseUrl)
     }
 
@@ -254,12 +255,18 @@ fun AddDeviceScreen(
     }
 
     LaunchedEffect(initialCluesCsv, initialAutoSearch, clueIndex) {
-        val idx = clueIndex
-        if (!initialCluesCsv.isNullOrBlank() && idx != null) {
+        val idx = clueIndex ?: GoldClueSuggestionRepository.ensureLocalLoaded(context)
+        if (!initialCluesCsv.isNullOrBlank()) {
             val built = mutableListOf<GoldClueItem>()
             initialCluesCsv.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { token ->
-                val best = idx.querySuggestions(token, built, limit = 1).firstOrNull()
-                    ?: idx.classifyFreeTextClue(token)
+                val best = idx?.querySuggestions(token, built, limit = 1)?.firstOrNull()
+                    ?: idx?.classifyFreeTextClue(token)
+                    ?: GoldClueItem(
+                        id = "type:${token.lowercase()}",
+                        kind = GoldClueKind.DEVICE_TYPE,
+                        title = token,
+                        subtitle = "Device Type"
+                    )
                 if (built.none { it.id == best.id }) built.add(best)
                 addClueItem(best)
             }
@@ -439,11 +446,14 @@ fun AddDeviceScreen(
 
         var showReplayMenu by remember { mutableStateOf(false) }
         var showSynthMenu by remember { mutableStateOf(false) }
+        var showResultsMenu by remember { mutableStateOf(false) }
 
         // Left-side highlight card container for dev controls
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .uiComponent("DevControlsCallout")
+                .uiSlot("dev-controls")
                 .clip(RoundedCornerShape(8.dp))
                 .background(palette.elevated.copy(alpha = 0.6f))
                 .drawBehind {
@@ -461,28 +471,9 @@ fun AddDeviceScreen(
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx(), 8.dp.toPx())
                     )
                 }
-                .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(highlightBorderColor)
-                )
-                Text(
-                    text = "DEV CONTROLS & QUICK PILOT PRESETS",
-                    color = highlightBorderColor,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 0.5.sp
-                )
-            }
 
             // Row 1: Pickers (Replay... and Synthesize...)
             FlowRow(
@@ -505,7 +496,7 @@ fun AddDeviceScreen(
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Replay...", color = TuesdayTheme.HealthyGreen, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Replay...", color = TuesdayTheme.HealthyGreen, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HealthyGreen, modifier = Modifier.size(16.dp))
                         }
@@ -568,7 +559,7 @@ fun AddDeviceScreen(
                         ) {
                             Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(16.dp))
                         }
@@ -640,7 +631,7 @@ fun AddDeviceScreen(
                         ) {
                             Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Synthesize...", color = TuesdayTheme.HacsCyan, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = TuesdayTheme.HacsCyan, modifier = Modifier.size(16.dp))
                         }
@@ -687,6 +678,117 @@ fun AddDeviceScreen(
                                 }
                             )
                         }
+                    }
+                }
+
+                // Results... Dropdown Picker
+                Box {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.12f))
+                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                            .clickable { showResultsMenu = true }
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .uiAction("openResultsPicker"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ListAlt,
+                            contentDescription = null,
+                            tint = TuesdayTheme.HacsCyan,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "Results...",
+                            color = TuesdayTheme.HacsCyan,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = TuesdayTheme.HacsCyan,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showResultsMenu,
+                        onDismissRequest = { showResultsMenu = false },
+                        containerColor = palette.elevated
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("Seed Snapshot (All Components)", color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                    Text("U6-Pro + U6-LR • Summary • IDs • Multi-device", color = palette.textMuted, fontSize = 10.sp)
+                                }
+                            },
+                            onClick = {
+                                showResultsMenu = false
+                                discoveryResult = GeminiDiscoveryTurnResult(
+                                    visualSummary = "Identified a circular white ceiling-mounted Ubiquiti UniFi U6-Pro access point with centered status LED ring; a second switch chassis is partially visible on the left edge.",
+                                    extractedIdentifiers = ExtractedDeviceIdentifiers(
+                                        modelNumber = "U6-Pro",
+                                        macAddress = "74:AC:B9:12:34:56",
+                                        serialNumber = "2245K-U6P-00192",
+                                        barcode = "810010074512"
+                                    ),
+                                    candidates = listOf(
+                                        DeviceCandidateMatch(
+                                            manufacturer = "Ubiquiti",
+                                            modelNumber = "U6-Pro",
+                                            displayName = "Ubiquiti UniFi U6-Pro",
+                                            deviceCategory = "Access Point",
+                                            confidencePercent = 94,
+                                            reasoning = "Dual-band Wi-Fi 6 ceiling AP matching chassis diameter and LED ring.",
+                                            suggestedHostname = "unifi-u6-pro.local",
+                                            suggestedOsDetails = "UniFi OS 4.0.20",
+                                            suggestedPackageManager = "apt"
+                                        ),
+                                        DeviceCandidateMatch(
+                                            manufacturer = "Ubiquiti",
+                                            modelNumber = "U6-LR",
+                                            displayName = "Ubiquiti UniFi U6-LR",
+                                            deviceCategory = "Access Point",
+                                            confidencePercent = 68,
+                                            reasoning = "Similar circular form factor; slightly larger diameter.",
+                                            suggestedHostname = "unifi-u6-lr.local",
+                                            suggestedOsDetails = "UniFi OS 4.0.20",
+                                            suggestedPackageManager = "apt"
+                                        )
+                                    ),
+                                    multipleDevicesDetected = true,
+                                    multiDeviceWarning = "Multiple devices detected in frame. Candidate #1 targets the central access point.",
+                                    usedLiveGeminiApi = true,
+                                    providerUsed = "Seed Snapshot (Local)",
+                                    latencyMs = 12L
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("Unsupported Device", color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                    Text("Non-networked / Bluetooth-only callout", color = palette.textMuted, fontSize = 10.sp)
+                                }
+                            },
+                            onClick = {
+                                showResultsMenu = false
+                                discoveryResult = GeminiDiscoveryTurnResult(
+                                    visualSummary = "Identified a portable Bluetooth speaker with no Ethernet port or Wi-Fi radio.",
+                                    extractedIdentifiers = ExtractedDeviceIdentifiers(),
+                                    candidates = emptyList(),
+                                    isNetworkedDevice = false,
+                                    outOfScopeReason = "This appears to be a Bluetooth-only speaker with no Wi-Fi or Ethernet radio and is outside SureThingNet Insights' scope.",
+                                    usedLiveGeminiApi = true,
+                                    providerUsed = "Seed Snapshot (Local)",
+                                    latencyMs = 10L
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -795,12 +897,6 @@ fun AddDeviceScreen(
         containerColor = palette.bg
     ) { paddingValues ->
         val wizardScrollState = rememberScrollState()
-        LaunchedEffect(discoveryResult) {
-            if (discoveryResult != null) {
-                kotlinx.coroutines.delay(80)
-                wizardScrollState.animateScrollTo((wizardScrollState.maxValue * 0.65f).toInt().coerceAtLeast(360))
-            }
-        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -818,8 +914,8 @@ fun AddDeviceScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(palette.surface)
                     .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 EnrollmentMode.entries.forEach { item ->
                     val isSelected = mode == item
@@ -853,24 +949,24 @@ fun AddDeviceScreen(
                                     }
                                 }
                             }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(
                                 imageVector = tabIcon,
                                 contentDescription = null,
                                 tint = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                             Text(
                                 text = item.title,
                                 color = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 maxLines = 1
                             )
                         }
@@ -893,7 +989,7 @@ fun AddDeviceScreen(
             Text(
                 text = when (mode) {
                     EnrollmentMode.PHOTO_WIZARD -> "Snap or upload hardware photos, or pick device type, brand, and model clues below before searching."
-                    EnrollmentMode.BARCODE_SCAN -> "Scan 1D/2D barcodes for Gold Catalog lookup, or pick device clues below before searching."
+                    EnrollmentMode.BARCODE_SCAN -> "Scan 1D/2D barcodes for SureThingNet Insights lookup, or pick device clues below before searching."
                     EnrollmentMode.MANUAL_AGENT -> "Enter a device name and pick clues (e.g. Router, Doorbell, Google, Linksys) to search or add directly."
                 },
                 color = palette.textMuted,
@@ -951,68 +1047,6 @@ fun AddDeviceScreen(
                             Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-
-                    // Thumbnail Gallery View of Captures Under Capture Buttons
-                    if (capturedBitmaps.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "CAPTURED PHOTOS (${capturedBitmaps.size})",
-                                    color = palette.textMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
-                                )
-                                Text(
-                                    text = "Clear All",
-                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.85f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable {
-                                        capturedBitmaps = emptyList()
-                                    }
-                                )
-                            }
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(capturedBitmaps) { bmp ->
-                                    Box {
-                                        Image(
-                                            bitmap = bmp.asImageBitmap(),
-                                            contentDescription = "Captured Photo",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(width = 110.dp, height = 75.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(18.dp)
-                                                .clip(CircleShape)
-                                                .background(Color.Black.copy(alpha = 0.75f))
-                                                .clickable {
-                                                    capturedBitmaps = capturedBitmaps - bmp
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Remove Photo",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -1236,6 +1270,74 @@ fun AddDeviceScreen(
                 inferredFromDeviceName = inferredNameClue
             )
 
+            // Unified Search Context Strip: Captured Photos + Selected Clues side-by-side
+            if (capturedBitmaps.isNotEmpty() || selectedClueItems.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(capturedBitmaps) { bmp ->
+                        Box {
+                            Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = "Captured Photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.78f))
+                                    .clickable {
+                                        capturedBitmaps = capturedBitmaps - bmp
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove Photo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                            }
+                        }
+                    }
+                    items(selectedClueItems, key = { it.id }) { clue ->
+                        InputChip(
+                            selected = true,
+                            onClick = { removeClueItem(clue) },
+                            label = {
+                                Text(
+                                    text = clue.chipLabel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            trailingIcon = {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove ${clue.chipLabel}",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
+                            colors = InputChipDefaults.inputChipColors(
+                                selectedContainerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.16f),
+                                selectedLabelColor = Color.White,
+                                selectedTrailingIconColor = Color.White.copy(alpha = 0.75f)
+                            ),
+                            border = BorderStroke(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f))
+                        )
+                    }
+                }
+            }
+
             // Shared Action Row: Search Button (+ Add Directly for Manual)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1286,6 +1388,20 @@ fun AddDeviceScreen(
                     )
                 }
 
+                OutlinedButton(
+                    onClick = onNavigateBack,
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, palette.border),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White.copy(alpha = 0.75f)),
+                    modifier = Modifier.uiAction("cancelAddDevice")
+                ) {
+                    Text(
+                        text = "Cancel",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp
+                    )
+                }
+
                 // If on Manual tab, also provide direct "Add Device" button with Gold Catalog metadata binding
                 if (mode == EnrollmentMode.MANUAL_AGENT) {
                     Button(
@@ -1310,7 +1426,7 @@ fun AddDeviceScreen(
                                 matchedModelClue?.chipLabel ?: ""
                             }
                             if (resolvedName.isBlank()) {
-                                manualError = "Enter a Device Name or pick a Gold Model clue."
+                                manualError = "Enter a Device Name or pick a SureThingNet Insights Model clue."
                                 return@Button
                             }
 
@@ -1410,45 +1526,90 @@ fun AddDeviceScreen(
 
                 // Progressive Clues & Candidates Loop
                 discoveryResult?.let { result ->
-                    HorizontalDivider(
-                        color = palette.border.copy(alpha = 0.6f),
-                        thickness = 1.dp,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
+                    var inspectedCandidate by remember(result) { mutableStateOf<DeviceCandidateMatch?>(null) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "RESULTS",
+                            color = palette.textMuted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.6.sp
+                        )
+                        Text(
+                            text = "Clear All",
+                            color = TuesdayTheme.HacsCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable {
+                                    discoveryResult = null
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .uiAction("clearDiscoveryResults")
+                        )
+                    }
 
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .uiComponent("AiDiscoveryPanel")
-                            .uiSlot("ai-discovery-panel")
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(TuesdayTheme.CardSurface)
-                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                            .padding(16.dp),
+                            .uiSlot("ai-discovery-panel"),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = if (result.usedLiveGeminiApi) "AI HARDWARE DISCOVERY" else "GOLD CATALOG MATCH",
-                                color = TuesdayTheme.HacsCyan,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                result.providerUsed.uppercase(),
-                                color = TuesdayTheme.HealthyGreen,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-
-                        Text(result.visualSummary, color = Color.White.copy(alpha = 0.82f), fontSize = 12.sp)
+                        if (!result.isNetworkedDevice || !result.outOfScopeReason.isNullOrBlank()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFFFB020).copy(alpha = 0.12f))
+                                    .border(1.dp, Color(0xFFFFB020).copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "UNSUPPORTED DEVICE",
+                                    color = Color(0xFFFFB020),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp
+                                )
+                                Text(
+                                    text = result.outOfScopeReason
+                                        ?: "This item does not appear to have Wi-Fi or Ethernet networking and isn't tracked in SureThingNet Insights.",
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
+                                Button(
+                                    onClick = {
+                                        discoveryResult = null
+                                        capturedBitmaps = emptyList()
+                                        scannedBarcodesList = emptyList()
+                                        selectedClueItems = emptyList()
+                                        launchCameraWithUri()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFFB020),
+                                        contentColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .uiAction("startNewCapture")
+                                ) {
+                                    Text(
+                                        text = "Start New Capture",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        } else {
 
                         // Golden Corpus Auto-Save Status & Quick Next-Device Loop Button (only when photos were captured)
                         if (capturedBitmaps.isNotEmpty()) {
@@ -1566,9 +1727,7 @@ fun AddDeviceScreen(
                         }
                         }
 
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
-                        Text(result.nextNarrowingQuestion, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
 
                         // Discovered identifiers chips
                         if (accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
@@ -1636,6 +1795,201 @@ fun AddDeviceScreen(
                         letterSpacing = 1.sp
                     )
 
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiComponent("CandidateResultsList")
+                            .uiSlot("candidate-results-list")
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                    ) {
+                        result.candidates.forEachIndexed { index, candidate ->
+                            val badgeColor = if (candidate.confidencePercent >= 80) TuesdayTheme.HealthyGreen else (if (candidate.confidencePercent >= 50) TuesdayTheme.WarningAmber else TuesdayTheme.HacsCyan)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .uiComponent("CandidateResultItem")
+                                    .clickable { inspectedCandidate = candidate }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = candidate.displayName,
+                                    color = palette.textPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    maxLines = 2,
+                                    modifier = Modifier.weight(1f).padding(end = 10.dp)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(badgeColor.copy(alpha = 0.16f))
+                                        .border(1.dp, badgeColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = "${candidate.confidencePercent}% match",
+                                        color = badgeColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                            if (index < result.candidates.lastIndex) {
+                                HorizontalDivider(color = palette.border.copy(alpha = 0.5f), thickness = 0.5.dp)
+                            }
+                        }
+                    }
+
+                    inspectedCandidate?.let { candidate ->
+                        val badgeColor = if (candidate.confidencePercent >= 80) TuesdayTheme.HealthyGreen else (if (candidate.confidencePercent >= 50) TuesdayTheme.WarningAmber else TuesdayTheme.HacsCyan)
+                        ModalBottomSheet(
+                            onDismissRequest = { inspectedCandidate = null },
+                            containerColor = palette.elevated
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = candidate.displayName,
+                                        color = palette.textPrimary,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.weight(1f).padding(end = 10.dp)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(badgeColor.copy(alpha = 0.16f))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "${candidate.confidencePercent}% match",
+                                            color = badgeColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+
+                                HorizontalDivider(color = palette.border.copy(alpha = 0.5f))
+
+                                @Composable
+                                fun DetailRow(label: String, value: String?) {
+                                    if (!value.isNullOrBlank()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(label, color = palette.textMuted, fontSize = 12.sp)
+                                            Text(value, color = palette.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+
+                                DetailRow("Manufacturer", candidate.manufacturer)
+                                DetailRow("Model", candidate.modelNumber)
+                                candidate.goldAlignment?.let { ga ->
+                                    DetailRow("SureThingNet Insights", ga.statusLabel)
+                                    DetailRow("Feed", ga.matchedFeedName ?: ga.matchedFeedSlug)
+                                    DetailRow("Latest Release", ga.latestGoldRelease)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isSaving = true
+                                            val resolvedModel = candidate.modelNumber
+                                            if (capturedBitmaps.isNotEmpty()) {
+                                                GoldenCorpusRecorder.saveCaptureSession(
+                                                    context = context,
+                                                    sessionId = currentSessionId,
+                                                    bitmaps = capturedBitmaps,
+                                                    result = result,
+                                                    accumulatedIdentifiers = accumulatedIdentifiers,
+                                                    userClueNotes = userClueNotes,
+                                                    status = "user_confirmed",
+                                                    captureSource = currentCaptureSource,
+                                                    confirmedCandidate = candidate,
+                                                    confirmedModelOverride = resolvedModel
+                                                )
+                                                savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                                                savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
+                                            }
+                                            val meta = DiscoveredDeviceMetadata(
+                                                manufacturer = candidate.manufacturer,
+                                                modelNumber = resolvedModel,
+                                                deviceCategory = candidate.deviceCategory,
+                                                serialNumber = accumulatedIdentifiers.serialNumber,
+                                                macAddress = accumulatedIdentifiers.macAddress,
+                                                barcodeOrQr = accumulatedIdentifiers.barcode ?: accumulatedIdentifiers.qrCode,
+                                                confidenceScore = candidate.confidencePercent,
+                                                discoveryNotes = "Verified via Tuesday Hosted AI Proxy (${candidate.confidencePercent}% confidence)"
+                                            )
+                                            val idx = result.candidates.indexOf(candidate).coerceAtLeast(0)
+                                            discoveryService.confirmDeviceDiscovery(
+                                                inferredVendor = candidate.manufacturer,
+                                                inferredModel = candidate.modelNumber,
+                                                confirmedVendor = candidate.manufacturer,
+                                                confirmedModel = resolvedModel,
+                                                wasEdited = idx > 0,
+                                                accumulatedIdentifiers = accumulatedIdentifiers,
+                                                userClueNotes = userClueNotes,
+                                                selectedCandidateRank = idx,
+                                                resolutionStatus = if (mode == EnrollmentMode.BARCODE_SCAN && capturedBitmaps.isNotEmpty()) "pivoted_to_barcode" else "confirmed_candidate",
+                                                initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
+                                                finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
+                                                candidateModels = result.candidates.map { it.modelNumber },
+                                                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
+                                            )
+                                            repository.enrollDevice(
+                                                hostname = candidate.suggestedHostname,
+                                                osDetails = candidate.suggestedOsDetails,
+                                                packageManager = candidate.resolvedPackageManager,
+                                                agentToken = "",
+                                                inventoryState = if (candidate.confidencePercent >= 80) InventoryConfidenceState.VERIFIED_MATCH else InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
+                                                discoveredMetadata = meta
+                                            )
+                                            isSaving = false
+                                            inspectedCandidate = null
+                                            onNavigateBack()
+                                        }
+                                    },
+                                    enabled = !isSaving,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = TuesdayTheme.HealthyGreen,
+                                        contentColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp, bottom = 16.dp)
+                                        .uiAction("addToInventoryFromModal")
+                                ) {
+                                    Text(
+                                        text = if (isSaving) "Adding..." else "Add to Inventory",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (false) {
                     result.candidates.forEachIndexed { index, candidate ->
                         val badgeColor = if (candidate.confidencePercent >= 80) TuesdayTheme.HealthyGreen else (if (candidate.confidencePercent >= 50) TuesdayTheme.WarningAmber else TuesdayTheme.HacsCyan)
                         Column(
@@ -1683,7 +2037,7 @@ fun AddDeviceScreen(
                                 ) {
                                     Text(
                                         text = if (isAligned) {
-                                            "✓ GOLD ALIGNED • ${ga.matchedFeedSlug ?: "built-in-catalog"}"
+                                            "✓ SURETHINGNET INSIGHTS • ${ga.matchedFeedSlug ?: "built-in-catalog"}"
                                         } else if (!ga.matchedFeedSlug.isNullOrBlank()) {
                                             "⚠ ${ga.statusLabel} • ${ga.matchedFeedSlug}"
                                         } else {
@@ -1883,6 +2237,7 @@ fun AddDeviceScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Add as Incomplete / Best-Guess Device", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
+                        }
                     }
                 }
 
@@ -2052,4 +2407,5 @@ fun AddDeviceScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
 }

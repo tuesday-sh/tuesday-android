@@ -43,12 +43,6 @@ private data class RhythmPostureRow(
 // PILLAR 2 • 0-DAY WORKAROUNDS (S4–S6)
 // PILLAR 3 • HARDWARE LIFESPAN & EOL (S1)
 // PILLAR 4 • DEPENDENCY DRIFT & OCR PIN
-private val CANONICAL_AUDIT_PILLAR_LABELS = listOf(
-    "PILLAR 1 • PUBLISHED RECALLS & CISA KEV",
-    "PILLAR 2 • 0-DAY WORKAROUNDS (S4–S6)",
-    "PILLAR 3 • HARDWARE LIFESPAN & EOL (S1)",
-    "PILLAR 4 • DEPENDENCY DRIFT & OCR PIN"
-)
 
 fun hasActiveCheckupRecommendation(
     devices: List<RackPortDevice>,
@@ -395,18 +389,3 @@ fun RhythmScreen(
         }
     }
 }
-
-@Composable
-fun SeasonalCheckupScreen(
-    flavor: AppBrandFlavor,
-    palette: BrandPalette,
-    devices: List<RackPortDevice>,
-    welcomeComplete: Boolean = false,
-    onOpenReferenceGuide: () -> Unit = {}
-) = RhythmScreen(
-    flavor = flavor,
-    palette = palette,
-    devices = devices,
-    welcomeComplete = welcomeComplete,
-    onOpenReferenceGuide = onOpenReferenceGuide
-)

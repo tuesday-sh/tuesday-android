@@ -62,11 +62,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-enum class TimelineViewMode {
-    CANDLESTICKS,
-    ATTESTED_EVENTS
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineScreen(
@@ -74,7 +69,6 @@ fun TimelineScreen(
     palette: BrandPalette,
     devices: List<RackPortDevice>,
     attestations: List<DeviceAttestation> = emptyList(),
-    userSignature: String = "Aaron Bronow (sig_4b9a8c)",
     initialModal: String? = null,
     onConsumeInitialModal: () -> Unit = {},
     onOpenReferenceGuide: () -> Unit = {},
@@ -1513,30 +1507,3 @@ private fun SwimlaneCanvas(
         )
     }
 }
-
-@Composable
-fun SwimlaneTimelineScreen(
-    flavor: AppBrandFlavor,
-    palette: BrandPalette,
-    devices: List<RackPortDevice>,
-    attestations: List<DeviceAttestation> = emptyList(),
-    userSignature: String = "Aaron Bronow (sig_4b9a8c)",
-    initialModal: String? = null,
-    onConsumeInitialModal: () -> Unit = {},
-    onOpenReferenceGuide: () -> Unit = {},
-    onInspectDevice: (String) -> Unit = {},
-    onRecordAttestation: ((deviceId: String, type: AttestationType, auditDate: String, note: String?, sessionId: String?) -> DeviceAttestation)? = null,
-    onRecordBatchAudit: ((deviceIds: List<String>, auditDate: String, sessionId: String, note: String?) -> List<DeviceAttestation>)? = null
-) = TimelineScreen(
-    flavor = flavor,
-    palette = palette,
-    devices = devices,
-    attestations = attestations,
-    userSignature = userSignature,
-    initialModal = initialModal,
-    onConsumeInitialModal = onConsumeInitialModal,
-    onOpenReferenceGuide = onOpenReferenceGuide,
-    onInspectDevice = onInspectDevice,
-    onRecordAttestation = onRecordAttestation,
-    onRecordBatchAudit = onRecordBatchAudit
-)

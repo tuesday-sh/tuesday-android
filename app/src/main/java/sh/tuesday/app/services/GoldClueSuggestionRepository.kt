@@ -532,8 +532,6 @@ class GoldClueIndexData(
 
         return GeminiDiscoveryTurnResult(
             visualSummary = summary,
-            nextNarrowingQuestion = nextPrompt,
-            recommendedClueTypes = emptyList(),
             extractedIdentifiers = extracted,
             candidates = candidates,
             multipleDevicesDetected = false,
@@ -756,13 +754,18 @@ object GoldClueSuggestionRepository {
     @Volatile
     private var lastEdgeSyncEpochMs: Long = 0L
 
+    fun ensureLocalLoaded(context: Context): GoldClueIndexData? {
+        var current = _indexFlow.value
+        if (current == null) {
+            current = loadBestLocalSnapshot(context)
+            _indexFlow.value = current
+        }
+        return current
+    }
+
     suspend fun ensureLoaded(context: Context, serverBaseUrl: String? = null): GoldClueIndexData? =
         withContext(Dispatchers.IO) {
-            var current = _indexFlow.value
-            if (current == null) {
-                current = loadBestLocalSnapshot(context)
-                _indexFlow.value = current
-            }
+            val current = ensureLocalLoaded(context)
             if (!serverBaseUrl.isNullOrBlank()) {
                 val now = System.currentTimeMillis()
                 if (now - lastEdgeSyncEpochMs > 15 * 60 * 1000L) {

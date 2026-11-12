@@ -26,6 +26,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.NetworkSite
+import sh.tuesday.app.services.SubscriptionPlanOffer
+import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.uiAction
@@ -39,14 +41,21 @@ fun NetworkPickerModalDialog(
     palette: BrandPalette,
     entitlementTier: String = "free",
     flavor: AppBrandFlavor = AppBrandFlavor.TUESDAY_PRO,
+    plans: List<SubscriptionPlanOffer> = TuesdayBillingManager.defaultPlanOffers(),
+    selectedProductId: String = TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL,
+    onSelectPlan: (String) -> Unit = {},
+    isPurchasing: Boolean = false,
+    billingStatusMessage: String? = null,
+    initialShowUpgradePrompt: Boolean = false,
     onSelectNetwork: (String) -> Unit,
     onCreateNetwork: (String) -> Unit,
-    onUpgradeMultiSite: () -> Unit = {},
+    onUpgradeMultiSite: (String) -> Unit = {},
     onOpenNetworkSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var showSetupModal by remember { mutableStateOf(false) }
-    var showUpgradePrompt by remember { mutableStateOf(false) }
+    var showUpgradePrompt by remember(initialShowUpgradePrompt) { mutableStateOf(initialShowUpgradePrompt) }
+    var activePlanSku by remember(selectedProductId) { mutableStateOf(selectedProductId) }
 
     // In Free tier: only 1 real network + 1 demo network allowed. Creating additional real networks requires Multi-Site (Tier 1) on Tuesday.sh Pro.
     val isMultiSiteAllowed = entitlementTier == "multisite_tier_1" || entitlementTier == "pro_tier_1"
@@ -75,6 +84,24 @@ fun NetworkPickerModalDialog(
                 onDismiss()
             },
             onDismiss = { showSetupModal = false }
+        )
+    } else if (showUpgradePrompt) {
+        Tier1UpgradeModalDialog(
+            palette = palette,
+            plans = plans,
+            selectedProductId = activePlanSku,
+            onSelectPlan = { sku ->
+                activePlanSku = sku
+                onSelectPlan(sku)
+            },
+            isPurchasing = isPurchasing,
+            billingStatusMessage = billingStatusMessage,
+            onConfirmUpgrade = { sku ->
+                onUpgradeMultiSite(sku)
+                showUpgradePrompt = false
+                showSetupModal = true
+            },
+            onDismiss = { showUpgradePrompt = false }
         )
     } else {
         Dialog(
@@ -295,66 +322,7 @@ fun NetworkPickerModalDialog(
                 }
             }
 
-            // Multi-Site Entitlement Upgrade Card (when attempting to add > 1 real network on Free)
-            if (showUpgradePrompt) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(palette.elevated)
-                        .border(1.dp, palette.accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text("⚡", fontSize = 16.sp)
-                        Text(
-                            text = "Tuesday Multi-Site",
-                            color = palette.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
-                    Text(
-                        text = "Free accounts can manage 1 primary network and 1 demo sandbox. Upgrade to Multi-Site to track unlimited locations with live cloud sync and cross-site telemetry.",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                onUpgradeMultiSite()
-                                showUpgradePrompt = false
-                                showSetupModal = true
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = palette.accent,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Text("Upgrade & Continue", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(
-                            onClick = { showUpgradePrompt = false },
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, palette.border)
-                        ) {
-                            Text("Dismiss", color = palette.textMuted, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            // "Add a network" Button -> Opens "Setup a network" Modal (or triggers Multi-Site prompt if on Free)
+            // "Add a network" Button -> Opens "Setup a network" Modal (or opens Tier 1 Upgrade Modal if on Free)
             Button(
                 onClick = {
                     if (canAddNetworkWithoutUpgrade) {
@@ -386,6 +354,211 @@ fun NetworkPickerModalDialog(
             }
         }
     }
+    }
+}
+
+@Composable
+fun Tier1UpgradeModalDialog(
+    palette: BrandPalette,
+    plans: List<SubscriptionPlanOffer>,
+    selectedProductId: String,
+    onSelectPlan: (String) -> Unit,
+    isPurchasing: Boolean = false,
+    billingStatusMessage: String? = null,
+    onConfirmUpgrade: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .uiComponent("Tier1UpgradeModal")
+                .uiSlot("tier1-upgrade-card")
+                .clip(RoundedCornerShape(16.dp))
+                .background(palette.surface)
+                .border(1.dp, palette.accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header Row: Title, Badge, and Close button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("⚡", fontSize = 18.sp)
+                    Text(
+                        text = "Tuesday.sh Pro Tier 1",
+                        color = palette.textPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = palette.accent.copy(alpha = 0.16f)
+                    ) {
+                        Text(
+                            text = "MULTI-SITE",
+                            color = palette.accent,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .uiAction("closeTier1UpgradeModal")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = palette.textMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations, Family Site Management, and live cloud sync.",
+                color = palette.textMuted,
+                fontSize = 12.5.sp,
+                lineHeight = 17.sp
+            )
+
+            // Feature Highlights
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(palette.elevated)
+                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "✓ Unlimited physical sites & remote locations",
+                    color = palette.textPrimary,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "✓ Family & Team Site Delegation (QR & invite pairing)",
+                    color = palette.textPrimary,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "✓ Live cross-site security bulletins & cloud sync",
+                    color = palette.textPrimary,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // Monthly vs Annual Plan Selector
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                plans.forEach { offer ->
+                    val isSelected = selectedProductId == offer.productId
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("selectTier1Plan")
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) palette.accent.copy(alpha = 0.14f) else palette.elevated)
+                            .border(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) palette.accent else palette.border,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onSelectPlan(offer.productId) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = offer.title,
+                                color = if (isSelected) palette.accent else palette.textPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (offer.badge != null) {
+                                Text(
+                                    text = offer.badge,
+                                    color = TuesdayTheme.LedOkGreen,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                        Text(
+                            text = "${offer.formattedPrice} ${offer.periodLabel}",
+                            color = palette.textPrimary,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+
+            if (!billingStatusMessage.isNullOrBlank()) {
+                Text(
+                    text = billingStatusMessage,
+                    color = palette.textPrimary,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { onConfirmUpgrade(selectedProductId) },
+                    enabled = !isPurchasing,
+                    modifier = Modifier
+                        .weight(1f)
+                        .uiAction("confirmTier1Upgrade"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.accent,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(
+                        text = if (isPurchasing) "Processing..." else "Upgrade & Continue",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, palette.border)
+                ) {
+                    Text("Not Now", color = palette.textMuted, fontSize = 12.5.sp)
+                }
+            }
+        }
     }
 }
 

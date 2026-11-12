@@ -20,9 +20,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import android.content.Intent
+import android.net.Uri
 import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.MatchedFeedView
 import sh.tuesday.app.services.GoldenCorpusRecorder
+import sh.tuesday.app.services.SubscriptionPlanOffer
+import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.uiAction
@@ -36,11 +40,20 @@ data class AccountSettingsParams(
     val activeDeviceCount: Int,
     val isDeveloperMode: Boolean,
     val entitlementTier: String = "free",
+    val activeSubscriptionSku: String = TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL,
+    val plans: List<SubscriptionPlanOffer> = TuesdayBillingManager.defaultPlanOffers(),
+    val selectedProductId: String = TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL,
+    val onSelectPlan: (String) -> Unit = {},
+    val isPurchasing: Boolean = false,
+    val isRestoring: Boolean = false,
+    val billingStatusMessage: String? = null,
     val matchedFeeds: List<MatchedFeedView> = emptyList(),
     val remindersEnabled: Boolean = false,
     val onToggleReminders: ((Boolean) -> Unit)? = null,
     val onToggleMuteFeed: (String) -> Unit = {},
-    val onUpgradeProTier1: () -> Unit = {},
+    val onUpgradeProTier1: (String) -> Unit = {},
+    val onRestorePurchases: () -> Unit = {},
+    val onDowngradeFreeTier: () -> Unit = {},
     val onSaveNetworkName: (String) -> Unit = {},
     val onToggleDeveloperMode: (Boolean) -> Unit = {},
     val isVisionDebugEnabled: Boolean = true,
@@ -50,7 +63,13 @@ data class AccountSettingsParams(
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
     val onSwitchToFleetTab: () -> Unit = {},
     val initialExpandNetwork: Boolean = false,
+    val initialExpandPlan: Boolean = false,
     val initialExpandReminders: Boolean = false,
+    val initialExpandPreferences: Boolean = false,
+    val showStateFilterStrip: Boolean = true,
+    val onToggleShowStateFilterStrip: (Boolean) -> Unit = {},
+    val showZoneFilterStrip: Boolean = true,
+    val onToggleShowZoneFilterStrip: (Boolean) -> Unit = {},
     val onResendInventoryNotifications: suspend () -> Int = { 0 },
     val onTriggerMockPatchTuesday: () -> Boolean = { false },
     val onResetDemoData: () -> Unit = {}
@@ -123,9 +142,14 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
 
     // Accordion Expansion States
     var isNetworkOpen by remember(params.initialExpandNetwork) { mutableStateOf(params.initialExpandNetwork) }
+    var isPlanOpen by remember(params.initialExpandPlan) { mutableStateOf(params.initialExpandPlan) }
+    var isPreferencesOpen by remember(params.initialExpandPreferences) { mutableStateOf(params.initialExpandPreferences) }
     var isDevModeOpen by remember(isDeveloperMode) { mutableStateOf(isDeveloperMode) }
     var isRemindersOpen by remember(params.initialExpandReminders) { mutableStateOf(params.initialExpandReminders) }
     var isFeedsOpen by remember { mutableStateOf(false) }
+
+    val isProTier1 = params.entitlementTier == "pro_tier_1" || params.entitlementTier == "multisite_tier_1" || params.entitlementTier == "fleet"
+    var draftPlanSku by remember(params.selectedProductId) { mutableStateOf(params.selectedProductId) }
 
     val reminderStates = remember(params.remindersEnabled) {
         mutableStateMapOf(
@@ -286,6 +310,386 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // ==================== 1B. PLAN & ENTITLEMENT ACCORDION ITEM ====================
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 0.5.dp,
+                            color = palette.border.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(0.dp)
+                        )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("togglePlanAccordion")
+                            .clickable { isPlanOpen = !isPlanOpen }
+                            .padding(vertical = 14.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("⚡", fontSize = 16.sp)
+                            Text(
+                                text = "Plan & Multi-Site",
+                                color = palette.textPrimary,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isProTier1) "PRO TIER 1" else "FREE TIER",
+                                color = if (isProTier1) TuesdayTheme.LedOkGreen else palette.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = if (isPlanOpen) "▾" else "›",
+                            color = palette.textMuted,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    AnimatedVisibility(visible = isPlanOpen) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .uiSlot("account-plan-entitlement")
+                                .padding(start = 6.dp, end = 6.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = if (isProTier1) {
+                                    "Your Tuesday.sh Pro Tier 1 subscription is active. You can create unlimited network locations with live cloud sync and cross-site security telemetry."
+                                } else {
+                                    "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play to track unlimited locations with live cloud sync."
+                                },
+                                color = palette.textMuted,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+
+                            if (!isProTier1) {
+                                // Plan Selector (Annual vs Monthly)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    params.plans.forEach { offer ->
+                                        val isSelected = draftPlanSku == offer.productId
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .uiAction("selectTier1Plan")
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) palette.accent.copy(alpha = 0.14f) else palette.elevated)
+                                                .border(
+                                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                                    color = if (isSelected) palette.accent else palette.border,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable {
+                                                    draftPlanSku = offer.productId
+                                                    params.onSelectPlan(offer.productId)
+                                                }
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = offer.title,
+                                                    color = if (isSelected) palette.accent else palette.textPrimary,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                if (offer.badge != null) {
+                                                    Text(
+                                                        text = offer.badge,
+                                                        color = TuesdayTheme.LedOkGreen,
+                                                        fontSize = 8.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "${offer.formattedPrice} ${offer.periodLabel}",
+                                                color = palette.textPrimary,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { params.onUpgradeProTier1(draftPlanSku) },
+                                        enabled = !params.isPurchasing,
+                                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .uiAction("upgradeProTier1")
+                                    ) {
+                                        Text(
+                                            text = if (params.isPurchasing) "Processing..." else "Upgrade to Pro Tier 1",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { params.onRestorePurchases() },
+                                        enabled = !params.isRestoring,
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.uiAction("restorePurchases")
+                                    ) {
+                                        Text(
+                                            text = if (params.isRestoring) "Restoring..." else "Restore",
+                                            color = palette.textPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            } else {
+                                // Active Pro Tier 1 Card & Play Store Subscription Link
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(TuesdayTheme.LedOkGreen.copy(alpha = 0.12f))
+                                        .border(1.dp, TuesdayTheme.LedOkGreen.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = "✓ Active • Tuesday.sh Pro Tier 1",
+                                            color = TuesdayTheme.LedOkGreen,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "SKU: ${params.activeSubscriptionSku}",
+                                            color = palette.textMuted,
+                                            fontSize = 10.5.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            val playUri = Uri.parse(
+                                                "https://play.google.com/store/account/subscriptions?sku=${params.activeSubscriptionSku}&package=${context.packageName}"
+                                            )
+                                            runCatching {
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, playUri))
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.uiAction("managePlaySubscription")
+                                    ) {
+                                        Text(
+                                            text = "Manage in Play",
+                                            color = palette.textPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                if (isDeveloperMode) {
+                                    OutlinedButton(
+                                        onClick = { params.onDowngradeFreeTier() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .uiAction("resetEntitlementFree")
+                                    ) {
+                                        Text(
+                                            text = "🛠️ Dev: Reset Entitlement to Free Tier",
+                                            color = palette.textMuted,
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!params.billingStatusMessage.isNullOrBlank()) {
+                                Text(
+                                    text = params.billingStatusMessage,
+                                    color = palette.textPrimary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ==================== 1C. PREFERENCES ACCORDION ITEM ====================
+                val activePrefsCount = listOf(params.showStateFilterStrip, params.showZoneFilterStrip).count { it }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 0.5.dp,
+                            color = palette.border.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(0.dp)
+                        )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("togglePreferencesAccordion")
+                            .clickable { isPreferencesOpen = !isPreferencesOpen }
+                            .padding(vertical = 14.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.uiSlot("preferences-accordion-header")
+                        ) {
+                            Text("🎛️", fontSize = 16.sp)
+                            Text(
+                                text = "Preferences",
+                                color = palette.textPrimary,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "$activePrefsCount of 2 Active",
+                                color = palette.accent,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(
+                            text = if (isPreferencesOpen) "▾" else "›",
+                            color = palette.textMuted,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    AnimatedVisibility(visible = isPreferencesOpen) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .uiSlot("preferences-toggle-list")
+                                .padding(start = 4.dp, end = 4.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Customize which filter strips appear inside the Inventory card across both HOME and PRO flavors.",
+                                color = palette.textMuted,
+                                fontSize = 11.5.sp,
+                                lineHeight = 15.sp
+                            )
+
+                            // Toggle 1: Lifecycle State Filter Strip (All, CVE/KEV, EOL, Guessed, Update, OK)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .uiSlot("pref-state-filter-row")
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(palette.elevated)
+                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isStn) "Device Health Filter Strip" else "Lifecycle State Filter Strip",
+                                        color = palette.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Shows the lifecycle state filter chips (CVE/KEV, EOL, Guessed, Update, OK) above the device list when at least 1 device is enrolled.",
+                                        color = palette.textMuted,
+                                        fontSize = 10.5.sp,
+                                        lineHeight = 14.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                                Switch(
+                                    checked = params.showStateFilterStrip,
+                                    onCheckedChange = params.onToggleShowStateFilterStrip,
+                                    modifier = Modifier.uiAction("toggleShowStateFilterStrip"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = palette.accent,
+                                        uncheckedThumbColor = Color.White,
+                                        uncheckedTrackColor = palette.border
+                                    )
+                                )
+                            }
+
+                            // Toggle 2: Trust Zone Filter Strip (All Zones, Z1..Z4)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .uiSlot("pref-zone-filter-row")
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(palette.elevated)
+                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isStn) "Network Lane Filter Strip" else "Trust Zone Filter Strip",
+                                        color = palette.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Shows network segmentation pills (All Zones, Main / Trusted, IoT, Guest, Infrastructure) when at least 1 device is enrolled.",
+                                        color = palette.textMuted,
+                                        fontSize = 10.5.sp,
+                                        lineHeight = 14.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                                Switch(
+                                    checked = params.showZoneFilterStrip,
+                                    onCheckedChange = params.onToggleShowZoneFilterStrip,
+                                    modifier = Modifier.uiAction("toggleShowZoneFilterStrip"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = palette.accent,
+                                        uncheckedThumbColor = Color.White,
+                                        uncheckedTrackColor = palette.border
+                                    )
+                                )
                             }
                         }
                     }

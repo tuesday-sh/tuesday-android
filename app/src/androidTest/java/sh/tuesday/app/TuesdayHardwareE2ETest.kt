@@ -79,7 +79,7 @@ class TuesdayHardwareE2ETest {
         waitUntilAnyTagExists(
             "ui:component:BottomNavigationBar",
             "ui:component:WelcomeCard",
-            "ui:component:InventoryMatrixCard"
+            "ui:component:InventoryCard"
         )
     }
 
@@ -146,44 +146,45 @@ class TuesdayHardwareE2ETest {
     fun t01_botanicalSpineProgressiveDisclosureAndDualFlavorMatrix() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-        // 1. STN-Pro Day 0 (0 devices) -> WelcomeCard visible, InventoryMatrixCard absent
+        // 1. STN-Pro Day 0 (0 devices) -> WelcomeCard + chassis InventoryCard visible, TrackedHardwareProfilesCard absent
         navigateIntent("tuesday://flavor/pro")
         navigateIntent("tuesday://seed/0")
         assertAnyTagDisplayed("ui:component:WelcomeCard")
+        assertAnyTagDisplayed("ui:component:InventoryCard")
         assertTrue(
-            "Day 0 should hide InventoryMatrixCard",
-            composeRule.onAllNodesWithTag("ui:component:InventoryMatrixCard", useUnmergedTree = true)
+            "Day 0 should hide TrackedHardwareProfilesCard",
+            composeRule.onAllNodesWithTag("ui:component:TrackedHardwareProfilesCard", useUnmergedTree = true)
                 .fetchSemanticsNodes().isEmpty()
         )
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Pro • Day 0 (Welcome)")
 
-        // 2. Pea Tier (1 device) -> InventoryMatrixCard visible, C1-C8 faceplate hidden
+        // 2. Pea Tier (1 device) -> InventoryCard visible, state/zone filters & TrackedHardwareProfilesCard hidden
         navigateIntent("tuesday://seed/1")
-        assertAnyTagDisplayed("ui:component:InventoryMatrixCard")
+        assertAnyTagDisplayed("ui:component:InventoryCard")
         assertTrue(
-            "Pea tier (1 device) should hide PortCategoryFaceplateStrip",
-            composeRule.onAllNodesWithTag("ui:component:PortCategoryFaceplateStrip", useUnmergedTree = true)
+            "Pea tier (1 device) should hide state-filter-strip and TrackedHardwareProfilesCard",
+            composeRule.onAllNodesWithTag("ui:slot:state-filter-strip", useUnmergedTree = true)
                 .fetchSemanticsNodes().isEmpty() &&
-                composeRule.onAllNodesWithTag("ui:slot:c1-c8-strip", useUnmergedTree = true)
+                composeRule.onAllNodesWithTag("ui:component:TrackedHardwareProfilesCard", useUnmergedTree = true)
                     .fetchSemanticsNodes().isEmpty()
         )
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Pro • Pea (1 Device)")
 
-        // 3. Garden Tier (7 devices) -> Summary badge visible, C1-C8 faceplate still hidden
+        // 3. Garden Tier (7 devices) -> TrackedHardwareProfilesCard still hidden
         navigateIntent("tuesday://seed/7")
-        assertAnyTagDisplayed("ui:slot:summary-badge")
+        assertAnyTagDisplayed("ui:component:InventoryCard")
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Pro • Garden (7 Devices)")
 
         // 4. Forest Tier (12 devices) -> C1-C8 Faceplate Strip + 128 LED Grid + Tracked Profiles revealed
         navigateIntent("tuesday://seed/12")
-        assertAnyTagDisplayed("ui:component:PortCategoryFaceplateStrip", "ui:slot:c1-c8-strip")
-        assertAnyTagDisplayed("ui:component:LedMatrix128Grid", "ui:slot:led-grid-128")
+        assertAnyTagDisplayed("ui:component:CategoryFaceplateStrip", "ui:slot:c1-c8-strip")
+        assertAnyTagDisplayed("ui:component:InventoryLedGrid", "ui:slot:led-grid-128")
         assertAnyTagDisplayed("ui:component:TrackedHardwareProfilesCard", "ui:slot:tracked-profiles-strip")
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Pro • Forest (12 Devices)")
 
         // 5. Switch to STN-Home (Daylight Calm) in Forest Tier & verify re-theme + semantics
         navigateIntent("tuesday://flavor/home")
-        assertAnyTagDisplayed("ui:component:InventoryMatrixCard")
+        assertAnyTagDisplayed("ui:component:InventoryCard")
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Home • Forest (12 Devices)")
 
         navigateIntent("tuesday://flavor/pro")
@@ -278,6 +279,7 @@ class TuesdayHardwareE2ETest {
     fun t05_fleetFiltersShowOkToggleAndInspectorRemediationMutation() {
         navigateIntent("tuesday://flavor/pro")
         navigateIntent("tuesday://seed/12")
+        navigateIntent("tuesday://preferences/filters/on")
 
         // 1. Scroll to TrustZone filter strip & click second pill (Z0 / Z1), then reset to first ("All Zones")
         assertAnyTagDisplayed("ui:slot:zone-filter-strip")
@@ -314,7 +316,7 @@ class TuesdayHardwareE2ETest {
         )
 
         // 4. Open DeviceInspectorSheet on CVE device & mark remediation complete -> flips port to OK
-        navigateIntent("tuesday://device/0192d9f0-0008-7000-8000-000000000108")
+        navigateIntent("tuesday://device/0192d9f0-0006-7000-8000-000000000106")
         val remTag = waitUntilAnyTagExists("ui:action:markRemediationComplete", "ui:slot:remediation-cta")
         val remBtn = composeRule.onNodeWithTag(remTag, useUnmergedTree = true)
         runCatching { remBtn.performScrollTo() }
@@ -322,7 +324,7 @@ class TuesdayHardwareE2ETest {
         composeRule.waitForIdle()
 
         // Re-inspecting the remediated device should no longer show a remediation CTA (device is now OK)
-        navigateIntent("tuesday://device/0192d9f0-0008-7000-8000-000000000108")
+        navigateIntent("tuesday://device/0192d9f0-0006-7000-8000-000000000106")
         assertAnyTagDisplayed("ui:component:DeviceInspectorSheet", "ui:slot:inspector-header")
         assertTrue(
             "Remediated device should now be OK with no markRemediationComplete button",
@@ -393,8 +395,12 @@ class TuesdayHardwareE2ETest {
         assertAnyTagDisplayed("ui:component:NetworkPickerModal")
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Modal • NetworkPicker")
 
-        // 2. Open nested SetupNetworkModal, create "Pixel 5 Lab" site, verify Day 0 transition
+        // 2. Open Tier1UpgradeModal from New Network button (Free tier), upgrade to Pro Tier 1, then create "Pixel 5 Lab" site
         composeRule.onNodeWithTag("ui:action:openSetupNetworkModal", useUnmergedTree = true).performClick()
+        assertAnyTagDisplayed("ui:component:Tier1UpgradeModal")
+        ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Modal • Tier1Upgrade")
+
+        composeRule.onNodeWithTag("ui:action:confirmTier1Upgrade", useUnmergedTree = true).performClick()
         assertAnyTagDisplayed("ui:component:SetupNetworkModal")
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Modal • SetupNetwork")
 
@@ -403,7 +409,7 @@ class TuesdayHardwareE2ETest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Create Network & Join", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
-        assertAnyTagDisplayed("ui:component:WelcomeCard")
+        assertAnyTagDisplayed("ui:component:InventoryCard")
 
         // 3. Switch back via NetworkPickerModal `selectNetwork`
         navigateIntent("tuesday://network-picker")

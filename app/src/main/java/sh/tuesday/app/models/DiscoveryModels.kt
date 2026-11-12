@@ -109,12 +109,12 @@ data class DeviceCandidateMatch(
 @Serializable
 data class GeminiDiscoveryTurnResult(
     val visualSummary: String,
-    val nextNarrowingQuestion: String,
-    val recommendedClueTypes: List<String>,
     val extractedIdentifiers: ExtractedDeviceIdentifiers,
     val candidates: List<DeviceCandidateMatch>,
     val multipleDevicesDetected: Boolean = false,
     val multiDeviceWarning: String? = null,
+    val isNetworkedDevice: Boolean = true,
+    val outOfScopeReason: String? = null,
     val usedLiveGeminiApi: Boolean = true,
     val providerUsed: String = "Elastix.ai FPGA (qwen3.8-27b)",
     val latencyMs: Long = 0,

@@ -38,7 +38,7 @@ enum class InventoryScaleTier(
     DAY_ZERO("day_zero", "Day 0", 0, 0, false, false, false, false, ""),
     PEA("pea", "Pea", 1, 2, false, false, false, false, "🌱"),
     GARDEN("garden", "Garden", 3, 7, true, false, false, false, "🪴"),
-    FOREST("forest", "Forest", 8, 128, true, true, true, false, "🌲");
+    FOREST("forest", "Forest", 8, 128, true, true, true, true, "🌲");
 
     companion object {
         // Backward-compatibility aliases for existing tests
@@ -73,7 +73,19 @@ enum class StnHardwareCategory(
     C5_CAMERA("C5", 5, "L7", "Vision / Camera", "Smart Camera", "Camera", "Surveillance video, real-time RTSP/WebRTC streams, and perimeter sensing.", "UniFi Protect G5, Owlet Cam, Reolink"),
     C6_IOT("C6", 6, "L7", "Smart Home / IoT", "Smart Home Hub", "Smart IoT", "Home automation controllers, sensor bridges, and constrained smart peripherals.", "Home Assistant, Hubitat, Hue, Ecobee"),
     C7_CLIENT("C7", 7, "L7", "Workstation / Client", "Personal Computer / Phone", "Client", "Primary trusted user devices carrying user identities, keys, and productivity data.", "MacBook Pro, ThinkPad, Linux PC, iPad"),
-    C8_GUEST("C8", 8, "L8", "Guest / Human (L8)", "Guest / Visitor Device", "Guest L8", "Isolated perimeter for ephemeral human visitors, guest Wi-Fi, and user policy.", "Guest Portal, Visitor Laptop, Cast Client")
+    C8_GUEST("C8", 8, "L8", "Guest / Human (L8)", "Guest / Visitor Device", "Guest L8", "Isolated perimeter for ephemeral human visitors, guest Wi-Fi, and user policy.", "Guest Portal, Visitor Laptop, Cast Client");
+
+    val defaultIntakeClue: String
+        get() = when (this) {
+            C1_GATEWAY -> "Router / Gateway"
+            C2_SWITCH -> "Network Switch"
+            C3_AP -> "Wi-Fi Access Point"
+            C4_SERVER -> "NAS / Home Server"
+            C5_CAMERA -> "Security Camera"
+            C6_IOT -> "Smart Hub / Bridge"
+            C7_CLIENT -> "Workstation / Client"
+            C8_GUEST -> "TV / Speaker / Media"
+        }
 }
 
 @Serializable
@@ -927,24 +939,24 @@ object BulletinsAndInventoryEngine {
         RackPortDevice(
             id = "0192d9f0-0008-7000-8000-000000000108",
             portIndex = 1,
-            portState = PortLifecycleState.CVE_KEV,
+            portState = PortLifecycleState.OK,
             trustZone = TrustZone.Z0_CORE,
             category = StnHardwareCategory.C1_GATEWAY,
             assetTag = "STN-GW-01",
             shortLabel = "UDM-Pro",
             name = "UniFi Dream Machine Pro",
             roomLocation = "Basement Rack U02",
-            version = "4.0.20",
-            targetVersion = "4.0.20",
+            version = "4.0.21",
+            targetVersion = "4.0.21",
             releaseDate = "2020-02-15",
             purchaseDate = "2024-02-01",
             vendorEolAt = "2030-06-01",
             candles = listOf(
                 DeviceLifecycleCandle("3.2.12", 0.05f, 0.14f, 0.50f, 0.70f, null),
-                DeviceLifecycleCandle("4.0.20", 0.46f, 0.50f, 0.96f, 0.99f, 0.78f)
+                DeviceLifecycleCandle("4.0.21", 0.46f, 0.50f, 0.96f, 0.99f, null)
             ),
             lifecycleTier = "Active",
-            purls = listOf("pkg:generic/ui/unifi-os@4.0.20"),
+            purls = listOf("pkg:generic/ui/unifi-os@4.0.21"),
         ),
         RackPortDevice(
             id = "0192d9f0-0005-7000-8000-000000000105",

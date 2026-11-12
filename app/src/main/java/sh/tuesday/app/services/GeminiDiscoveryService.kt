@@ -173,8 +173,6 @@ class GeminiDiscoveryService(private val context: Context) {
                                         val latSec = String.format("%.2fs", lastTurn.optLong("latencyMs", 0L) / 1000.0)
                                         return GeminiDiscoveryTurnResult(
                                             visualSummary = "Recovered server analysis for ${cands.first().manufacturer} ${cands.first().modelNumber} (socket interrupted while app was backgrounded).",
-                                            nextNarrowingQuestion = lastTurn.optString("nextNarrowingQuestion", "Can you check for a Barcode, Serial Number, Model, or MAC Address on the label?"),
-                                            recommendedClueTypes = DeviceClueType.entries.map { it.rawValue },
                                             extractedIdentifiers = accumulatedIdentifiers,
                                             candidates = cands,
                                             usedLiveGeminiApi = true,
@@ -468,12 +466,12 @@ class GeminiDiscoveryService(private val context: Context) {
 
         return GeminiDiscoveryTurnResult(
             visualSummary = parsed.optString("visualSummary", "Analyzed device hardware."),
-            nextNarrowingQuestion = parsed.optString("nextNarrowingQuestion", "Can you check for a model number or MAC address?"),
-            recommendedClueTypes = if (recommendedClues.isEmpty()) DeviceClueType.entries.map { it.rawValue } else recommendedClues,
             extractedIdentifiers = merged,
             candidates = candidatesList,
             multipleDevicesDetected = parsed.optBoolean("multipleDevicesDetected", false),
             multiDeviceWarning = parsed.optString("multiDeviceWarning").takeIf { it.isNotBlank() && it != "null" },
+            isNetworkedDevice = parsed.optBoolean("isNetworkedDevice", true),
+            outOfScopeReason = parsed.optString("outOfScopeReason").takeIf { it.isNotBlank() && it != "null" },
             usedLiveGeminiApi = true,
             providerUsed = providerLabel,
             latencyMs = parsed.optLong("latencyMs", 0L),
@@ -527,8 +525,6 @@ class GeminiDiscoveryService(private val context: Context) {
             )
             return GeminiDiscoveryTurnResult(
                 visualSummary = "⚠ Connection interrupted before vision response arrived ($fallbackErrorReason). Keep the screen awake during analysis or tap the green Replay chip above to re-run this photo.",
-                nextNarrowingQuestion = "Tap the green Replay chip above to re-analyze this photo, or enter a Model / Barcode clue below.",
-                recommendedClueTypes = listOf("Model", "MAC Address", "Serial Number", "Barcode", "QR Code"),
                 extractedIdentifiers = accumulatedIdentifiers,
                 candidates = errCand,
                 usedLiveGeminiApi = false,
@@ -593,12 +589,6 @@ class GeminiDiscoveryService(private val context: Context) {
                 )
                 return GeminiDiscoveryTurnResult(
                     visualSummary = "Detected an aluminum USB Zigbee 3.0 coordinator / IoT radio peripheral with external dipole antenna.",
-                    nextNarrowingQuestion = if (hasSpecificClue) {
-                        "High-confidence match found (SONOFF Zigbee 3.0 USB Dongle Plus). Do you want to confirm this match or add a Serial Number / MAC Address?"
-                    } else {
-                        "Is there a Model Number (e.g. ZBDongle-E vs ZBDongle-P), Serial Number, Barcode, or MAC Address printed on the back of the aluminum casing?"
-                    },
-                    recommendedClueTypes = listOf("Model", "Serial Number", "Barcode", "MAC Address"),
                     extractedIdentifiers = accumulatedIdentifiers,
                     candidates = cands,
                     usedLiveGeminiApi = usedLiveApi,
@@ -686,12 +676,6 @@ class GeminiDiscoveryService(private val context: Context) {
                 } else {
                     "Identified a compact white desktop router / network gateway chassis. Multiple Ubiquiti UniFi models share this enclosure."
                 },
-                nextNarrowingQuestion = if (hasSpecificClue) {
-                    "Identifier verified! Candidate narrowed to Ubiquiti UniFi Cloud Gateway Ultra (UCG-Ultra). Confirm match below or add additional clues."
-                } else {
-                    "To narrow between UniFi Cloud Gateway Ultra (UCG-Ultra), Gateway Max (UXG-Max), and Express (UX), is there a Barcode, Serial Number, QR Code, Model, or MAC Address on the bottom label?"
-                },
-                recommendedClueTypes = listOf("Model", "MAC Address", "Serial Number", "Barcode", "QR Code"),
                 extractedIdentifiers = accumulatedIdentifiers,
                 candidates = cands,
                 usedLiveGeminiApi = usedLiveApi,

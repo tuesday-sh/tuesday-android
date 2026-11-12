@@ -22,10 +22,20 @@
 | **Photos and videos** | Photos (Hardware label / chassis camera scan) | **No (Ephemeral Only)** | **No** | **Yes (`X-Tuesday-Image-Retention: none_ephemeral_ram_only`)** | App functionality (Hardware model, barcode, and MAC sticker OCR discovery). Camera frames are processed strictly in ephemeral RAM and immediately cleared; zero photos are written to disk, databases, or cloud buckets. |
 | **Device or other IDs** | App-scoped installation UUID (`X-Tuesday-Device-ID`) | **Yes** | **No** | No | App functionality, fraud prevention, and API rate limiting (`30 req/hr` anonymous discovery). |
 | **App info and performance** | Diagnostics / Latency telemetry | **Yes** | **No** | No | Analytics & reliability monitoring (`latencyMs`, token counts). |
+| **Financial info** | Purchase history (`Google Play Billing v7` purchase token) | **Yes** | **No** | No | App functionality (Verifying `pro_tier_1` Multi-Site subscription entitlement via `/api/v1/billing/verify`). |
 
 ---
 
-## 3. Google Play App Review Instructions (Copy/Paste into Play Console -> App Content -> App Access)
+## 3. Google Play Billing v7 In-App Subscriptions (`pro_tier_1`)
+
+- **Subscription Product IDs (Play Console -> Monetize -> Subscriptions)**:
+  - `sh.tuesday.pro.tier1.monthly` — **\$4.99 / month** (Multi-Site & Cloud Sync)
+  - `sh.tuesday.pro.tier1.annual` — **\$49.00 / year** (Save 18% — Multi-Site & Cloud Sync)
+- **Server Verification**: `POST /api/v1/billing/verify` and `GET /api/v1/billing/status` (`entitlementTier = "pro_tier_1"`).
+
+---
+
+## 4. Google Play App Review Instructions (Copy/Paste into Play Console -> App Content -> App Access)
 
 > **No login or physical network hardware is required to test all features of Tuesday.sh:**
 > 1. Launch the app. On the initial **Welcome to Tuesday.sh** card (or inside the **Rack** tab), tap **"Explore 12-Device Demo Lab"**.
