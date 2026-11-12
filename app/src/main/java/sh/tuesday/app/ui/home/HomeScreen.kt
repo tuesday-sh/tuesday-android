@@ -769,190 +769,190 @@ private fun StatusMatrixAndActionListScreen(
             )
         }
 
-        if (scaleTier != InventoryScaleTier.DAY_ZERO) {
-            // 1. Inventory Card (8-Port Category Strip + 16x8 LED Matrix + Botanical Overlay)
-            item {
-                Column(
+        // 1. Inventory Card (8-Port Category Strip + 16x8 LED Matrix + Botanical Overlay)
+        // Always rendered even on Day 0 (visibleDevices.isEmpty()) to maintain continuous physical chassis anchoring during swipe
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiComponent("InventoryMatrixCard", "tier=${scaleTier.id};active=${visibleDevices.size}")
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Header: "Inventory" + Summary Badge + "+ Add Device" CTA + "?" Reference Guide button
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .uiComponent("InventoryMatrixCard", "tier=${scaleTier.id};active=${visibleDevices.size}")
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .uiSlot("header"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Header: "Inventory" + Summary Badge + "+ Add Device" CTA + "?" Reference Guide button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (visibleDevices.isEmpty()) "Inventory • 0 / 128" else "Inventory",
+                            color = palette.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.uiSlot("title")
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Always-present "+ Add Device" CTA button
+                        Row(
+                            modifier = Modifier
+                                .uiSlot("add-device-cta")
+                                .uiAction("openAddDevice")
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(palette.accent)
+                                .clickable { onNavigateToAddDevice() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = "Add Device",
+                                tint = Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = "+ Add Device",
+                                color = Color.White,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .uiSlot("help-button")
+                                .uiAction("openReferenceGuide")
+                                .clip(CircleShape)
+                                .background(palette.elevated)
+                                .border(1.dp, palette.border, CircleShape)
+                                .clickable { onOpenReferenceGuide() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "?",
+                                color = palette.textMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                // Unified ubnt-chassis container with HorizontalPager swipe between networks
+                val pagerNetworks = remember(networks) {
+                    if (networks.isNotEmpty()) networks else listOf(NetworkSite("net-default", "My Network", 0, "Primary"))
+                }
+                val currentNetworkIndex = remember(pagerNetworks, activeNetworkId) {
+                    pagerNetworks.indexOfFirst { it.id == activeNetworkId }.coerceAtLeast(0)
+                }
+                val pagerState = rememberPagerState(
+                    initialPage = currentNetworkIndex,
+                    pageCount = { pagerNetworks.size }
+                )
+
+                LaunchedEffect(pagerState.settledPage) {
+                    val targetNet = pagerNetworks.getOrNull(pagerState.settledPage)
+                    if (targetNet != null && targetNet.id != activeNetworkId) {
+                        onSelectNetwork(targetNet.id)
+                    }
+                }
+
+                LaunchedEffect(currentNetworkIndex) {
+                    if (pagerState.currentPage != currentNetworkIndex) {
+                        pagerState.animateScrollToPage(currentNetworkIndex)
+                    }
+                }
+
+                HorizontalPager(
+                    state = pagerState,
+                    beyondViewportPageCount = 1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                ) { page ->
+                    val net = pagerNetworks[page]
+                    val isCurrent = net.id == activeNetworkId
+                    val pageDevices = if (isCurrent) {
+                        visibleDevices
+                    } else if (net.id == "net-demo") {
+                        BulletinsAndInventoryEngine.defaultRackPortDevices()
+                    } else {
+                        emptyList()
+                    }
+                    val pageScaleTier = InventoryScaleTier.forCount(pageDevices.size)
+                    val pageSlots = BulletinsAndInventoryEngine.build128LedMatrix(pageDevices, selectedZoneFilter)
+
+                    InventoryChassisCard(
+                        network = net,
+                        devices = pageDevices,
+                        ledSlots = pageSlots,
+                        scaleTier = pageScaleTier,
+                        isStn = isStn,
+                        palette = palette,
+                        onInspectDevice = onInspectDevice,
+                        onNavigateToAddDevice = onNavigateToAddDevice
+                    )
+                }
+
+                // 5-State Color Legend Row (shown when filter chips are active)
+                if (scaleTier.showFilterChips) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .uiSlot("header"),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .uiSlot("legend-row")
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Inventory",
-                                color = palette.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.uiSlot("title")
-                            )
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // Always-present "+ Add Device" CTA button
-                            Row(
-                                modifier = Modifier
-                                    .uiSlot("add-device-cta")
-                                    .uiAction("openAddDevice")
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(palette.accent)
-                                    .clickable { onNavigateToAddDevice() }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CameraAlt,
-                                    contentDescription = "Add Device",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = "+ Add Device",
-                                    color = Color.White,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .uiSlot("help-button")
-                                    .uiAction("openReferenceGuide")
-                                    .clip(CircleShape)
-                                    .background(palette.elevated)
-                                    .border(1.dp, palette.border, CircleShape)
-                                    .clickable { onOpenReferenceGuide() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "?",
-                                    color = palette.textMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
+                        LedLegendDot("OK ($okCount)", TuesdayTheme.LedOkGreen, palette)
+                        LedLegendDot("CVE/KEV ($cveCount)", TuesdayTheme.LedCveRed, palette)
+                        LedLegendDot("EOL ($eolCount)", TuesdayTheme.LedEolAmber, palette)
+                        LedLegendDot("Guessed ($guessedCount)", TuesdayTheme.LedGuessedGrey, palette)
+                        LedLegendDot("Update ($updateCount)", TuesdayTheme.LedUpdateBlue, palette)
                     }
+                }
 
-                    // Unified ubnt-chassis container with HorizontalPager swipe between networks
-                    val pagerNetworks = remember(networks) {
-                        if (networks.isNotEmpty()) networks else listOf(NetworkSite("net-default", "My Network", 0, "Primary"))
-                    }
-                    val currentNetworkIndex = remember(pagerNetworks, activeNetworkId) {
-                        pagerNetworks.indexOfFirst { it.id == activeNetworkId }.coerceAtLeast(0)
-                    }
-                    val pagerState = rememberPagerState(
-                        initialPage = currentNetworkIndex,
-                        pageCount = { pagerNetworks.size }
-                    )
-
-                    LaunchedEffect(pagerState.settledPage) {
-                        val targetNet = pagerNetworks.getOrNull(pagerState.settledPage)
-                        if (targetNet != null && targetNet.id != activeNetworkId) {
-                            onSelectNetwork(targetNet.id)
-                        }
-                    }
-
-                    LaunchedEffect(currentNetworkIndex) {
-                        if (pagerState.currentPage != currentNetworkIndex) {
-                            pagerState.animateScrollToPage(currentNetworkIndex)
-                        }
-                    }
-
-                    HorizontalPager(
-                        state = pagerState,
-                        beyondViewportPageCount = 1,
+                // Trust Zone Filter Pills (shown at >= 8 devices)
+                if (scaleTier.showTrustZonePills) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                    ) { page ->
-                        val net = pagerNetworks[page]
-                        val isCurrent = net.id == activeNetworkId
-                        val pageDevices = if (isCurrent) {
-                            visibleDevices
-                        } else if (net.id == "net-demo") {
-                            BulletinsAndInventoryEngine.defaultRackPortDevices()
-                        } else {
-                            emptyList()
-                        }
-                        val pageScaleTier = InventoryScaleTier.forCount(pageDevices.size)
-                        val pageSlots = BulletinsAndInventoryEngine.build128LedMatrix(pageDevices, selectedZoneFilter)
-
-                        InventoryChassisCard(
-                            network = net,
-                            devices = pageDevices,
-                            ledSlots = pageSlots,
-                            scaleTier = pageScaleTier,
-                            isStn = isStn,
+                            .uiSlot("zone-filter-strip")
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        ZoneFilterPill(
+                            label = "All Zones",
+                            selected = selectedZoneFilter == null,
                             palette = palette,
-                            onInspectDevice = onInspectDevice,
-                            onNavigateToAddDevice = onNavigateToAddDevice
+                            onClick = { onSelectZone(null) }
                         )
-                    }
-
-                    // 5-State Color Legend Row (shown when filter chips are active)
-                    if (scaleTier.showFilterChips) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("legend-row")
-                                .padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            LedLegendDot("OK ($okCount)", TuesdayTheme.LedOkGreen, palette)
-                            LedLegendDot("CVE/KEV ($cveCount)", TuesdayTheme.LedCveRed, palette)
-                            LedLegendDot("EOL ($eolCount)", TuesdayTheme.LedEolAmber, palette)
-                            LedLegendDot("Guessed ($guessedCount)", TuesdayTheme.LedGuessedGrey, palette)
-                            LedLegendDot("Update ($updateCount)", TuesdayTheme.LedUpdateBlue, palette)
-                        }
-                    }
-
-                    // Trust Zone Filter Pills (shown at >= 8 devices)
-                    if (scaleTier.showTrustZonePills) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("zone-filter-strip")
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
+                        TrustZone.entries.forEach { zone ->
                             ZoneFilterPill(
-                                label = "All Zones",
-                                selected = selectedZoneFilter == null,
+                                label = if (isStn) zone.stnLabel else "${zone.shortCode} ${zone.stnLabel}",
+                                selected = selectedZoneFilter == zone,
                                 palette = palette,
-                                onClick = { onSelectZone(null) }
+                                onClick = { onSelectZone(zone) }
                             )
-                            TrustZone.entries.forEach { zone ->
-                                ZoneFilterPill(
-                                    label = if (isStn) zone.stnLabel else "${zone.shortCode} ${zone.stnLabel}",
-                                    selected = selectedZoneFilter == zone,
-                                    palette = palette,
-                                    onClick = { onSelectZone(zone) }
-                                )
-                            }
                         }
                     }
                 }
             }
+        }
 
             // 1B. Tracked Hardware Profiles Strip (Forest Tier >= 8 devices on STN-Pro)
             if (scaleTier == InventoryScaleTier.FOREST && !isStn && visibleDevices.isNotEmpty()) {
@@ -1217,7 +1217,6 @@ private fun StatusMatrixAndActionListScreen(
             }
         }
     }
-}
 
 @Composable
 fun RiskMeter(
@@ -1519,17 +1518,16 @@ private fun InventoryChassisCard(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 8-Port Hardware Category Faceplate Strip (C1..C8) for >= 8 devices
-        if (scaleTier.showPortDiagramStrip) {
-            PortCategoryFaceplateStrip(
-                devices = devices,
-                isStn = isStn,
-                palette = palette,
-                onInspectDevice = onInspectDevice,
-                onNavigateToAddDevice = onNavigateToAddDevice
-            )
-            HorizontalDivider(color = palette.border, thickness = 1.dp)
-        }
+        // 8-Port Hardware Category Faceplate Strip (C1..C8)
+        // Show faceplate strip across all tiers (including Day 0 empty state) for consistent hardware silhouette
+        PortCategoryFaceplateStrip(
+            devices = devices,
+            isStn = isStn,
+            palette = palette,
+            onInspectDevice = onInspectDevice,
+            onNavigateToAddDevice = onNavigateToAddDevice
+        )
+        HorizontalDivider(color = palette.border, thickness = 1.dp)
 
         // 16 columns x 8 rows compact LED grid with bottom-snapped PNW monochrome pixel art overlay
         val rows = ledSlots.chunked(16)
