@@ -269,8 +269,21 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
+            Surface(
+                color = palette.surface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Left Brand title + toggle badge
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -278,18 +291,18 @@ fun HomeScreen(
                         if (!isStn) {
                             TuesdayCalendarHeartIcon(
                                 tint = TuesdayTheme.ProAccent,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = "tuesday.sh",
                                 color = palette.textPrimary,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.5.sp
+                                fontSize = 14.5.sp
                             )
                         } else {
                             Box(
                                 modifier = Modifier
-                                    .size(22.dp)
+                                    .size(20.dp)
                                     .clip(CircleShape)
                                     .background(palette.accent),
                                 contentAlignment = Alignment.Center
@@ -298,95 +311,94 @@ fun HomeScreen(
                                     imageVector = Icons.Default.Inventory2,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(11.dp)
                                 )
                             }
                             Text(
                                 text = brandFlavor.title,
                                 color = palette.textPrimary,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                fontSize = 14.sp
                             )
                         }
                         Surface(
                             onClick = { repository.toggleBrandFlavor() },
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = palette.elevated,
                             modifier = Modifier.uiAction("toggleBrandFlavor")
                         ) {
                             Text(
                                 text = brandFlavor.badge,
                                 color = palette.accent,
-                                fontSize = 8.5.sp,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    // Multi-Network Site Switcher Pill
-                    val isDemoActive = activeNetwork.id == "net-demo"
-                    Surface(
-                        onClick = { showNetworkPicker = true },
-                        shape = RoundedCornerShape(14.dp),
-                        color = palette.elevated,
-                        modifier = Modifier
-                            .padding(end = 6.dp)
-                            .uiAction("openNetworkPicker")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(5.dp)
-                                    .clip(CircleShape)
-                                    .background(palette.textMuted.copy(alpha = 0.7f))
-                            )
-                            Text(
-                                text = activeNetwork.name.ifBlank { "My Network" },
-                                color = palette.textPrimary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                             )
                         }
                     }
 
-                    // HACS & Data Management Button (Hamburger icon with status dot)
-                    Surface(
-                        onClick = { showHacsSheet = true },
-                        shape = RoundedCornerShape(14.dp),
-                        color = palette.elevated,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .uiAction("openHacsSettings")
+                    // Right Actions: Network Switcher + HACS/Menu Button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        // Multi-Network Site Switcher Pill
+                        Surface(
+                            onClick = { showNetworkPicker = true },
+                            shape = RoundedCornerShape(12.dp),
+                            color = palette.elevated,
+                            modifier = Modifier.uiAction("openNetworkPicker")
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(5.dp)
-                                    .border(1.dp, palette.textMuted.copy(alpha = 0.7f), CircleShape)
-                            )
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menu and HACS Settings",
-                                tint = palette.textPrimary,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .clip(CircleShape)
+                                        .background(palette.textMuted.copy(alpha = 0.7f))
+                                )
+                                Text(
+                                    text = activeNetwork.name.ifBlank { "My Network" },
+                                    color = palette.textPrimary,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        // HACS & Data Management Button (Hamburger icon with status dot)
+                        Surface(
+                            onClick = { showHacsSheet = true },
+                            shape = RoundedCornerShape(12.dp),
+                            color = palette.elevated,
+                            modifier = Modifier.uiAction("openHacsSettings")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .border(1.dp, palette.textMuted.copy(alpha = 0.7f), CircleShape)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Menu,
+                                    contentDescription = "Menu and HACS Settings",
+                                    tint = palette.textPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
-            )
+                }
+            }
         },
         bottomBar = {
             NavigationBar(
