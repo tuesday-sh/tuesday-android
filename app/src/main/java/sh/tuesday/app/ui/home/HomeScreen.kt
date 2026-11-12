@@ -1870,12 +1870,6 @@ private fun TrackedHardwareProfilesCard(
                     PortLifecycleState.EOL -> "EOL"
                     else -> "#${dev.portIndex}"
                 }
-                val verSub = if (dev.portState == PortLifecycleState.GUESSED || dev.version == "unverified") {
-                    "guess"
-                } else {
-                    "v${dev.version}"
-                }
-
                 Column(
                     modifier = Modifier
                         .width(52.dp)
@@ -1883,7 +1877,7 @@ private fun TrackedHardwareProfilesCard(
                         .uiAction("inspectDevice")
                         .clickable { onInspectDevice(dev.id) },
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -1928,14 +1922,6 @@ private fun TrackedHardwareProfilesCard(
                         color = palette.textPrimary,
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = verSub,
-                        color = palette.textMuted,
-                        fontSize = 7.5.sp,
-                        fontFamily = FontFamily.Monospace,
                         maxLines = 1,
                         textAlign = TextAlign.Center
                     )
