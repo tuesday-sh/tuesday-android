@@ -361,7 +361,7 @@ fun HomeScreen(
                         }
                     }
 
-                    // HACS Connectivity Pill
+                    // HACS & Data Management Button (Hamburger icon with status dot)
                     Surface(
                         onClick = { showHacsSheet = true },
                         shape = RoundedCornerShape(14.dp),
@@ -372,8 +372,8 @@ fun HomeScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -381,12 +381,11 @@ fun HomeScreen(
                                     .clip(CircleShape)
                                     .background(if (hacsConfig.isConnected) TuesdayTheme.LedOkGreen else TuesdayTheme.LedCveRed)
                             )
-                            Text(
-                                text = "HACS",
-                                color = palette.accent,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Menu and HACS Settings",
+                                tint = palette.textPrimary,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -647,6 +646,8 @@ fun HomeScreen(
                 repository.resetDemoData()
                 connectivity.setSimulateDisconnected(false)
             },
+            onExportBackupJson = { repository.exportInventoryBackupJson() },
+            onImportBackupJson = { jsonStr -> repository.importInventoryBackupJson(jsonStr) },
             onDismiss = { showHacsSheet = false }
         )
     }

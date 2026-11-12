@@ -1099,6 +1099,52 @@ class TuesdayRepository(context: Context) {
         persistConfig()
     }
 
+    fun exportInventoryBackupJson(): String {
+        val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
+
+        val backup = NetworkInventoryBackup(
+            version = "1.0.0",
+            exportedAt = nowIso,
+            activeNetworkId = _activeNetworkId.value,
+            networks = _userNetworks.value,
+            devices = _rackDevices.value,
+            mutedFeedSlugs = _mutedFeedSlugs.value.toList(),
+            attestations = _attestations.value
+        )
+        return json.encodeToString(backup)
+    }
+
+    fun importInventoryBackupJson(rawJson: String): Boolean {
+        return try {
+            val backup = json.decodeFromString<NetworkInventoryBackup>(rawJson)
+            if (backup.devices.isNotEmpty() || backup.networks.isNotEmpty()) {
+                if (backup.networks.isNotEmpty()) {
+                    _userNetworks.value = backup.networks
+                }
+                if (backup.activeNetworkId.isNotBlank()) {
+                    _activeNetworkId.value = backup.activeNetworkId
+                }
+                if (backup.devices.isNotEmpty()) {
+                    _rackDevices.value = backup.devices
+                    _activeDeviceCount.value = backup.devices.count { !it.isRetired && it.presenceState == DevicePresenceState.ACTIVE }
+                }
+                if (backup.mutedFeedSlugs.isNotEmpty()) {
+                    _mutedFeedSlugs.value = backup.mutedFeedSlugs.toSet()
+                }
+                if (backup.attestations.isNotEmpty()) {
+                    _attestations.value = backup.attestations
+                }
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun enableDemoMode() {
         val demoNet = _userNetworks.value.find { it.id == "net-demo" }
         if (demoNet == null) {

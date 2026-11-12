@@ -85,6 +85,17 @@ data class NetworkSite(
 )
 
 @Serializable
+data class NetworkInventoryBackup(
+    val version: String = "1.0.0",
+    val exportedAt: String,
+    val activeNetworkId: String,
+    val networks: List<NetworkSite>,
+    val devices: List<RackPortDevice>,
+    val mutedFeedSlugs: List<String> = emptyList(),
+    val attestations: List<DeviceAttestation> = emptyList()
+)
+
+@Serializable
 enum class TrustZone(val key: String, val shortCode: String, val displayLabel: String, val stnLabel: String, val slotCount: Int) {
     Z0_CORE("z0_core", "Z0", "Core Gear", "Wi-Fi & Network Gear", 16),
     Z1_TRUSTED("z1_trusted", "Z1", "Trusted", "Main Home Wi-Fi", 32),
