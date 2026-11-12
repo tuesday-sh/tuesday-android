@@ -373,9 +373,8 @@ fun HomeScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(if (hacsConfig.isConnected) TuesdayTheme.LedOkGreen else TuesdayTheme.LedCveRed)
+                                    .size(5.dp)
+                                    .border(1.dp, palette.textMuted.copy(alpha = 0.7f), CircleShape)
                             )
                             Icon(
                                 imageVector = Icons.Default.Menu,
