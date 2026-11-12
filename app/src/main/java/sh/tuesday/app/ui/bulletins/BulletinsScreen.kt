@@ -655,8 +655,8 @@ fun BulletinsScreen(
                         onRightNotchClick = onOpenFeedsSettings,
                         steps = completeSteps,
                         allStepsDone = true,
-                        primaryActionLabel = "✓ Completed",
-                        completeActionLabel = "✓ Completed",
+                        primaryActionLabel = "Completed",
+                        completeActionLabel = "Completed",
                         secondaryActionLabel = "Reopen",
                         onPrimaryAction = {
                             // Already completed
