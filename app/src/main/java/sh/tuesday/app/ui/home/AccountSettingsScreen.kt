@@ -52,7 +52,8 @@ data class AccountSettingsParams(
     val initialExpandNetwork: Boolean = false,
     val initialExpandReminders: Boolean = false,
     val onResendInventoryNotifications: suspend () -> Int = { 0 },
-    val onTriggerMockPatchTuesday: () -> Boolean = { false }
+    val onTriggerMockPatchTuesday: () -> Boolean = { false },
+    val onResetDemoData: () -> Unit = {}
 )
 
 data class ReminderCategoryDef(
@@ -605,8 +606,9 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             palette = palette,
                                             modifier = Modifier.weight(1f),
                                             onClick = {
-                                                onSetSimulatedDeviceCount(0)
-                                                onSwitchToFleetTab()
+                                                params.onResetDemoData()
+                                                params.onSetSimulatedDeviceCount(0)
+                                                params.onSwitchToFleetTab()
                                             }
                                         )
                                         DevStateSimButton(

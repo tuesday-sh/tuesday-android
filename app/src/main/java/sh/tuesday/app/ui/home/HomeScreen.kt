@@ -419,13 +419,21 @@ fun HomeScreen(
                         icon = {
                             BadgedBox(
                                 badge = {
-                                    if (tab == MainNavTab.BULLETINS && bulletinsPayload.inbox.isNotEmpty()) {
-                                        Badge(containerColor = TuesdayTheme.LedCveRed) {
-                                            Text(
-                                                text = bulletinsPayload.inbox.size.toString(),
-                                                color = Color.White,
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.Bold
+                                    if (tab == MainNavTab.BULLETINS) {
+                                        val hasIncompleteWelcomeBulletin = !bulletinDismissed && !bulletinMuted && !bulletinSnoozed &&
+                                            (visibleDevices.isEmpty() || !remindersEnabled || !dispatchSubscribed)
+                                        if (bulletinsPayload.inbox.isNotEmpty()) {
+                                            Badge(containerColor = TuesdayTheme.LedCveRed) {
+                                                Text(
+                                                    text = bulletinsPayload.inbox.size.toString(),
+                                                    color = Color.White,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        } else if (hasIncompleteWelcomeBulletin) {
+                                            Badge(
+                                                containerColor = TuesdayTheme.LedCveRed
                                             )
                                         }
                                     }
@@ -613,7 +621,8 @@ fun HomeScreen(
                             } else {
                                 false
                             }
-                        }
+                        },
+                        onResetDemoData = { repository.resetDemoData() }
                     )
                 )
             }

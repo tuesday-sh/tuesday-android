@@ -1109,12 +1109,16 @@ class TuesdayRepository(context: Context) {
         _bulletinDismissed.value = false
         _bulletinSnoozed.value = false
         _bulletinMuted.value = false
+        _remindersEnabled.value = false
+        _dispatchSubscribed.value = false
         _hacsConfig.value = HacsConfig()
         selectNetwork("net-default")
         prefs.edit()
             .putBoolean("bulletin_dismissed", false)
             .putBoolean("bulletin_snoozed", false)
             .putBoolean("bulletin_muted", false)
+            .putBoolean("monthly_reminders_enabled", false)
+            .putBoolean("dispatch_subscribed", false)
             .apply()
         persistDevices()
         persistConfig()
