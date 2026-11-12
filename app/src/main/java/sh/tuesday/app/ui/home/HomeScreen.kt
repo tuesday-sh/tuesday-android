@@ -745,30 +745,6 @@ private fun StatusMatrixAndActionListScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        // Welcome Bulletin Card (kept visible on home screen above inventory for continuity)
-        item {
-            WelcomeCard(
-                palette = palette,
-                activeDeviceCount = visibleDevices.size,
-                remindersEnabled = remindersEnabled,
-                dispatchSubscribed = dispatchSubscribed,
-                onSetDispatchSubscribed = onSetDispatchSubscribed,
-                bulletinDismissed = bulletinDismissed,
-                onSetBulletinDismissed = onSetBulletinDismissed,
-                bulletinSnoozed = bulletinSnoozed,
-                onSetBulletinSnoozed = onSetBulletinSnoozed,
-                bulletinMuted = bulletinMuted,
-                onSetBulletinMuted = onSetBulletinMuted,
-                onAddRouter = onAddRouter,
-                onAddAnyDevice = onAddAnyDevice,
-                onLoadDemoFleet = onLoadDemoFleet,
-                onOpenReferenceGuide = onOpenReferenceGuide,
-                onNavigateToBulletins = onNavigateToBulletins,
-                onNavigateToAccount = onNavigateToAccount,
-                onEnableReminders = onEnableReminders
-            )
-        }
-
         // 1. Inventory Card (8-Port Category Strip + 16x8 LED Matrix + Botanical Overlay)
         // Always rendered even on Day 0 (visibleDevices.isEmpty()) to maintain continuous physical chassis anchoring during swipe
         item {
@@ -952,6 +928,30 @@ private fun StatusMatrixAndActionListScreen(
                     }
                 }
             }
+        }
+
+        // Welcome Bulletin Card (kept visible on home screen above inventory for continuity)
+        item {
+            WelcomeCard(
+                palette = palette,
+                activeDeviceCount = visibleDevices.size,
+                remindersEnabled = remindersEnabled,
+                dispatchSubscribed = dispatchSubscribed,
+                onSetDispatchSubscribed = onSetDispatchSubscribed,
+                bulletinDismissed = bulletinDismissed,
+                onSetBulletinDismissed = onSetBulletinDismissed,
+                bulletinSnoozed = bulletinSnoozed,
+                onSetBulletinSnoozed = onSetBulletinSnoozed,
+                bulletinMuted = bulletinMuted,
+                onSetBulletinMuted = onSetBulletinMuted,
+                onAddRouter = onAddRouter,
+                onAddAnyDevice = onAddAnyDevice,
+                onLoadDemoFleet = onLoadDemoFleet,
+                onOpenReferenceGuide = onOpenReferenceGuide,
+                onNavigateToBulletins = onNavigateToBulletins,
+                onNavigateToAccount = onNavigateToAccount,
+                onEnableReminders = onEnableReminders
+            )
         }
 
             // 1B. Tracked Hardware Profiles Strip (Forest Tier >= 8 devices on STN-Pro)
