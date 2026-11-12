@@ -982,127 +982,45 @@ private fun StatusMatrixAndActionListScreen(
                 }
             }
 
-            // 2. Top-of-Inventory State Filter Chips (for >= 2 devices)
+            // 2. Top-of-Inventory Action-First Header + Show/Hide OK Toggle (for >= 2 devices)
             if (scaleTier.showFilterChips) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("state-filter-strip")
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            StateFilterChip(
-                                label = "All (${visibleDevices.size})",
-                                dotColor = null,
-                                selected = selectedPortStateFilter == null && includeOkDevices,
-                                palette = palette,
-                                onClick = {
-                                    onSelectPortState(null)
-                                    if (!includeOkDevices) onToggleIncludeOk()
-                                }
-                            )
-                            StateFilterChip(
-                                label = "CVE / KEV ($cveCount)",
-                                dotColor = TuesdayTheme.LedCveRed,
-                                selected = selectedPortStateFilter == PortLifecycleState.CVE_KEV,
-                                palette = palette,
-                                onClick = {
-                                    onSelectPortState(
-                                        if (selectedPortStateFilter == PortLifecycleState.CVE_KEV) null
-                                        else PortLifecycleState.CVE_KEV
-                                    )
-                                }
-                            )
-                            StateFilterChip(
-                                label = "EOL ($eolCount)",
-                                dotColor = TuesdayTheme.LedEolAmber,
-                                selected = selectedPortStateFilter == PortLifecycleState.EOL,
-                                palette = palette,
-                                onClick = {
-                                    onSelectPortState(
-                                        if (selectedPortStateFilter == PortLifecycleState.EOL) null
-                                        else PortLifecycleState.EOL
-                                    )
-                                }
-                            )
-                            StateFilterChip(
-                                label = "Guessed ($guessedCount)",
-                                dotColor = TuesdayTheme.LedGuessedGrey,
-                                selected = selectedPortStateFilter == PortLifecycleState.GUESSED,
-                                palette = palette,
-                                onClick = {
-                                    onSelectPortState(
-                                        if (selectedPortStateFilter == PortLifecycleState.GUESSED) null
-                                        else PortLifecycleState.GUESSED
-                                    )
-                                }
-                            )
-                            StateFilterChip(
-                                label = "Update ($updateCount)",
-                                dotColor = TuesdayTheme.LedUpdateBlue,
-                                selected = selectedPortStateFilter == PortLifecycleState.UPDATE,
-                                palette = palette,
-                                onClick = {
-                                    onSelectPortState(
-                                        if (selectedPortStateFilter == PortLifecycleState.UPDATE) null
-                                        else PortLifecycleState.UPDATE
-                                    )
-                                }
-                            )
-                            StateFilterChip(
-                                label = "OK ($okCount)",
-                                dotColor = TuesdayTheme.LedOkGreen,
-                                selected = selectedPortStateFilter == PortLifecycleState.OK,
-                                palette = palette,
-                                onClick = {
-                                    onSelectPortState(
-                                        if (selectedPortStateFilter == PortLifecycleState.OK) null
-                                        else PortLifecycleState.OK
-                                    )
-                                }
-                            )
-                        }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiSlot("action-list-header"),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = when {
+                                selectedPortStateFilter != null -> "FILTERED: ${(if (isStn) selectedPortStateFilter.stnLabel else selectedPortStateFilter.proLabel).uppercase()} (${actionDevices.size})"
+                                includeOkDevices -> "ALL NAMED DEVICES (${actionDevices.size})"
+                                else -> "NEEDS ATTENTION (${actionDevices.size})"
+                            },
+                            color = palette.textMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
 
-                        // Action-First Header + Show/Hide OK Toggle
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("action-list-header"),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = when {
-                                    selectedPortStateFilter != null -> "FILTERED: ${(if (isStn) selectedPortStateFilter.stnLabel else selectedPortStateFilter.proLabel).uppercase()} (${actionDevices.size})"
-                                    includeOkDevices -> "ALL NAMED DEVICES (${actionDevices.size})"
-                                    else -> "NEEDS ATTENTION (${actionDevices.size})"
-                                },
-                                color = palette.textMuted,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-
-                            if (selectedPortStateFilter == null) {
-                                Box(
-                                    modifier = Modifier
-                                        .uiAction("toggleIncludeOk")
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(palette.elevated)
-                                        .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                                        .clickable { onToggleIncludeOk() }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = if (includeOkDevices) "Hide OK Devices" else "Show OK (+$okCount)",
-                                        color = palette.accent,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
+                        if (selectedPortStateFilter == null) {
+                            Box(
+                                modifier = Modifier
+                                    .uiAction("toggleIncludeOk")
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(palette.elevated)
+                                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                                    .clickable { onToggleIncludeOk() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = if (includeOkDevices) "Hide OK Devices" else "Show OK (+$okCount)",
+                                    color = palette.accent,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
                         }
                     }
