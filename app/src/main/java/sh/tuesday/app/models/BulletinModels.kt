@@ -1184,78 +1184,85 @@ object BulletinsAndInventoryEngine {
             id = "f-01",
             slug = "ubiquiti-advisories",
             proName = "Ubiquiti UniFi Security & Firmware",
-            stnName = "UniFi Wi-Fi & Router Updates",
-            purlPrefixes = listOf("pkg:generic/ui/unifi-os", "pkg:generic/ui/u7-pro", "pkg:generic/ubiquiti/")
+            stnName = "UniFi Wi-Fi, Switch & Gateway Updates",
+            purlPrefixes = listOf("pkg:generic/ui/", "pkg:generic/ubiquiti/", "pkg:generic/ubiquiti-unifi/", "pkg:deb/ubiquiti/")
         ),
         CanonicalFeedItem(
             id = "f-02",
             slug = "cpsc-safety",
-            proName = "CPSC Consumer Recalls & IoT Advisories",
-            stnName = "U.S. Safety Recalls & Nursery Alerts",
-            purlPrefixes = listOf("pkg:generic/owlet/cam-2")
+            proName = "CPSC Consumer Safety & Power Recalls",
+            stnName = "CPSC Home, Nursery & Battery Safety Recalls",
+            purlPrefixes = listOf("pkg:generic/owlet/", "pkg:generic/anker/", "pkg:generic/ecoflow/", "pkg:generic/baseus/", "pkg:generic/jackery/", "pkg:generic/ugreen/", "pkg:generic/mophie/")
         ),
         CanonicalFeedItem(
             id = "f-03",
             slug = "vendor-eol-ledger",
-            proName = "CISA BOD 23-01 & Vendor EOL Ledger",
-            stnName = "Retired Device & End-of-Support Notices",
-            purlPrefixes = listOf("pkg:generic/netgear/r7000")
+            proName = "Netgear PSIRT, Firmware & EOL Ledger",
+            stnName = "Netgear Nighthawk, Orbi & Switch Lifespan Notices",
+            purlPrefixes = listOf("pkg:generic/netgear/")
         ),
         CanonicalFeedItem(
             id = "f-04",
             slug = "apple-proxmox-upstream",
-            proName = "Apple Hardware & Silicon Advisories",
-            stnName = "Apple MacBook & Silicon Notices",
-            purlPrefixes = listOf("pkg:generic/apple/macbook-pro-16", "pkg:generic/apple/macos", "pkg:deb/debian/proxmox-ve")
+            proName = "Apple macOS/iOS & Proxmox VE Releases",
+            stnName = "Apple Devices & Home Server Software",
+            purlPrefixes = listOf("pkg:generic/apple/", "pkg:generic/apple-ios/", "pkg:generic/apple-ipados/", "pkg:generic/apple-macos/", "pkg:deb/debian/proxmox-ve", "pkg:generic/proxmox/")
         ),
         CanonicalFeedItem(
             id = "f-05",
-            slug = "unraid-nintendo-stable",
-            proName = "Unraid OS & Nintendo Horizon OS",
-            stnName = "Media Server & Game Console Updates",
-            purlPrefixes = listOf("pkg:generic/limetech/unraid", "pkg:generic/nintendo/horizon-os")
+            slug = "unraid-os-releases",
+            proName = "Unraid OS Stable Release Channel",
+            stnName = "Unraid Storage Server Updates",
+            purlPrefixes = listOf("pkg:generic/limetech/unraid")
+        ),
+        CanonicalFeedItem(
+            id = "f-12",
+            slug = "nintendo-switch-updates",
+            proName = "Nintendo Switch & Horizon OS System Updates",
+            stnName = "Nintendo Switch Console Updates",
+            purlPrefixes = listOf("pkg:generic/nintendo/horizon-os")
         ),
         CanonicalFeedItem(
             id = "f-06",
             slug = "lg-esphome-iot",
-            proName = "LG webOS TV & ESPHome Firmware",
-            stnName = "Smart TV & Garage Sensor Updates",
-            purlPrefixes = listOf("pkg:generic/lg/webos", "pkg:generic/esphome/firmware", "pkg:generic/espressif/", "pkg:generic/ai-thinker/", "pkg:generic/nodemcu/")
+            proName = "LG webOS TV & ESPHome IoT Feed",
+            stnName = "LG Smart TV & Garage Smart Relay Feed",
+            purlPrefixes = listOf("pkg:generic/lg/webos", "pkg:generic/lg-webos/", "pkg:generic/esphome/", "pkg:generic/espressif/", "pkg:generic/nodemcu/", "pkg:generic/ai-thinker/", "pkg:generic/wemos/", "pkg:generic/m5stack/", "pkg:generic/quinled/")
         ),
         CanonicalFeedItem(
             id = "f-07",
             slug = "ecobee-umbrella",
-            proName = "Ecobee SmartThermostat Family Advisories",
-            stnName = "Ecobee Thermostat Security & Recalls",
-            purlPrefixes = listOf("pkg:generic/ecobee/*")
+            proName = "Ecobee Thermostat Family (OUI Umbrella)",
+            stnName = "Ecobee Thermostat Safety & Updates",
+            purlPrefixes = listOf("pkg:generic/ecobee/")
         ),
         CanonicalFeedItem(
             id = "f-08",
-            slug = "synology-dsm",
-            proName = "Synology DSM Advisories",
-            stnName = "Synology NAS Updates",
-            purlPrefixes = listOf("pkg:generic/synology/dsm", "pkg:generic/synology/")
+            slug = "synology-dsm-advisories",
+            proName = "Synology DSM Security Advisories",
+            stnName = "Synology Home NAS Updates",
+            purlPrefixes = listOf("pkg:generic/synology/", "pkg:generic/synology/dsm", "pkg:generic/synology-dsm/")
         ),
         CanonicalFeedItem(
             id = "f-09",
             slug = "cisco-ios-xe-enterprise",
             proName = "Cisco Catalyst IOS-XE Enterprise Advisories",
             stnName = "Cisco Enterprise Routers & Switches",
-            purlPrefixes = listOf("pkg:generic/cisco/")
+            purlPrefixes = listOf("pkg:generic/cisco/", "pkg:generic/cisco/ios-xe")
         ),
         CanonicalFeedItem(
             id = "f-10",
             slug = "smart-home-zigbee-matter-iot",
-            proName = "Home Assistant OS, SONOFF Zigbee & Matter Hubs",
-            stnName = "Smart Home Hub, Zigbee Dongle & Sensor Updates",
-            purlPrefixes = listOf("pkg:generic/sonoff/", "pkg:generic/home-assistant/", "pkg:generic/smlight/")
+            proName = "Home Assistant OS, Raspberry Pi, SMLIGHT & Matter Hubs",
+            stnName = "Smart Home Hub, Lighting, Audio & Camera Updates",
+            purlPrefixes = listOf("pkg:generic/home-assistant/", "pkg:generic/raspberry-pi/", "pkg:generic/smlight/", "pkg:generic/sonoff/", "pkg:generic/philips-hue/", "pkg:generic/lutron/", "pkg:generic/sonos/", "pkg:generic/reolink/", "pkg:generic/wyze/", "pkg:generic/shelly/", "pkg:generic/aqara/", "pkg:generic/brother/", "pkg:generic/samsung-galaxy/", "pkg:generic/google-pixel/")
         ),
         CanonicalFeedItem(
             id = "f-11",
             slug = "isp-docsis-fiber-managed",
             proName = "US ISP Broadband, DOCSIS 3.1 & Fiber ONT Provisioning",
             stnName = "Internet Provider Modem & Gateway Auto-Updates",
-            purlPrefixes = listOf("pkg:generic/motorola/", "pkg:generic/arris/", "pkg:generic/netgear/cm")
+            purlPrefixes = listOf("pkg:generic/xfinity/", "pkg:generic/technicolor/", "pkg:generic/at-t/", "pkg:generic/verizon/", "pkg:generic/spectrum/", "pkg:generic/t-mobile/", "pkg:generic/spacex-starlink/", "pkg:generic/starlink/", "pkg:generic/arris/", "pkg:generic/motorola/", "pkg:generic/hitron/", "pkg:generic/calix/", "pkg:generic/nokia/", "pkg:generic/nokia-fiber/", "pkg:generic/arcadyan-astoria/")
         )
     )
 
@@ -1418,7 +1425,7 @@ object BulletinsAndInventoryEngine {
         ),
         CuratedBulletinItem(
             externalId = "CVE-2024-10443-synology-ds220-plus",
-            canonicalFeedSlug = "synology-dsm",
+            canonicalFeedSlug = "synology-dsm-advisories",
             bulletinType = "cve",
             isHighSev = true,
             purlBase = "pkg:generic/synology/ds220-plus",
@@ -1432,7 +1439,7 @@ object BulletinsAndInventoryEngine {
         ),
         CuratedBulletinItem(
             externalId = "REL-synology-dsm-7.2.2-routine",
-            canonicalFeedSlug = "synology-dsm",
+            canonicalFeedSlug = "synology-dsm-advisories",
             bulletinType = "release",
             isHighSev = false,
             purlBase = "pkg:generic/synology/ds220-plus",

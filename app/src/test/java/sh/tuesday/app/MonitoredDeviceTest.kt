@@ -167,10 +167,14 @@ class MonitoredDeviceTest {
         assertNull(payload.inbox.find { it.externalId == "REL-esphome-2026.10.2" })
         assertNull(payload.inbox.find { it.externalId == "REL-ecobee-4.8.7.220" })
 
-        // Out-of-service devices (#04 Switch 2 RETIRED, #11 Garage ESP STOPPED_WORKING) are excluded from matchedPorts
-        val unraidFeed = payload.matchedFeeds.find { it.slug == "unraid-nintendo-stable" }
+        // Out-of-service devices (#04 Switch 2 RETIRED, #11 Garage ESP STOPPED_WORKING) are excluded from matchedFeeds/matchedPorts
+        val unraidFeed = payload.matchedFeeds.find { it.slug == "unraid-os-releases" }
         assertNotNull(unraidFeed)
         assertEquals(listOf("#07 unraid-lml"), unraidFeed!!.matchedPorts)
+
+        // #04 Switch 2 is RETIRED, so nintendo-switch-updates has no active devices and is not in matchedFeeds
+        val nintendoFeed = payload.matchedFeeds.find { it.slug == "nintendo-switch-updates" }
+        assertNull(nintendoFeed)
 
         val lgEspFeed = payload.matchedFeeds.find { it.slug == "lg-esphome-iot" }
         assertNotNull(lgEspFeed)

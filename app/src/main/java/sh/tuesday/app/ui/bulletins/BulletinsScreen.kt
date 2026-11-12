@@ -31,6 +31,7 @@ import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BulletinsScreen(
     flavor: AppBrandFlavor,
@@ -437,7 +438,11 @@ fun BulletinsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                    ) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -446,7 +451,8 @@ fun BulletinsScreen(
                                 text = feed.name,
                                 color = palette.textPrimary,
                                 fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             if (isProvisional) {
                                 Box(
@@ -460,7 +466,9 @@ fun BulletinsScreen(
                                         color = palette.textPrimary,
                                         fontSize = 8.sp,
                                         fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
+                                        fontFamily = FontFamily.Monospace,
+                                        softWrap = false,
+                                        maxLines = 1
                                     )
                                 }
                             }
@@ -485,7 +493,9 @@ fun BulletinsScreen(
                                 color = palette.textMuted,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                softWrap = false,
+                                maxLines = 1
                             )
                         }
                     } else {
@@ -510,7 +520,9 @@ fun BulletinsScreen(
                                 color = if (feed.isMuted) TuesdayTheme.LedEolAmber else palette.textPrimary,
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                softWrap = false,
+                                maxLines = 1
                             )
                         }
                     }
@@ -518,10 +530,10 @@ fun BulletinsScreen(
 
                 // Disambiguation chips for provisional best-guess feeds
                 if (isProvisional && feed.candidateModels.isNotEmpty()) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         feed.candidateModels.forEach { candidate ->
                             Box(
@@ -538,7 +550,9 @@ fun BulletinsScreen(
                                     color = palette.accent,
                                     fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = FontFamily.Monospace,
+                                    softWrap = false,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -556,7 +570,9 @@ fun BulletinsScreen(
                                 color = palette.textMuted,
                                 fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                softWrap = false,
+                                maxLines = 1
                             )
                         }
                     }
