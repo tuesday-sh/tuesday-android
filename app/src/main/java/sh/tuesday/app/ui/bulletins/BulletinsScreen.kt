@@ -171,7 +171,7 @@ fun BulletinsScreen(
                     title = "Patch Tuesday Readiness",
                     description = "Get your perimeter cataloged before vendors push critical firmware and OS fixes.",
                     leftNotchLabel = "BULLETIN",
-                    rightNotchLabel = "RHYTHM",
+                    rightNotchLabel = "CHECK-UP",
                     steps = steps,
                     allStepsDone = allStepsDone,
                     primaryActionLabel = "Snooze 24h",
@@ -647,11 +647,11 @@ fun BulletinsScreen(
 
                     NotchBulletinCard(
                         palette = palette,
-                        title = "Patch Tuesday Rhythm • Complete",
+                        title = "Patch Tuesday Check-Up • Complete",
                         description = "Enrolled & monitored. Inventory mapped, 10:00 AM PT push alerts enabled, monthly dispatch active.",
-                        leftNotchLabel = "RHYTHM COMPLETE",
+                        leftNotchLabel = "CHECK-UP COMPLETE",
                         leftNotchDotColor = TuesdayTheme.LedOkGreen,
-                        rightNotchLabel = "RHYTHM",
+                        rightNotchLabel = "CHECK-UP",
                         onRightNotchClick = onOpenFeedsSettings,
                         steps = completeSteps,
                         allStepsDone = true,
