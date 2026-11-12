@@ -38,6 +38,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.unit.IntOffset
 import sh.tuesday.app.R
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.ConnectivityMonitor
@@ -846,9 +852,9 @@ private fun StatusMatrixAndActionListScreen(
                             PortCategoryFaceplateStrip(
                                 devices = visibleDevices,
                                 isStn = isStn,
-                                onInspectCategoryDevice = { devId ->
-                                    if (devId != null) onInspectDevice(devId) else onNavigateToAddDevice()
-                                }
+                                palette = palette,
+                                onInspectDevice = onInspectDevice,
+                                onNavigateToAddDevice = onNavigateToAddDevice
                             )
                             HorizontalDivider(color = palette.border, thickness = 1.dp)
                         }
@@ -1509,86 +1515,401 @@ private fun LedLegendDot(label: String, color: Color, palette: BrandPalette) {
 private fun PortCategoryFaceplateStrip(
     devices: List<RackPortDevice>,
     isStn: Boolean,
-    onInspectCategoryDevice: (String?) -> Unit
+    palette: BrandPalette,
+    onInspectDevice: (String) -> Unit,
+    onNavigateToAddDevice: () -> Unit
 ) {
-    Row(
+    var activeContextCategory by remember { mutableStateOf<StnHardwareCategory?>(null) }
+    var selectedAnchorXInStripPx by remember { mutableFloatStateOf(0f) }
+    var stripWidthPx by remember { mutableFloatStateOf(0f) }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .uiComponent("PortCategoryFaceplateStrip")
-            .uiSlot("c1-c8-strip"),
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+            .onGloballyPositioned { coords ->
+                stripWidthPx = coords.size.width.toFloat()
+            }
     ) {
-        StnHardwareCategory.entries.forEach { category ->
-            val matchingDevs = devices.filter { it.category == category }
-            val count = matchingDevs.size
-            val hasDevices = count > 0
-            val primaryDev = matchingDevs.firstOrNull()
-            val stateColor = if (primaryDev != null) {
-                TuesdayTheme.ledColorFor(primaryDev.portState, isStn)
-            } else {
-                if (isStn) Color(0xFF94A3B8) else Color(0xFF4B5563)
-            }
-            val emptyBorder = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2D323E)
-            val iconBoxBg = if (isStn) Color(0xFFF8FAFC) else Color(0xFF20232B)
-            val iconBorderColor = if (hasDevices) stateColor.copy(alpha = 0.53f) else emptyBorder
-            val tickColor = if (hasDevices) stateColor.copy(alpha = 0.53f) else emptyBorder
-            val tileBgColor = if (hasDevices) stateColor else if (isStn) Color(0xFFE2E8F0) else Color(0xFF20232A)
-            val tileTextColor = when {
-                !hasDevices -> Color(0xFF6B7280)
-                !isStn && (primaryDev?.portState == PortLifecycleState.OK || primaryDev?.portState == PortLifecycleState.EOL) -> Color(0xFF090D0A)
-                else -> Color.White
-            }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .uiComponent("PortCategoryFaceplateStrip")
+                .uiSlot("c1-c8-strip"),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            StnHardwareCategory.entries.forEach { category ->
+                val matchingDevs = devices.filter { it.category == category }
+                val count = matchingDevs.size
+                val hasDevices = count > 0
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .uiSlot("category-col", "cat=${category.code};count=$count")
-                    .uiAction("inspectCategoryDevice")
-                    .clickable { onInspectCategoryDevice(primaryDev?.id) },
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // 1. Top 1:1 Square Hardware Silhouette Box (.ubnt-diagram-icon)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(iconBoxBg)
-                        .border(1.dp, iconBorderColor, RoundedCornerShape(6.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    HardwareCategorySvgIcon(
-                        category = category,
-                        tint = stateColor,
-                        modifier = Modifier.fillMaxSize(0.56f)
-                    )
+                // Worst severity in category (lowest severityPriority number = worst severity)
+                val worstState = matchingDevs
+                    .minByOrNull { it.portState.severityPriority }
+                    ?.portState
+
+                val stateColor = if (worstState != null) {
+                    TuesdayTheme.ledColorFor(worstState, isStn)
+                } else {
+                    if (isStn) Color(0xFF94A3B8) else Color(0xFF4B5563)
                 }
 
-                // 2. Middle Vertical Connector Tick (.ubnt-diagram-tick: 1dp x 6dp)
-                Box(
+                val isCategorySelected = activeContextCategory == category
+                val emptyBorder = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2D323E)
+                val iconBoxBg = if (isCategorySelected) {
+                    palette.accent.copy(alpha = 0.22f)
+                } else if (isStn) {
+                    Color(0xFFF8FAFC)
+                } else {
+                    Color(0xFF20232B)
+                }
+                val iconBorderColor = if (isCategorySelected) {
+                    palette.accent
+                } else if (hasDevices) {
+                    stateColor.copy(alpha = 0.53f)
+                } else {
+                    emptyBorder
+                }
+                val tickColor = if (hasDevices) stateColor.copy(alpha = 0.53f) else emptyBorder
+                val tileBgColor = if (hasDevices) stateColor else if (isStn) Color(0xFFE2E8F0) else Color(0xFF20232A)
+                val tileTextColor = when {
+                    !hasDevices -> Color(0xFF6B7280)
+                    !isStn && (worstState == PortLifecycleState.OK || worstState == PortLifecycleState.EOL) -> Color(0xFF090D0A)
+                    else -> Color.White
+                }
+
+                Column(
                     modifier = Modifier
-                        .padding(vertical = 2.dp)
-                        .width(1.dp)
-                        .height(6.dp)
-                        .background(tickColor)
+                        .weight(1f)
+                        .uiSlot("category-col", "cat=${category.code};count=$count")
+                        .uiAction("inspectCategoryDevice")
+                        .onGloballyPositioned { coords ->
+                            if (activeContextCategory == category) {
+                                selectedAnchorXInStripPx = coords.positionInParent().x + coords.size.width / 2f
+                            }
+                        }
+                        .clickable {
+                            if (activeContextCategory == category) {
+                                activeContextCategory = null
+                            } else {
+                                activeContextCategory = category
+                            }
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // 1. Top 1:1 Square Hardware Silhouette Box (.ubnt-diagram-icon)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(iconBoxBg)
+                            .border(1.dp, iconBorderColor, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        HardwareCategorySvgIcon(
+                            category = category,
+                            tint = stateColor,
+                            modifier = Modifier.fillMaxSize(0.56f)
+                        )
+                    }
+
+                    // 2. Middle Vertical Connector Tick (.ubnt-diagram-tick: 1dp x 6dp)
+                    Box(
+                        modifier = Modifier
+                            .padding(vertical = 2.dp)
+                            .width(1.dp)
+                            .height(6.dp)
+                            .background(tickColor)
+                    )
+
+                    // 3. Bottom 1:1 Square Port Count Tile (.ubnt-diagram-port-tile)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(tileBgColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = count.toString(),
+                            color = tileTextColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+
+        // Context Panel Callout Popup
+        if (activeContextCategory != null) {
+            val cat = activeContextCategory!!
+            val matchingDevs = devices.filter { it.category == cat }
+            val density = LocalDensity.current
+
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = with(density) {
+                    // Position below the strip (faceplate height is ~86dp)
+                    IntOffset(0, 92.dp.roundToPx())
+                },
+                onDismissRequest = { activeContextCategory = null },
+                properties = PopupProperties(focusable = true)
+            ) {
+                CategoryGalleryContextPanel(
+                    category = cat,
+                    devices = matchingDevs,
+                    isStn = isStn,
+                    palette = palette,
+                    anchorXInStripPx = selectedAnchorXInStripPx,
+                    stripWidthPx = stripWidthPx,
+                    onInspectDevice = { devId ->
+                        activeContextCategory = null
+                        onInspectDevice(devId)
+                    },
+                    onAddDevice = {
+                        activeContextCategory = null
+                        onNavigateToAddDevice()
+                    },
+                    onClose = { activeContextCategory = null }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryGalleryContextPanel(
+    category: StnHardwareCategory,
+    devices: List<RackPortDevice>,
+    isStn: Boolean,
+    palette: BrandPalette,
+    anchorXInStripPx: Float,
+    stripWidthPx: Float,
+    onInspectDevice: (String) -> Unit,
+    onAddDevice: () -> Unit,
+    onClose: () -> Unit
+) {
+    val density = LocalDensity.current
+    val pointerXFraction = if (stripWidthPx > 0f) {
+        (anchorXInStripPx / stripWidthPx).coerceIn(0.08f, 0.92f)
+    } else 0.5f
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp)
+            .uiComponent("CategoryGalleryContextPanel")
+    ) {
+        // Upward pointing arrow triangle pointing to the tapped diagram button
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+        ) {
+            val arrowCenterX = size.width * pointerXFraction
+            val arrowWidth = 14.dp.toPx()
+            val arrowHeight = 8.dp.toPx()
+            val path = Path().apply {
+                moveTo(arrowCenterX - arrowWidth / 2f, arrowHeight)
+                lineTo(arrowCenterX, 0f)
+                lineTo(arrowCenterX + arrowWidth / 2f, arrowHeight)
+                close()
+            }
+            drawPath(
+                path = path,
+                color = if (isStn) Color(0xFFE2E8F0) else Color(0xFF282C37)
+            )
+            val fillPath = Path().apply {
+                moveTo(arrowCenterX - arrowWidth / 2f + 1f, arrowHeight)
+                lineTo(arrowCenterX, 1f)
+                lineTo(arrowCenterX + arrowWidth / 2f - 1f, arrowHeight)
+                close()
+            }
+            drawPath(
+                path = fillPath,
+                color = if (isStn) Color(0xFFFFFFFF) else Color(0xFF14171F)
+            )
+        }
+
+        // Panel Card Chassis
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    width = 1.dp,
+                    color = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2E3442),
+                    shape = RoundedCornerShape(12.dp)
+                ),
+            color = if (isStn) Color(0xFFFFFFFF) else Color(0xFF14171F),
+            shadowElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Header: Category Icon + Title + Device Count Badge + Close Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(palette.accent.copy(alpha = 0.15f))
+                                .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(7.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            HardwareCategorySvgIcon(
+                                category = category,
+                                tint = palette.accent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = if (isStn) category.stnLabel else category.proLabel,
+                                    color = palette.textPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${category.code} · ${category.osiLayer}",
+                                    color = palette.textMuted,
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = if (devices.isEmpty()) "0 devices in inventory"
+                                else "${devices.size} ${if (category == StnHardwareCategory.C8_GUEST) "user(s)" else "device(s)"} enrolled",
+                                color = palette.textMuted,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+
+                    // Close (X) button
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = palette.textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(
+                    color = if (isStn) Color(0xFFE2E8F0) else Color(0xFF222631),
+                    thickness = 1.dp
                 )
 
-                // 3. Bottom 1:1 Square Port Count Tile (.ubnt-diagram-port-tile)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(tileBgColor),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = count.toString(),
-                        color = tileTextColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
-                    )
+                // Squircle Gallery of Devices in Category
+                if (devices.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "No devices enrolled in this category.",
+                            color = palette.textMuted,
+                            fontSize = 11.sp
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(palette.accent)
+                                .clickable { onAddDevice() }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "+ Add ${category.shortName} Device",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        devices.forEach { dev ->
+                            val devStateColor = TuesdayTheme.ledColorFor(dev.portState, isStn)
+                            Column(
+                                modifier = Modifier
+                                    .width(62.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onInspectDevice(dev.id) }
+                                    .padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF1E222B))
+                                        .border(
+                                            width = 1.5.dp,
+                                            color = devStateColor.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    HardwareCategorySvgIcon(
+                                        category = dev.category,
+                                        tint = devStateColor,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Text(
+                                    text = dev.shortLabel,
+                                    color = palette.textPrimary,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "#%02d".format(dev.portIndex),
+                                    color = palette.textMuted,
+                                    fontSize = 8.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
