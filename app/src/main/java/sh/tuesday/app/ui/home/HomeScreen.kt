@@ -45,6 +45,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.input.pointer.pointerInput
 import sh.tuesday.app.R
 import sh.tuesday.app.models.*
@@ -502,8 +504,9 @@ fun HomeScreen(
                     onInspectDevice = { devId ->
                         visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
                     },
-                    onSwipeNextNetwork = { repository.switchToNextNetwork() },
-                    onSwipePreviousNetwork = { repository.switchToPreviousNetwork() }
+                    networks = userNetworks,
+                    activeNetworkId = activeNetwork.id,
+                    onSelectNetwork = { repository.selectNetwork(it) }
                 )
                 MainNavTab.BULLETINS -> BulletinsScreen(
                     flavor = brandFlavor,
@@ -723,8 +726,9 @@ private fun StatusMatrixAndActionListScreen(
     onSetBulletinMuted: (Boolean) -> Unit = {},
     onLoadDemoFleet: () -> Unit,
     onInspectDevice: (String) -> Unit,
-    onSwipeNextNetwork: () -> Unit = {},
-    onSwipePreviousNetwork: () -> Unit = {}
+    networks: List<NetworkSite> = emptyList(),
+    activeNetworkId: String = "",
+    onSelectNetwork: (String) -> Unit = {}
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     val okCount = visibleDevices.count { it.portState == PortLifecycleState.OK }
@@ -849,91 +853,60 @@ private fun StatusMatrixAndActionListScreen(
                         }
                     }
 
-                    // Unified ubnt-chassis container: 8-Port Diagram Strip + 16x8 LED Matrix + PNW Pixel Art Overlay
-                    Column(
+                    // Unified ubnt-chassis container with HorizontalPager swipe between networks
+                    val pagerNetworks = remember(networks) {
+                        if (networks.isNotEmpty()) networks else listOf(NetworkSite("net-default", "My Network", 0, "Primary"))
+                    }
+                    val currentNetworkIndex = remember(pagerNetworks, activeNetworkId) {
+                        pagerNetworks.indexOfFirst { it.id == activeNetworkId }.coerceAtLeast(0)
+                    }
+                    val pagerState = rememberPagerState(
+                        initialPage = currentNetworkIndex,
+                        pageCount = { pagerNetworks.size }
+                    )
+
+                    LaunchedEffect(pagerState.settledPage) {
+                        val targetNet = pagerNetworks.getOrNull(pagerState.settledPage)
+                        if (targetNet != null && targetNet.id != activeNetworkId) {
+                            onSelectNetwork(targetNet.id)
+                        }
+                    }
+
+                    LaunchedEffect(currentNetworkIndex) {
+                        if (pagerState.currentPage != currentNetworkIndex) {
+                            pagerState.animateScrollToPage(currentNetworkIndex)
+                        }
+                    }
+
+                    HorizontalPager(
+                        state = pagerState,
+                        beyondViewportPageCount = 1,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF0B0D11))
-                            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // 8-Port Hardware Category Faceplate Strip (C1..C8) for >= 8 devices
-                        if (scaleTier.showPortDiagramStrip) {
-                            PortCategoryFaceplateStrip(
-                                devices = visibleDevices,
-                                isStn = isStn,
-                                palette = palette,
-                                onInspectDevice = onInspectDevice,
-                                onNavigateToAddDevice = onNavigateToAddDevice,
-                                onSwipeNextNetwork = onSwipeNextNetwork,
-                                onSwipePreviousNetwork = onSwipePreviousNetwork
-                            )
-                            HorizontalDivider(color = palette.border, thickness = 1.dp)
+                    ) { page ->
+                        val net = pagerNetworks[page]
+                        val isCurrent = net.id == activeNetworkId
+                        val pageDevices = if (isCurrent) {
+                            visibleDevices
+                        } else if (net.id == "net-demo") {
+                            BulletinsAndInventoryEngine.defaultRackPortDevices()
+                        } else {
+                            emptyList()
                         }
+                        val pageScaleTier = InventoryScaleTier.forCount(pageDevices.size)
+                        val pageSlots = BulletinsAndInventoryEngine.build128LedMatrix(pageDevices, selectedZoneFilter)
 
-                        // 16 columns x 8 rows compact LED grid with bottom-snapped PNW monochrome pixel art overlay
-                        val rows = ledSlots.chunked(16)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiComponent("LedMatrix128Grid")
-                                .uiSlot("led-grid-128")
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                rows.forEach { rowSlots ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        rowSlots.forEach { slot ->
-                                            val ledColor = TuesdayTheme.ledColorFor(slot.state, isStn)
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .aspectRatio(1f)
-                                                    .uiAction("inspectDevice")
-                                                    .clip(RoundedCornerShape(2.dp))
-                                                    .background(
-                                                        ledColor.copy(
-                                                            alpha = when (slot.state) {
-                                                                PortLifecycleState.UNASSIGNED -> 0.55f
-                                                                PortLifecycleState.OK -> 0.85f
-                                                                else -> 1f
-                                                            }
-                                                        )
-                                                    )
-                                                    .clickable(enabled = slot.deviceId != null) {
-                                                        slot.deviceId?.let { onInspectDevice(it) }
-                                                    }
-                                            )
-                                        }
-                                        repeat((16 - rowSlots.size).coerceAtLeast(0)) {
-                                            Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Bottom-snapped monochrome pixel art overlay (Sprout / 3 Pines / 9-Tree PNW Horizon)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomCenter)
-                                    .uiComponent("MatrixBotanicalPixelArtOverlay")
-                                    .uiSlot("botanical-overlay")
-                            ) {
-                                MatrixBotanicalPixelArtOverlay(
-                                    scaleTier = scaleTier,
-                                    activeCount = visibleDevices.size,
-                                    isStn = isStn
-                                )
-                            }
-                        }
+                        InventoryChassisCard(
+                            network = net,
+                            devices = pageDevices,
+                            ledSlots = pageSlots,
+                            scaleTier = pageScaleTier,
+                            isStn = isStn,
+                            palette = palette,
+                            onInspectDevice = onInspectDevice,
+                            onNavigateToAddDevice = onNavigateToAddDevice
+                        )
                     }
 
                     // 5-State Color Legend Row (shown when filter chips are active)
@@ -1527,43 +1500,116 @@ private fun LedLegendDot(label: String, color: Color, palette: BrandPalette) {
 }
 
 @Composable
+private fun InventoryChassisCard(
+    network: NetworkSite,
+    devices: List<RackPortDevice>,
+    ledSlots: List<LedSlot>,
+    scaleTier: InventoryScaleTier,
+    isStn: Boolean,
+    palette: BrandPalette,
+    onInspectDevice: (String) -> Unit,
+    onNavigateToAddDevice: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF0B0D11))
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // 8-Port Hardware Category Faceplate Strip (C1..C8) for >= 8 devices
+        if (scaleTier.showPortDiagramStrip) {
+            PortCategoryFaceplateStrip(
+                devices = devices,
+                isStn = isStn,
+                palette = palette,
+                onInspectDevice = onInspectDevice,
+                onNavigateToAddDevice = onNavigateToAddDevice
+            )
+            HorizontalDivider(color = palette.border, thickness = 1.dp)
+        }
+
+        // 16 columns x 8 rows compact LED grid with bottom-snapped PNW monochrome pixel art overlay
+        val rows = ledSlots.chunked(16)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .uiComponent("LedMatrix128Grid")
+                .uiSlot("led-grid-128")
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                rows.forEach { rowSlots ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        rowSlots.forEach { slot ->
+                            val ledColor = TuesdayTheme.ledColorFor(slot.state, isStn)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .uiAction("inspectDevice")
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(
+                                        ledColor.copy(
+                                            alpha = when (slot.state) {
+                                                PortLifecycleState.UNASSIGNED -> 0.55f
+                                                PortLifecycleState.OK -> 0.85f
+                                                else -> 1f
+                                            }
+                                        )
+                                    )
+                                    .clickable(enabled = slot.deviceId != null) {
+                                        slot.deviceId?.let { onInspectDevice(it) }
+                                    }
+                            )
+                        }
+                        repeat((16 - rowSlots.size).coerceAtLeast(0)) {
+                            Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
+                        }
+                    }
+                }
+            }
+
+            // Bottom-snapped monochrome pixel art overlay (Sprout / 3 Pines / 9-Tree PNW Horizon)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .uiComponent("MatrixBotanicalPixelArtOverlay")
+                    .uiSlot("botanical-overlay")
+            ) {
+                MatrixBotanicalPixelArtOverlay(
+                    scaleTier = scaleTier,
+                    activeCount = devices.size,
+                    isStn = isStn
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun PortCategoryFaceplateStrip(
     devices: List<RackPortDevice>,
     isStn: Boolean,
     palette: BrandPalette,
     onInspectDevice: (String) -> Unit,
-    onNavigateToAddDevice: () -> Unit,
-    onSwipeNextNetwork: () -> Unit = {},
-    onSwipePreviousNetwork: () -> Unit = {}
+    onNavigateToAddDevice: () -> Unit
 ) {
     var activeContextCategory by remember { mutableStateOf<StnHardwareCategory?>(null) }
     var selectedAnchorXInStripPx by remember { mutableFloatStateOf(0f) }
     var stripWidthPx by remember { mutableFloatStateOf(0f) }
-    var totalDragX by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDragX = 0f },
-                    onHorizontalDrag = { _, dragAmount ->
-                        totalDragX += dragAmount
-                    },
-                    onDragEnd = {
-                        val swipeThresholdPx = 48.dp.toPx()
-                        if (totalDragX < -swipeThresholdPx) {
-                            // Swiped Left -> Next Network
-                            onSwipeNextNetwork()
-                        } else if (totalDragX > swipeThresholdPx) {
-                            // Swiped Right -> Previous Network
-                            onSwipePreviousNetwork()
-                        }
-                        totalDragX = 0f
-                    },
-                    onDragCancel = { totalDragX = 0f }
-                )
-            }
             .onGloballyPositioned { coords ->
                 stripWidthPx = coords.size.width.toFloat()
             }
