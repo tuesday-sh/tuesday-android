@@ -1865,11 +1865,6 @@ private fun TrackedHardwareProfilesCard(
             featured.forEachIndexed { idx, dev ->
                 val stateColor = TuesdayTheme.ledColorFor(dev.portState, isStn = false)
                 val isSelected = idx == 0
-                val badgeText = when (dev.portState) {
-                    PortLifecycleState.CVE_KEV -> "!"
-                    PortLifecycleState.EOL -> "EOL"
-                    else -> "#${dev.portIndex}"
-                }
                 Column(
                     modifier = Modifier
                         .width(52.dp)
@@ -1899,23 +1894,6 @@ private fun TrackedHardwareProfilesCard(
                             tint = stateColor,
                             modifier = Modifier.size(19.dp)
                         )
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(2.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF121418))
-                                .border(1.dp, stateColor.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 3.dp, vertical = 0.5.dp)
-                        ) {
-                            Text(
-                                text = badgeText,
-                                color = stateColor,
-                                fontSize = 7.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
                     }
                     Text(
                         text = dev.shortLabel,
