@@ -354,11 +354,6 @@ fun HomeScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1
                             )
-                            Text(
-                                text = "▾",
-                                color = palette.textMuted,
-                                fontSize = 10.sp
-                            )
                         }
                     }
 
