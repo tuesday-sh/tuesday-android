@@ -528,6 +528,7 @@ fun HomeScreen(
                     },
                     onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
                     onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
+                    onNavigateToCheckUp = { activeTab = MainNavTab.CHECKUP },
                     onEnableReminders = {
                         onRequestNotificationPermission()
                         expandRemindersInSettings = true
