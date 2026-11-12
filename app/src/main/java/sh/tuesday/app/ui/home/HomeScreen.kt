@@ -346,14 +346,16 @@ fun HomeScreen(
                         // Multi-Network Site Switcher Pill
                         Surface(
                             onClick = { showNetworkPicker = true },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(13.dp),
                             color = palette.elevated,
-                            modifier = Modifier.uiAction("openNetworkPicker")
+                            modifier = Modifier
+                                .height(26.dp)
+                                .uiAction("openNetworkPicker")
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -374,14 +376,16 @@ fun HomeScreen(
                         // HACS & Data Management Button (Hamburger icon with status dot)
                         Surface(
                             onClick = { showHacsSheet = true },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(13.dp),
                             color = palette.elevated,
-                            modifier = Modifier.uiAction("openHacsSettings")
+                            modifier = Modifier
+                                .height(26.dp)
+                                .uiAction("openHacsSettings")
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -392,7 +396,7 @@ fun HomeScreen(
                                     imageVector = Icons.Default.Menu,
                                     contentDescription = "Menu and HACS Settings",
                                     tint = palette.textPrimary,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
