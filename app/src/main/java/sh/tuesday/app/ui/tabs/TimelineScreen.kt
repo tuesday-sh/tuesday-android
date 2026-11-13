@@ -400,16 +400,17 @@ fun TimelineScreen(
                     presenceState == DevicePresenceState.LOST ||
                     presenceState == DevicePresenceState.STOPPED_WORKING
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .clickable { onInspectDevice(candle.id) }
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                            .clickable { onInspectDevice(candle.id) }
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -446,55 +447,78 @@ fun TimelineScreen(
                             }
                         }
 
-                        // Mini Candlestick Bar Widget
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        // Timeline Candlestick Panel (condensed)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.bg)
+                                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             MiniCandleBar(
                                 candle = candle,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.fillMaxWidth().height(16.dp),
+                                showTodayMarker = true
                             )
-                            Text(
-                                text = statusText,
-                                color = statusBadgeColor,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
 
-                        // Operational metrics row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Released ${candle.releaseDateStr ?: "Launch"} • Active ${candle.deployDateStr ?: "Install"}",
+                                    color = palette.textMuted,
+                                    fontSize = 10.sp
+                                )
+                                Text(
+                                    text = "EOL: ${candle.eolDateStr ?: "TBD"}",
+                                    color = if (candle.isPastEol) TuesdayTheme.CriticalRed else palette.textMuted,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (candle.isPastEol) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                    if (candle.hasCveOrRecall || candle.isPastEol || candle.isEolNearing) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val preAgeText = "Release date: %s".format(candle.releaseDateStr ?: "Launch")
-                            val deployText = if (presenceState.isOutOfService) {
-                                "${presenceState.shortLabel}: %s".format(candle.decommissionDateStr ?: "Updated")
-                            } else {
-                                "Added: %s".format(candle.deployDateStr ?: "Enrollment")
+                            if (candle.hasCveOrRecall) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(TuesdayTheme.CriticalRed)
+                                )
                             }
-                            val eolText = "End of Support: %s".format(candle.eolDateStr ?: "TBD")
-
-                            Text(
-                                text = "$preAgeText  •  $deployText",
-                                color = palette.textMuted,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                text = eolText,
-                                color = if (isPastEol) Color(0xFFF87171) else palette.textMuted,
-                                fontSize = 11.sp,
-                                fontWeight = if (isPastEol) FontWeight.Bold else FontWeight.Normal
-                            )
+                            if (candle.isPastEol) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(TuesdayTheme.CriticalRed)
+                                )
+                            } else if (candle.isEolNearing) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(TuesdayTheme.LedEolAmber)
+                                )
+                            }
                         }
                     }
                 }
             }
             }
+        }
     }
 
     // Modal Sheet 1: Update Hardware Lifecycle Status for a Device

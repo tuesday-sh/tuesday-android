@@ -64,12 +64,26 @@ fun BulletinsScreen(
     bulletinSnoozed: Boolean = false,
     onSetBulletinSnoozed: (Boolean) -> Unit = {},
     bulletinMuted: Boolean = false,
-    onSetBulletinMuted: (Boolean) -> Unit = {}
+    onSetBulletinMuted: (Boolean) -> Unit = {},
+    initialBulletinId: String? = null,
+    onConsumeInitialBulletin: () -> Unit = {}
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     val context = LocalContext.current
     var showIgnoreDialog by remember { mutableStateOf(false) }
     var expandedModal by remember { mutableStateOf<ExpandedBulletinModal?>(null) }
+
+    LaunchedEffect(initialBulletinId, payload) {
+        if (!initialBulletinId.isNullOrBlank()) {
+            val activeMatch = payload.inbox.find { it.externalId == initialBulletinId }
+            val completedMatch = payload.completedBulletins.find { it.externalId == initialBulletinId }
+            when {
+                activeMatch != null -> expandedModal = ExpandedBulletinModal.Inbox(activeMatch, isCompleted = false)
+                completedMatch != null -> expandedModal = ExpandedBulletinModal.Inbox(completedMatch, isCompleted = true)
+            }
+            onConsumeInitialBulletin()
+        }
+    }
 
     val step1Done = activeDeviceCount > 0
     val step2Done = remindersEnabled

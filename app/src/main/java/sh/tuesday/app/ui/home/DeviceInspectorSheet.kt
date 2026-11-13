@@ -46,7 +46,7 @@ internal fun DeviceInspectorBottomSheet(
     isStn: Boolean,
     onApplyPatch: () -> Unit,
     onEditDevice: () -> Unit = {},
-    onNavigateToBulletins: () -> Unit = {},
+    onNavigateToBulletins: (String?) -> Unit = {},
     onClose: () -> Unit
 ) {
     val stateColor = TuesdayTheme.ledColorFor(device.portState, isStn)
@@ -102,7 +102,7 @@ internal fun DeviceInspectorBottomSheet(
                     .clip(RoundedCornerShape(8.dp))
                     .background(stateColor.copy(alpha = 0.12f))
                     .border(1.dp, stateColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                    .clickable { onNavigateToBulletins() }
+                    .clickable { onNavigateToBulletins(BulletinsAndInventoryEngine.findBulletinsForDevice(device).firstOrNull()?.externalId) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -256,7 +256,7 @@ internal fun DeviceInspectorBottomSheet(
                             .clip(RoundedCornerShape(6.dp))
                             .background(palette.surface)
                             .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                            .clickable { onNavigateToBulletins() }
+                            .clickable { onNavigateToBulletins(b.externalId) }
                             .padding(horizontal = 10.dp, vertical = 7.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically

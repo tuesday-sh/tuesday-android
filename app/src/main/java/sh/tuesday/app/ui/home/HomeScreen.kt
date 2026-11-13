@@ -131,6 +131,7 @@ fun HomeScreen(
     var expandRemindersInSettings by remember { mutableStateOf(false) }
     var expandPreferencesInSettings by remember { mutableStateOf(false) }
     var inspectedDevice by remember { mutableStateOf<RackPortDevice?>(null) }
+    var pendingBulletinId by remember { mutableStateOf<String?>(null) }
     var showHacsSheet by remember { mutableStateOf(false) }
     var showNetworkPicker by remember { mutableStateOf(false) }
     var networkPickerInitialUpgradePrompt by remember { mutableStateOf(false) }
@@ -618,6 +619,8 @@ fun HomeScreen(
                     onSelectNetwork = { repository.selectNetwork(it) }
                 )
                 MainNavTab.BULLETINS -> BulletinsScreen(
+                    initialBulletinId = pendingBulletinId,
+                    onConsumeInitialBulletin = { pendingBulletinId = null },
                     flavor = brandFlavor,
                     palette = palette,
                     payload = bulletinsPayload,
@@ -779,7 +782,8 @@ fun HomeScreen(
                     inspectedDevice = null
                     onNavigateToEditDevice(device.id)
                 },
-                onNavigateToBulletins = {
+                onNavigateToBulletins = { bulletinId ->
+                    pendingBulletinId = bulletinId
                     inspectedDevice = null
                     activeTab = MainNavTab.BULLETINS
                 },
