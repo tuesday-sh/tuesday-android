@@ -48,8 +48,8 @@ object GoldenCorpusRecorder {
     }
 
     fun getCorpusRootDir(context: Context): File {
-        val base = context.getExternalFilesDir("golden_corpus")
-            ?: File(context.filesDir, "golden_corpus")
+        val base = context.getExternalFilesDir("diagnostics")
+            ?: File(context.filesDir, "diagnostics")
         if (!base.exists()) base.mkdirs()
         return base
     }

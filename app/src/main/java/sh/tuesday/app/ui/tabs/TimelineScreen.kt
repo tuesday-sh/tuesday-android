@@ -6,6 +6,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -78,6 +81,16 @@ fun TimelineScreen(
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     var scrubberXNorm by remember { mutableFloatStateOf(0.72f) }
+    var zoomWidthDp by remember { mutableStateOf<Int?>(null) }
+    val hScroll = rememberScrollState()
+
+    LaunchedEffect(zoomWidthDp, hScroll.maxValue) {
+        scrubberXNorm = 0.72f
+        if (zoomWidthDp != null && hScroll.maxValue > 0) {
+            val targetScroll = (0.72f * hScroll.maxValue).toInt().coerceIn(0, hScroll.maxValue)
+            hScroll.animateScrollTo(targetScroll)
+        }
+    }
     val retiredOverrides = remember { mutableStateMapOf<String, Boolean>() }
     var selectedDeviceForAttestation by remember { mutableStateOf<RackPortDevice?>(null) }
     var showBatchAuditModal by remember { mutableStateOf(false) }
@@ -128,143 +141,144 @@ fun TimelineScreen(
         "2026-11-11 (+%dd projection)".format(-dayOffset)
     }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .uiComponent("SwimlaneTimelineScreen")
-            .padding(horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        // 1. Unboxed Header with Rhythm Inventory Check-In Trigger
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("timeline-header-card"),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+        // Top 1/3: Edge-to-edge 2D Candlestick Lifespan Canvas with pinned left device-name column
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(0.34f)
+                .background(Color(0xFF0B0D11))
+        ) {
+            if (currentCandles.isEmpty()) {
+                SwimlaneCanvas(
+                    candles = emptyList(),
+                    palette = palette,
+                    scrubberXNorm = scrubberXNorm,
+                    onScrubChanged = { scrubberXNorm = it },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                val vScroll = rememberScrollState()
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxSize()
+                        .verticalScroll(vScroll)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (isStn) "Hardware Lifespan" else "Hardware Lifecycles",
-                            color = palette.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .uiSlot("help-button")
-                                .uiAction("openReferenceGuide")
-                                .clip(CircleShape)
-                                .background(palette.elevated)
-                                .border(1.dp, palette.border, CircleShape)
-                                .clickable { onOpenReferenceGuide() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "?",
-                                color = palette.textMuted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                    SwimlaneLabelsColumn(
+                        candles = currentCandles,
+                        palette = palette
+                    )
+                    val scrollModifier = if (zoomWidthDp != null) {
+                        Modifier.weight(1f).horizontalScroll(hScroll)
+                    } else {
+                        Modifier.weight(1f)
                     }
-
-                    // Quick trigger for an Inventory Rhythm Check-In
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(palette.accent.copy(alpha = 0.15f))
-                            .border(0.8.dp, palette.accent, RoundedCornerShape(4.dp))
-                            .clickable { showBatchAuditModal = true }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "✓ Inventory Check-In",
-                            color = palette.accent,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
+                    Box(modifier = scrollModifier) {
+                        SwimlaneCanvas(
+                            candles = currentCandles,
+                            palette = palette,
+                            scrubberXNorm = scrubberXNorm,
+                            onScrubChanged = { scrubberXNorm = it },
+                            drawLabels = false,
+                            modifier = if (zoomWidthDp == null) Modifier.fillMaxWidth() else Modifier.width(zoomWidthDp!!.dp)
                         )
                     }
                 }
             }
         }
 
-        // ==================== HARDWARE CANDLESTICK ENVELOPE ====================
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(palette.surface)
-                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Cursor Date & Timeline Scrubber
-                Row(
+        // Bottom 2/3: Normal vertically scrollable content
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(0.66f)
+                .padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(vertical = 12.dp)
+        ) {
+            // Question mark button & Inventory Check-In button below the timeline graph
+            item {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF13171F))
-                        .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .uiSlot("timeline-header-card"),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Zoom level buttons
+                    val earliestRelease = currentCandles.mapNotNull { it.releaseDateStr }.minOrNull()
+                    val latestEol = currentCandles.mapNotNull { it.eolDateStr }.maxOrNull()
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("⏱", fontSize = 12.sp)
-                        Text(
-                            text = "POINT-IN-TIME CURSOR:",
-                            color = palette.textMuted,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = cursorDateStr,
-                            color = if (kotlin.math.abs(dayOffset) <= 1) Color(0xFF2EBD6B) else palette.accent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf(
+                                "All time" to null,
+                                "1yr" to 560,
+                                "6mo" to 840
+                            ).forEach { (label, wDp) ->
+                                val selected = zoomWidthDp == wDp
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (selected) palette.accent.copy(alpha = 0.2f) else palette.elevated)
+                                        .border(0.8.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(4.dp))
+                                        .clickable { zoomWidthDp = wDp }
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (selected) palette.accent else palette.textMuted,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (zoomWidthDp == null && (earliestRelease != null || latestEol != null)) {
+                                Text(
+                                    text = "${earliestRelease ?: "—"} → ${latestEol ?: "—"}",
+                                    color = palette.textMuted,
+                                    fontSize = 9.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .uiSlot("help-button")
+                                    .uiAction("openReferenceGuide")
+                                    .clip(CircleShape)
+                                    .background(palette.elevated)
+                                    .border(1.dp, palette.border, CircleShape)
+                                    .clickable { onOpenReferenceGuide() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "?",
+                                    color = palette.textMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
                     }
-
-                    if (kotlin.math.abs(dayOffset) > 1) {
-                        Text(
-                            text = "[RESET TODAY]",
-                            color = palette.accent,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.clickable { scrubberXNorm = 0.72f }
-                        )
-                    }
-                }
-
-                // 2D Candlestick Lifespan Canvas
-                SwimlaneCanvas(
-                    candles = currentCandles,
-                    palette = palette,
-                    scrubberXNorm = scrubberXNorm,
-                    onScrubChanged = { scrubberXNorm = it }
-                )
 
                 // Visual Grammar Legend (All 6 States)
                 Column(
@@ -277,7 +291,7 @@ fun TimelineScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "CANDLESTICK LIFECYCLE GRAMMAR:",
+                        text = "Legend:",
                         color = palette.accent,
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -321,28 +335,6 @@ fun TimelineScreen(
                     }
                 }
 
-                // Section Title
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, start = 2.dp, end = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (isStn) "Hardware Lifespan & Active Tenure" else "Hardware Operational Tenures",
-                        color = palette.textPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (currentCandles.size == 1) "1 HARDWARE NODE" else "${currentCandles.size} HARDWARE NODES",
-                        color = palette.accent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
             }
         }
 
@@ -398,72 +390,59 @@ fun TimelineScreen(
                 val devAttestations = remember(attestations, candle.id) {
                     attestations.filter { it.deviceId == candle.id }
                 }
+                val latestAtt = candle.latestAttestation ?: devAttestations.firstOrNull()
+                val currentYearPrefix = remember { java.time.LocalDate.now().year.toString() }
+                val checkedInThisYear = latestAtt?.auditDate?.startsWith(currentYearPrefix) == true
+                val needsStatusCheck = !checkedInThisYear ||
+                    isPastEol ||
+                    isEolNearing ||
+                    candle.hasCveOrRecall ||
+                    presenceState == DevicePresenceState.LOST ||
+                    presenceState == DevicePresenceState.STOPPED_WORKING
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
                         .clickable { onInspectDevice(candle.id) }
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    HorizontalDivider(color = palette.border, thickness = 1.dp)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (candle.portIndex > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(statusBadgeColor),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = candle.portIndex.toString(),
-                                            color = Color.White,
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = candle.name,
-                                    color = palette.textPrimary,
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
+                            Text(
+                                text = candle.name,
+                                color = palette.textPrimary,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
 
-                            // Update Lifecycle Status action button
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(palette.accent.copy(alpha = 0.15f))
-                                    .border(0.8.dp, palette.accent, RoundedCornerShape(4.dp))
-                                    .clickable {
-                                        val targetDev = effectiveDevices.find { it.id == candle.id }
-                                        selectedDeviceForAttestation = targetDev
-                                    }
-                                    .padding(horizontal = 7.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "Update Status",
-                                    color = palette.accent,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                            // Update Lifecycle Status action button (only when annual check-in is due or risk/lifecycle trigger)
+                            if (needsStatusCheck) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(palette.accent.copy(alpha = 0.15f))
+                                        .border(0.8.dp, palette.accent, RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            val targetDev = effectiveDevices.find { it.id == candle.id }
+                                            selectedDeviceForAttestation = targetDev
+                                        }
+                                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Update Status",
+                                        color = palette.accent,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
                         }
 
@@ -492,13 +471,13 @@ fun TimelineScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val preAgeText = "Pre-adoption: %s".format(candle.releaseDateStr ?: "Launch")
+                            val preAgeText = "Release date: %s".format(candle.releaseDateStr ?: "Launch")
                             val deployText = if (presenceState.isOutOfService) {
                                 "${presenceState.shortLabel}: %s".format(candle.decommissionDateStr ?: "Updated")
                             } else {
-                                "Active since: %s".format(candle.deployDateStr ?: "Enrollment")
+                                "Added: %s".format(candle.deployDateStr ?: "Enrollment")
                             }
-                            val eolText = "EOL: %s".format(candle.eolDateStr ?: "TBD")
+                            val eolText = "End of Support: %s".format(candle.eolDateStr ?: "TBD")
 
                             Text(
                                 text = "$preAgeText  •  $deployText",
@@ -512,25 +491,10 @@ fun TimelineScreen(
                                 fontWeight = if (isPastEol) FontWeight.Bold else FontWeight.Normal
                             )
                         }
-
-                        // Latest Rhythm Check-In Summary (Colloquial, no cryptographic jargon)
-                        val latestAtt = candle.latestAttestation ?: devAttestations.firstOrNull()
-                        if (latestAtt != null) {
-                            val checkInSummary = if (!latestAtt.note.isNullOrBlank()) {
-                                "✓ Last check-in: ${latestAtt.auditDate}  •  “${latestAtt.note}”"
-                            } else {
-                                "✓ Last check-in: ${latestAtt.auditDate}"
-                            }
-                            Text(
-                                text = checkInSummary,
-                                color = palette.textMuted.copy(alpha = 0.85f),
-                                fontSize = 10.5.sp
-                            )
-                        }
                     }
                 }
             }
-        }
+            }
     }
 
     // Modal Sheet 1: Update Hardware Lifecycle Status for a Device
@@ -1142,25 +1106,73 @@ fun MiniCandleBar(
 }
 
 @Composable
+private fun SwimlaneLabelsColumn(
+    candles: List<OperationalCandle>,
+    palette: BrandPalette
+) {
+    val canvasHeight = (candles.size * 20 + 22).coerceAtLeast(180).dp
+    Canvas(
+        modifier = Modifier
+            .width(96.dp)
+            .height(canvasHeight)
+            .background(Color(0xFF0B0D11))
+    ) {
+        val footerH = 12.dp.toPx()
+        val laneCount = candles.size.coerceAtLeast(1)
+        val laneH = (size.height - footerH) / laneCount
+        val labelPaint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            color = android.graphics.Color.WHITE
+            textSize = 9.5.sp.toPx()
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        candles.forEachIndexed { idx, candle ->
+            val yTop = idx * laneH
+            val yCenter = yTop + laneH / 2f
+            val dotColor = when {
+                candle.presenceState.isOutOfService -> Color(0xFF6B7280)
+                candle.hasCveOrRecall -> Color(0xFFEF4444)
+                candle.isPastEol -> Color(0xFFF87171)
+                candle.isEolNearing -> Color(0xFFF59E0B)
+                else -> Color(0xFF2EBD6B)
+            }
+            drawRect(
+                color = dotColor,
+                topLeft = Offset(0f, yTop + 2f),
+                size = Size(3.dp.toPx(), (laneH - 4f).coerceAtLeast(2f))
+            )
+            val label = candle.shortLabel
+            drawContext.canvas.nativeCanvas.drawText(
+                label,
+                7.dp.toPx(),
+                yCenter + 3.5.dp.toPx(),
+                labelPaint
+            )
+        }
+    }
+}
+
+@Composable
 private fun SwimlaneCanvas(
     candles: List<OperationalCandle>,
     palette: BrandPalette,
     scrubberXNorm: Float,
-    onScrubChanged: (Float) -> Unit
+    onScrubChanged: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    drawLabels: Boolean = true
 ) {
     val canvasHeight = if (candles.isEmpty()) {
         104.dp
     } else {
-        (candles.size * 20 + 22).coerceIn(56, 236).dp
+        (candles.size * 20 + 22).coerceAtLeast(180).dp
     }
     Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .height(canvasHeight)
             .background(Color(0xFF0B0D11))
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val labelW = 96.dp.toPx()
+                    val labelW = if (drawLabels) 96.dp.toPx() else 0f
                     val plotW = (size.width - labelW - 12.dp.toPx()).coerceAtLeast(10f)
                     val norm = ((offset.x - labelW) / plotW).coerceIn(0f, 1f)
                     onScrubChanged(norm)
@@ -1169,7 +1181,7 @@ private fun SwimlaneCanvas(
             .pointerInput(Unit) {
                 detectHorizontalDragGestures { change, _ ->
                     change.consume()
-                    val labelW = 96.dp.toPx()
+                    val labelW = if (drawLabels) 96.dp.toPx() else 0f
                     val plotW = (size.width - labelW - 12.dp.toPx()).coerceAtLeast(10f)
                     val norm = ((change.position.x - labelW) / plotW).coerceIn(0f, 1f)
                     onScrubChanged(norm)
@@ -1226,7 +1238,7 @@ private fun SwimlaneCanvas(
             return@Canvas
         }
 
-        val labelW = 96.dp.toPx()
+        val labelW = if (drawLabels) 96.dp.toPx() else 0f
         val plotW = (w - labelW - 12.dp.toPx()).coerceAtLeast(10f)
         val laneCount = candles.size.coerceAtLeast(1)
         val laneH = (h - footerH) / laneCount
@@ -1269,24 +1281,22 @@ private fun SwimlaneCanvas(
                 TrustZone.Z3_IOT -> Color(0xFFF59E0B)
                 TrustZone.Z4_GUEST -> Color(0xFF8E95A2)
             }
-            drawRect(
-                color = zoneColor,
-                topLeft = Offset(0f, yTop + 2f),
-                size = Size(3.dp.toPx(), (laneH - 4f).coerceAtLeast(2f))
-            )
+            if (drawLabels) {
+                drawRect(
+                    color = zoneColor,
+                    topLeft = Offset(0f, yTop + 2f),
+                    size = Size(3.dp.toPx(), (laneH - 4f).coerceAtLeast(2f))
+                )
 
-            // Device port + short name label
-            val label = if (candle.layer == LifecycleLayer.HARDWARE) {
-                "#%02d %s".format(candle.portIndex, candle.shortLabel)
-            } else {
-                candle.shortLabel
+                // Device port + short name label
+                val label = candle.shortLabel
+                drawContext.canvas.nativeCanvas.drawText(
+                    label,
+                    7.dp.toPx(),
+                    yCenter + 3.5.dp.toPx(),
+                    labelPaint
+                )
             }
-            drawContext.canvas.nativeCanvas.drawText(
-                label,
-                7.dp.toPx(),
-                yCenter + 3.5.dp.toPx(),
-                labelPaint
-            )
 
             // Subtle lane baseline rail
             drawLine(

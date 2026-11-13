@@ -81,13 +81,9 @@ internal fun InventoryCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
+            sh.tuesday.app.ui.components.SectionHeading(
                 text = "Inventory",
-                color = palette.textPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                softWrap = false,
+                palette = palette,
                 modifier = Modifier.uiSlot("inventory-title")
             )
             Row(

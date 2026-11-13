@@ -85,6 +85,9 @@ class TuesdayRepository(context: Context) {
     private val _isVisionDebugEnabled = MutableStateFlow(true)
     val isVisionDebugEnabled: StateFlow<Boolean> = _isVisionDebugEnabled.asStateFlow()
 
+    private val _isDiagnosticsEnabled = MutableStateFlow(false)
+    val isDiagnosticsEnabled: StateFlow<Boolean> = _isDiagnosticsEnabled.asStateFlow()
+
     private val _userSignature = MutableStateFlow(
         prefs.getString("user_signature", null) ?: "Aaron Bronow (sig_4b9a8c)"
     )
@@ -106,6 +109,8 @@ class TuesdayRepository(context: Context) {
             val isDecomm = dev.presenceState != DevicePresenceState.ACTIVE || dev.isRetired
             val auditDate = if (isDecomm) {
                 dev.decommissionDate ?: "2025-10-01"
+            } else if (dev.portIndex in listOf(1, 3, 4, 5, 7, 8)) {
+                "2026-01-15"
             } else {
                 dev.purchaseDate ?: "2024-02-01"
             }
@@ -306,6 +311,11 @@ class TuesdayRepository(context: Context) {
         prefs.edit().putBoolean("is_vision_debug_enabled", enabled).apply()
     }
 
+    fun toggleDiagnosticsMode(enabled: Boolean) {
+        _isDiagnosticsEnabled.value = enabled
+        prefs.edit().putBoolean("is_diagnostics_enabled", enabled).apply()
+    }
+
     fun setSimulatedDeviceCount(count: Int) {
         val clamped = count.coerceIn(0, 128)
         _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
@@ -493,6 +503,7 @@ class TuesdayRepository(context: Context) {
     private fun loadConfig() {
         _isDeveloperMode.value = prefs.getBoolean("is_developer_mode", false)
         _isVisionDebugEnabled.value = prefs.getBoolean("is_vision_debug_enabled", true)
+        _isDiagnosticsEnabled.value = prefs.getBoolean("is_diagnostics_enabled", false)
         val raw = prefs.getString("hacs_config", null)
         if (raw != null) {
             try {

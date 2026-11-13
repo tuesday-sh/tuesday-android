@@ -106,6 +106,7 @@ fun HomeScreen(
     val activeDeviceCount by repository.activeDeviceCount.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
     val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
+    val isDiagnosticsEnabled by repository.isDiagnosticsEnabled.collectAsState()
     val entitlementTier by repository.entitlementTier.collectAsState()
     val activeSubscriptionSku by repository.activeSubscriptionSku.collectAsState()
     val billingUiState = if (billingManager != null) {
@@ -713,6 +714,8 @@ fun HomeScreen(
                         onToggleDeveloperMode = { repository.toggleDeveloperMode(it) },
                         isVisionDebugEnabled = isVisionDebugEnabled,
                         onToggleVisionDebugMode = { repository.toggleVisionDebugMode(it) },
+                        isDiagnosticsEnabled = isDiagnosticsEnabled,
+                        onToggleDiagnosticsMode = { repository.toggleDiagnosticsMode(it) },
                         tuesdayApiBaseUrl = hacsConfig.tuesdayApiBaseUrl,
                         onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },

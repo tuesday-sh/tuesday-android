@@ -112,6 +112,12 @@ fun GoldHardwareCluesPicker(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = palette.textMuted,
+                    modifier = Modifier.size(14.dp)
+                )
                 Text(
                     text = "CLUES",
                     color = palette.textMuted,

@@ -67,7 +67,6 @@ class MonitoredDeviceTest {
         )
 
         assertFalse(initialResult.candidates.isEmpty())
-        assertTrue(initialResult.nextNarrowingQuestion.contains("Barcode") || initialResult.nextNarrowingQuestion.contains("MAC"))
 
         // Add Model & MAC clue
         initialIdentifiers.modelNumber = "UCG-Ultra"

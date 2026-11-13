@@ -76,7 +76,7 @@ fun RhythmScreen(
             } else null
 
             val r2Action = if (!welcomeComplete) {
-                "Welcome Bulletin: Complete 3-step setup before Patch Tuesday (Nov 10, 2026)."
+                "Welcome Bulletin: Complete 3-step setup before Patch Tuesday (2nd Tuesday of the month)."
             } else null
 
             val r3Action = if (isDayZero) null else {
@@ -120,7 +120,7 @@ fun RhythmScreen(
         } else {
             val r1Action: String? = null
             val r2Action = if (!welcomeComplete) {
-                "Welcome Bulletin: 3 preparation steps for upcoming Patch Tuesday (Nov 10, 2026)."
+                "Welcome Bulletin: 3 preparation steps for upcoming Patch Tuesday (2nd Tuesday of the month)."
             } else null
             val r3Action = if (isDayZero) null else {
                 "! 1 Product Safety Recall (Nursery Baby Cam) • Check router admin password"
@@ -139,21 +139,21 @@ fun RhythmScreen(
                 ),
                 RhythmPostureRow(
                     id = "r2",
-                    title = "R2 • Monthly Patch Tuesday Readiness",
+                    title = "R2 • Monthly Patch Tuesday (2nd Tuesday)",
                     action = r2Action,
                     recommendation = if (r2Action != null) "Review Welcome Bulletin steps: [1 Add Router, 2 Turn On Notifications, 3 Subscribe]." else null,
                     accentColor = palette.accent
                 ),
                 RhythmPostureRow(
                     id = "r3",
-                    title = "R3 • Seasonal Safety & Router Password Check",
+                    title = "R3 • Quarterly Safety Check (Jan / Apr / Jul / Oct)",
                     action = r3Action,
                     recommendation = if (r3Action != null) "Verify your Wi-Fi router admin password is not the factory default (\"admin\")." else null,
                     accentColor = Color(0xFFDC2626)
                 ),
                 RhythmPostureRow(
                     id = "r4",
-                    title = "R4 • Yearly Hardware Lifespan & Warranty",
+                    title = "R4 • Annual Hardware Lifespan (January)",
                     action = r4Action,
                     recommendation = if (r4Action != null) "Consider upgrading or unplugging the old basement router." else null,
                     accentColor = Color(0xFF881337)

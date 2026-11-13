@@ -86,6 +86,7 @@ fun AddDeviceScreen(
     val brandFlavor by repository.brandFlavor.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
     val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
+    val isDiagnosticsEnabled by repository.isDiagnosticsEnabled.collectAsState()
     val showVisionDebug = isDeveloperMode && isVisionDebugEnabled
     val palette = TuesdayTheme.paletteFor(brandFlavor)
     val isStn = brandFlavor == AppBrandFlavor.SURETHING_HOME
@@ -189,19 +190,21 @@ fun AddDeviceScreen(
             res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
                 debugLogHistory = debugLogHistory + logEntry
             }
-            val savedDir = GoldenCorpusRecorder.saveCaptureSession(
-                context = context,
-                sessionId = currentSessionId,
-                bitmaps = updatedBitmaps,
-                result = res,
-                accumulatedIdentifiers = accumulatedIdentifiers,
-                userClueNotes = userClueNotes,
-                status = "auto_tagged",
-                captureSource = currentCaptureSource
-            )
-            lastSavedCorpusFolder = savedDir?.name
-            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
-            savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
+            if (isDeveloperMode && isDiagnosticsEnabled) {
+                val savedDir = GoldenCorpusRecorder.saveCaptureSession(
+                    context = context,
+                    sessionId = currentSessionId,
+                    bitmaps = updatedBitmaps,
+                    result = res,
+                    accumulatedIdentifiers = accumulatedIdentifiers,
+                    userClueNotes = userClueNotes,
+                    status = "auto_tagged",
+                    captureSource = currentCaptureSource
+                )
+                lastSavedCorpusFolder = savedDir?.name
+                savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
+                savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
+            }
             isAnalyzing = false
         }
     }
@@ -448,8 +451,8 @@ fun AddDeviceScreen(
         var showSynthMenu by remember { mutableStateOf(false) }
         var showResultsMenu by remember { mutableStateOf(false) }
 
-        // Left-side highlight card container for dev controls
-        Column(
+        // Left-side highlight card container for dev controls (2 columns: pickers left, toggles right)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .uiComponent("DevControlsCallout")
@@ -472,13 +475,14 @@ fun AddDeviceScreen(
                     )
                 }
                 .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
         ) {
 
-            // Row 1: Pickers (Replay... and Synthesize...)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Left Column: Dropdown Pickers (Replay..., Synthesize..., Results...)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (includePhotoSamples) {
                     // Replay... Native Picker Button
@@ -793,19 +797,11 @@ fun AddDeviceScreen(
                 }
             }
 
-            // Hairline separator between pickers and toggles
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(palette.border.copy(alpha = 0.5f))
-            )
-
-            // Row 2: Actual Toggle Switches for Debug Mode and AI Provider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // Right Column: Toggle Switches for Debug Mode, Diagnostics, and AI Provider
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalAlignment = Alignment.End
             ) {
                 // Debug Mode Switch
                 Row(
@@ -820,6 +816,12 @@ fun AddDeviceScreen(
                         }
                     }
                 ) {
+                    Text(
+                        text = "Debug Mode",
+                        color = if (showVisionDebug) TuesdayTheme.WarningAmber else palette.textMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                     Switch(
                         checked = showVisionDebug,
                         onCheckedChange = { checked ->
@@ -838,11 +840,45 @@ fun AddDeviceScreen(
                             uncheckedTrackColor = palette.surface
                         )
                     )
+                }
+
+                // Diagnostics Switch (save captures and debug log locally)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.clickable {
+                        if (!isDeveloperMode) {
+                            repository.toggleDeveloperMode(true)
+                            repository.toggleDiagnosticsMode(true)
+                        } else {
+                            repository.toggleDiagnosticsMode(!isDiagnosticsEnabled)
+                        }
+                    }
+                ) {
+                    val showDiagnostics = isDeveloperMode && isDiagnosticsEnabled
                     Text(
-                        text = "Debug Mode",
-                        color = if (showVisionDebug) TuesdayTheme.WarningAmber else palette.textMuted,
+                        text = "Diagnostics",
+                        color = if (showDiagnostics) TuesdayTheme.HacsCyan else palette.textMuted,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
+                    )
+                    Switch(
+                        checked = showDiagnostics,
+                        onCheckedChange = { checked ->
+                            if (!isDeveloperMode) {
+                                repository.toggleDeveloperMode(true)
+                            }
+                            repository.toggleDiagnosticsMode(checked)
+                        },
+                        modifier = Modifier
+                            .scale(0.8f)
+                            .uiAction("toggleDiagnosticsMode"),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TuesdayTheme.HacsCyan,
+                            checkedTrackColor = TuesdayTheme.HacsCyan.copy(alpha = 0.35f),
+                            uncheckedThumbColor = palette.textMuted,
+                            uncheckedTrackColor = palette.surface
+                        )
                     )
                 }
 
@@ -1610,122 +1646,6 @@ fun AddDeviceScreen(
                                 }
                             }
                         } else {
-
-                        // Golden Corpus Auto-Save Status & Quick Next-Device Loop Button (only when photos were captured)
-                        if (capturedBitmaps.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("golden-corpus-bar")
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.12f))
-                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (currentCaptureSource == "synthetic_sample") {
-                                        "🧪 SYNTHETIC SAMPLE (NOT SAVED TO CORPUS)"
-                                    } else {
-                                        "📦 GOLDEN CORPUS AUTO-SAVED ($savedCorpusCount TOTAL)"
-                                    },
-                                    color = if (currentCaptureSource == "synthetic_sample") TuesdayTheme.WarningAmber else TuesdayTheme.HealthyGreen,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = if (currentCaptureSource == "synthetic_sample") {
-                                        "Canvas test graphic — excluded from real photo corpus"
-                                    } else {
-                                        lastSavedCorpusFolder ?: "Saved to /sdcard/.../golden_corpus/"
-                                    },
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Surface(
-                                    onClick = {
-                                        val sid = currentSessionId
-                                        val topCand = result.candidates.firstOrNull()
-                                        val idsSnapshot = accumulatedIdentifiers
-                                        val cluesSnapshot = userClueNotes
-                                        scope.launch {
-                                            discoveryService.confirmDeviceDiscovery(
-                                                inferredVendor = topCand?.manufacturer,
-                                                inferredModel = topCand?.modelNumber,
-                                                confirmedVendor = "",
-                                                confirmedModel = "",
-                                                wasEdited = false,
-                                                accumulatedIdentifiers = idsSnapshot,
-                                                userClueNotes = cluesSnapshot,
-                                                selectedCandidateRank = null,
-                                                resolutionStatus = "abandoned_discarded",
-                                                enrollOnServer = false,
-                                                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
-                                            )
-                                            GoldenCorpusRecorder.deleteCaptureSession(context, sid)
-                                            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
-                                            lastSavedCorpusFolder = null
-                                            currentSessionId = discoveryService.startNewSession()
-                                            capturedBitmaps = emptyList()
-                                            discoveryResult = null
-                                            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
-                                            selectedClueItems = emptyList()
-                                            clueInputText = ""
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.2f),
-                                    modifier = Modifier
-                                        .uiAction("discardCaptureSession")
-                                        .border(
-                                            1.dp,
-                                            TuesdayTheme.CriticalRed.copy(alpha = 0.6f),
-                                            RoundedCornerShape(6.dp)
-                                        )
-                                ) {
-                                    Text(
-                                        text = "✕ Discard",
-                                        color = TuesdayTheme.CriticalRed,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                    )
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        // Reset wizard state to immediately scan the next piece of hardware
-                                        currentSessionId = discoveryService.startNewSession()
-                                        capturedBitmaps = emptyList()
-                                        discoveryResult = null
-                                        accumulatedIdentifiers = ExtractedDeviceIdentifiers()
-                                        selectedClueItems = emptyList()
-                                        clueInputText = ""
-                                    },
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = TuesdayTheme.HealthyGreen,
-                                    modifier = Modifier.uiAction("scanNextDevice")
-                                ) {
-                                    Text(
-                                        text = "Scan Next →",
-                                        color = Color.Black,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                    )
-                                }
-                            }
-                        }
-                        }
 
 
 

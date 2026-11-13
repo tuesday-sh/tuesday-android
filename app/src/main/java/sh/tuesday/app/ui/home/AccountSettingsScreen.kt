@@ -58,6 +58,8 @@ data class AccountSettingsParams(
     val onToggleDeveloperMode: (Boolean) -> Unit = {},
     val isVisionDebugEnabled: Boolean = true,
     val onToggleVisionDebugMode: (Boolean) -> Unit = {},
+    val isDiagnosticsEnabled: Boolean = false,
+    val onToggleDiagnosticsMode: (Boolean) -> Unit = {},
     val tuesdayApiBaseUrl: String = "http://100.108.40.3:3000",
     val onSetTuesdayApiBaseUrl: (String) -> Unit = {},
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
@@ -824,6 +826,43 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
 
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
 
+                                    // Diagnostics Local Capture Toggle
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .uiSlot("diagnostics-toggle-row"),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Diagnostics",
+                                                color = palette.textPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "Saves captured photos and debug logs locally to /sdcard/.../diagnostics/.",
+                                                color = palette.textMuted,
+                                                fontSize = 10.5.sp,
+                                                lineHeight = 14.sp
+                                            )
+                                        }
+                                        Switch(
+                                            checked = params.isDiagnosticsEnabled,
+                                            onCheckedChange = params.onToggleDiagnosticsMode,
+                                            modifier = Modifier.uiAction("toggleDiagnosticsMode"),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = TuesdayTheme.HealthyGreen,
+                                                uncheckedThumbColor = Color.White,
+                                                uncheckedTrackColor = palette.border
+                                            )
+                                        )
+                                    }
+
+                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+
                                     // API Endpoint Target Switcher (Local vs Prod GCP)
                                     Column(
                                         modifier = Modifier
@@ -1072,7 +1111,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = purgeFeedback ?: "🗑️ Purge Golden Corpus Captures ($savedCorpusCount Saved)",
+                                            text = purgeFeedback ?: "🗑️ Purge Diagnostic Captures ($savedCorpusCount Saved)",
                                             color = TuesdayTheme.LedCveRed,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
