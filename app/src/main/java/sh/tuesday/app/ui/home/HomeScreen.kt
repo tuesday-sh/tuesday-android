@@ -62,6 +62,8 @@ import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.bulletins.BulletinsScreen
 import sh.tuesday.app.ui.components.BulletinChecklistStep
+import sh.tuesday.app.ui.components.DetailModalDialog
+import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.ui.tabs.MiniCandleBar
 import sh.tuesday.app.ui.components.NotchBulletinCard
 import sh.tuesday.app.ui.components.WifiWarningOverlay
@@ -77,7 +79,7 @@ enum class MainNavTab(val labelPro: String, val labelStn: String) {
     BULLETINS("Bulletins", "Bulletins"),
     TIMELINE("Timeline", "Lifespan"),
     CHECKUP("Check-Up", "Check-Up"),
-    ACCOUNT("Account", "Account")
+    ACCOUNT("Settings", "Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,6 +138,7 @@ fun HomeScreen(
     var showNetworkPicker by remember { mutableStateOf(false) }
     var networkPickerInitialUpgradePrompt by remember { mutableStateOf(false) }
     var showReferenceGuide by remember { mutableStateOf(false) }
+    var showProComingSoonModal by remember { mutableStateOf(false) }
     var pendingTimelineModal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(notificationManager) {
@@ -389,7 +392,7 @@ fun HomeScreen(
                                 .widthIn(min = 54.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(palette.elevated)
-                                .clickable { repository.toggleBrandFlavor() }
+                                .clickable { showProComingSoonModal = true }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                                 .uiAction("toggleBrandFlavor")
                         ) {
@@ -531,7 +534,7 @@ fun HomeScreen(
                                         MainNavTab.BULLETINS -> Icons.Default.Notifications
                                         MainNavTab.TIMELINE -> Icons.Default.Timeline
                                         MainNavTab.CHECKUP -> Icons.Default.Checklist
-                                        MainNavTab.ACCOUNT -> Icons.Default.Person
+                                        MainNavTab.ACCOUNT -> Icons.Default.Tune
                                     },
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
@@ -674,7 +677,8 @@ fun HomeScreen(
                 MainNavTab.CHECKUP -> RhythmScreen(
                     flavor = brandFlavor,
                     palette = palette,
-                    devices = visibleDevices
+                    devices = visibleDevices,
+                    bulletins = bulletinsPayload.inbox
                 )
                 MainNavTab.ACCOUNT -> AccountSettingsScreen(
                     params = AccountSettingsParams(
@@ -857,5 +861,36 @@ fun HomeScreen(
             palette = palette,
             onDismiss = { showReferenceGuide = false }
         )
+    }
+
+    if (showProComingSoonModal) {
+        DetailModalDialog(
+            palette = palette,
+            onDismissRequest = { showProComingSoonModal = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Coming Soon",
+                    color = palette.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                SurfaceListDivider(palette)
+                Text(
+                    text = "Multi-site inventory and family sharing",
+                    color = palette.textMuted,
+                    fontSize = 13.5.sp,
+                    lineHeight = 19.sp
+                )
+            }
+        }
     }
 }

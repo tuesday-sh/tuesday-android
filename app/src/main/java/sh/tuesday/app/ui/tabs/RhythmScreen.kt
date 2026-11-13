@@ -22,7 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.tuesday.app.models.AppBrandFlavor
+import sh.tuesday.app.models.BulletinInboxView
 import sh.tuesday.app.models.PortLifecycleState
+import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.models.RackPortDevice
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
@@ -61,105 +63,120 @@ fun RhythmScreen(
     flavor: AppBrandFlavor,
     palette: BrandPalette,
     devices: List<RackPortDevice>,
+    bulletins: List<BulletinInboxView> = emptyList(),
     welcomeComplete: Boolean = false,
     onOpenReferenceGuide: () -> Unit = {}
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     val context = LocalContext.current
     val isDayZero = devices.isEmpty()
-    val provisionalCount = devices.count { it.portState == PortLifecycleState.GUESSED }
 
-    val rhythms = remember(isStn, isDayZero, provisionalCount, welcomeComplete) {
-        if (!isStn) {
-            val r1Action = if (isDayZero) null else if (provisionalCount > 0) {
-                "$provisionalCount provisional candidate model to verify (Ecobee)"
-            } else null
+    val rhythms = remember(isStn, isDayZero, devices, bulletins, welcomeComplete) {
+        val provisionalDevices = devices.filter { it.portState == PortLifecycleState.GUESSED }
+        val cveDevices = devices.filter { it.portState == PortLifecycleState.CVE_KEV }
+        val eolDevices = devices.filter { it.portState == PortLifecycleState.EOL }
 
-            val r2Action = if (!welcomeComplete) {
-                "Welcome Bulletin: Complete 3-step setup before Patch Tuesday (2nd Tuesday of the month)."
-            } else null
-
-            val r3Action = if (isDayZero) null else {
-                "1 CPSC Recall (STN-CAM-01) • 1 CVE-2026-50881 workaround • Check router admin password"
-            }
-
-            val r4Action = if (isDayZero) null else {
-                "1 EOL Device: STN-AP-00 Netgear R7000 passed vendor support"
-            }
-
-            listOf(
-                RhythmPostureRow(
-                    id = "r1",
-                    title = "R1 • NEW HARDWARE INTAKE & ATTESTATION",
-                    action = r1Action,
-                    recommendation = if (r1Action != null) "Confirm exact thermostat model on Bulletins tab or scan barcode." else null,
-                    accentColor = TuesdayTheme.LedEolAmber
-                ),
-                RhythmPostureRow(
-                    id = "r2",
-                    title = "R2 • MONTHLY PATCH TUESDAY READINESS",
-                    action = r2Action,
-                    recommendation = if (r2Action != null) "Check Welcome Bulletin: [1 Add Router, 2 Enable 10:00 AM PT Push, 3 Subscribe Dispatch]." else null,
-                    accentColor = palette.accent
-                ),
-                RhythmPostureRow(
-                    id = "r3",
-                    title = "R3 • SEASONAL SAFETY, PASSWORDS & DRIFT AUDIT",
-                    action = r3Action,
-                    recommendation = if (r3Action != null) "Check router admin password, disable WAN management, resolve baby cam recall." else null,
-                    accentColor = TuesdayTheme.LedCveRed
-                ),
-                RhythmPostureRow(
-                    id = "r4",
-                    title = "R4 • YEARLY HARDWARE LIFESPAN & EOL",
-                    action = r4Action,
-                    recommendation = if (r4Action != null) "Isolate Netgear R7000 to VLAN 40 (Guest) or replace with supported Wi-Fi 7 AP." else null,
-                    accentColor = Color(0xFF881337)
-                )
-            )
-        } else {
-            val r1Action: String? = null
-            val r2Action = if (!welcomeComplete) {
-                "Welcome Bulletin: 3 preparation steps for upcoming Patch Tuesday (2nd Tuesday of the month)."
-            } else null
-            val r3Action = if (isDayZero) null else {
-                "! 1 Product Safety Recall (Nursery Baby Cam) • Check router admin password"
-            }
-            val r4Action = if (isDayZero) null else {
-                "Basement Netgear R7000 no longer receives manufacturer security fixes."
-            }
-
-            listOf(
-                RhythmPostureRow(
-                    id = "r1",
-                    title = "R1 • New Devices & Recognition",
-                    action = r1Action,
-                    recommendation = null,
-                    accentColor = Color(0xFFF59E0B)
-                ),
-                RhythmPostureRow(
-                    id = "r2",
-                    title = "R2 • Monthly Patch Tuesday (2nd Tuesday)",
-                    action = r2Action,
-                    recommendation = if (r2Action != null) "Review Welcome Bulletin steps: [1 Add Router, 2 Turn On Notifications, 3 Subscribe]." else null,
-                    accentColor = palette.accent
-                ),
-                RhythmPostureRow(
-                    id = "r3",
-                    title = "R3 • Quarterly Safety Check (Jan / Apr / Jul / Oct)",
-                    action = r3Action,
-                    recommendation = if (r3Action != null) "Verify your Wi-Fi router admin password is not the factory default (\"admin\")." else null,
-                    accentColor = Color(0xFFDC2626)
-                ),
-                RhythmPostureRow(
-                    id = "r4",
-                    title = "R4 • Annual Hardware Lifespan (January)",
-                    action = r4Action,
-                    recommendation = if (r4Action != null) "Consider upgrading or unplugging the old basement router." else null,
-                    accentColor = Color(0xFF881337)
-                )
-            )
+        val recallBulletins = bulletins.filter { it.bulletinType.equals("RECALL", ignoreCase = true) }
+        val patchBulletins = bulletins.filter {
+            it.bulletinType.equals("CVE", ignoreCase = true) ||
+                it.bulletinType.equals("CISA_KEV", ignoreCase = true) ||
+                it.bulletinType.equals("ADVISORY", ignoreCase = true)
         }
+
+        val r1Action = if (isDayZero || provisionalDevices.isEmpty()) null else {
+            val count = provisionalDevices.size
+            val labels = provisionalDevices.joinToString(", ") { it.name }
+            "$count provisional device${if (count == 1) "" else "s"} to verify ($labels)"
+        }
+        val r1Rec = if (r1Action != null) {
+            "Confirm exact hardware model on Bulletins tab or scan barcode."
+        } else null
+
+        val r2Action = when {
+            !welcomeComplete -> if (isStn) {
+                "Welcome Bulletin: 3 preparation steps for upcoming Patch Tuesday (2nd Tuesday of the month)."
+            } else {
+                "Welcome Bulletin: Complete 3-step setup before Patch Tuesday (2nd Tuesday of the month)."
+            }
+            patchBulletins.isNotEmpty() -> {
+                val count = patchBulletins.size
+                val titles = patchBulletins.joinToString(" • ") { it.title }
+                "$count active Patch Tuesday / security bulletin${if (count == 1) "" else "s"}: $titles"
+            }
+            else -> null
+        }
+        val r2Rec = when {
+            !welcomeComplete -> if (isStn) {
+                "Review Welcome Bulletin steps: [1 Add Router, 2 Turn On Notifications, 3 Subscribe]."
+            } else {
+                "Check Welcome Bulletin: [1 Add Router, 2 Enable 10:00 AM PT Push, 3 Subscribe Dispatch]."
+            }
+            patchBulletins.isNotEmpty() -> "Review affected devices and apply vendor firmware updates on the Bulletins tab."
+            else -> null
+        }
+
+        val r3Parts = buildList {
+            if (recallBulletins.isNotEmpty()) {
+                val count = recallBulletins.size
+                add("$count Product Safety Recall${if (count == 1) "" else "s"} (${recallBulletins.joinToString(", ") { it.title }})")
+            }
+            if (cveDevices.isNotEmpty()) {
+                val count = cveDevices.size
+                add("$count CVE-affected device${if (count == 1) "" else "s"} (${cveDevices.joinToString(", ") { it.name }})")
+            }
+        }
+        val r3Action = if (isDayZero || r3Parts.isEmpty()) null else r3Parts.joinToString(" • ")
+        val r3Rec = if (r3Action != null) {
+            if (isStn) {
+                "Verify your Wi-Fi router admin password is not the factory default (\"admin\") and resolve active recalls."
+            } else {
+                "Check router admin password, disable WAN management, and resolve active recalls."
+            }
+        } else null
+
+        val r4Action = if (isDayZero || eolDevices.isEmpty()) null else {
+            val count = eolDevices.size
+            val labels = eolDevices.joinToString(", ") { it.name }
+            "$count EOL device${if (count == 1) "" else "s"} past vendor support ($labels)"
+        }
+        val r4Rec = if (r4Action != null) {
+            if (isStn) {
+                "Consider upgrading or unplugging unsupported hardware."
+            } else {
+                "Isolate EOL hardware to Guest VLAN or replace with supported gear."
+            }
+        } else null
+
+        listOf(
+            RhythmPostureRow(
+                id = "r1",
+                title = if (isStn) "R1 • New Devices & Recognition" else "R1 • NEW HARDWARE INTAKE & ATTESTATION",
+                action = r1Action,
+                recommendation = r1Rec,
+                accentColor = if (isStn) Color(0xFFF59E0B) else TuesdayTheme.LedEolAmber
+            ),
+            RhythmPostureRow(
+                id = "r2",
+                title = if (isStn) "R2 • Monthly Patch Tuesday (2nd Tuesday)" else "R2 • MONTHLY PATCH TUESDAY READINESS",
+                action = r2Action,
+                recommendation = r2Rec,
+                accentColor = palette.accent
+            ),
+            RhythmPostureRow(
+                id = "r3",
+                title = if (isStn) "R3 • Quarterly Safety Check (Jan / Apr / Jul / Oct)" else "R3 • SEASONAL SAFETY, PASSWORDS & DRIFT AUDIT",
+                action = r3Action,
+                recommendation = r3Rec,
+                accentColor = if (isStn) Color(0xFFDC2626) else TuesdayTheme.LedCveRed
+            ),
+            RhythmPostureRow(
+                id = "r4",
+                title = if (isStn) "R4 • Annual Hardware Lifespan (January)" else "R4 • YEARLY HARDWARE LIFESPAN & EOL",
+                action = r4Action,
+                recommendation = r4Rec,
+                accentColor = Color(0xFF881337)
+            )
+        )
     }
 
     fun buildReportText(): String {
@@ -287,41 +304,50 @@ fun RhythmScreen(
                     }
                 }
 
-                // Dynamic 4-Rhythm Health Stack List (Unboxed rows)
+                // Dynamic 4-Rhythm Health Stack List (Card toppers + unboxed list view items)
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     rhythms.forEach { rhythm ->
                         val hasAction = rhythm.action != null
-                        if (!hasAction) {
-                            // Empty reminder group: muted grey, rhythm title on line 1, "Everything OK" on line 2
+                        val topperShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                        val accentColor = if (hasAction) rhythm.accentColor else Color(0xFF64748B)
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Fixed heading bar (card topper with top rounded corners, cut off bottom)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(palette.surface.copy(alpha = 0.6f))
-                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                    .clip(topperShape)
+                                    .background(if (hasAction) palette.surface else palette.surface.copy(alpha = 0.6f))
+                                    .border(1.dp, palette.border, topperShape),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .width(3.dp)
-                                        .heightIn(min = 48.dp)
-                                        .background(Color(0xFF64748B))
+                                        .width(if (hasAction) 4.dp else 3.dp)
+                                        .height(34.dp)
+                                        .background(accentColor)
                                 )
-                                Column(
+                                Text(
+                                    text = rhythm.title,
+                                    color = accentColor,
+                                    fontSize = if (isStn) 12.sp else 11.sp,
+                                    fontWeight = if (hasAction) FontWeight.ExtraBold else FontWeight.Bold,
+                                    fontFamily = if (isStn) FontFamily.Default else FontFamily.Monospace,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            // List view items below the topper
+                            if (!hasAction) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
-                                    Text(
-                                        text = rhythm.title,
-                                        color = Color(0xFF64748B),
-                                        fontSize = if (isStn) 12.sp else 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = if (isStn) FontFamily.Default else FontFamily.Monospace
-                                    )
                                     Text(
                                         text = "Everything OK",
                                         color = palette.textMuted,
@@ -329,48 +355,34 @@ fun RhythmScreen(
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
-                            }
-                        } else {
-                            // Active recommendation group: prominent colored left accent border + full details
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(palette.surface)
-                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                            ) {
+                                SurfaceListDivider(palette)
+                            } else {
                                 Box(
                                     modifier = Modifier
-                                        .width(4.dp)
-                                        .heightIn(min = 68.dp)
-                                        .background(rhythm.accentColor)
-                                )
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
-                                    Text(
-                                        text = rhythm.title,
-                                        color = rhythm.accentColor,
-                                        fontSize = if (isStn) 12.sp else 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontFamily = if (isStn) FontFamily.Default else FontFamily.Monospace
-                                    )
                                     Text(
                                         text = rhythm.action ?: "",
                                         color = palette.textPrimary,
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
-                                    if (rhythm.recommendation != null) {
+                                }
+                                SurfaceListDivider(palette)
+                                if (rhythm.recommendation != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    ) {
                                         Text(
                                             text = "💡 Recommendation: ${rhythm.recommendation}",
                                             color = palette.textMuted,
                                             fontSize = 11.5.sp
                                         )
                                     }
+                                    SurfaceListDivider(palette)
                                 }
                             }
                         }

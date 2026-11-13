@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +32,9 @@ import sh.tuesday.app.services.SubscriptionPlanOffer
 import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.DetailModalDialog
+import sh.tuesday.app.ui.components.SurfaceListContainer
+import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -117,6 +123,61 @@ val REMINDER_DEFINITIONS = listOf(
     )
 )
 
+private enum class SettingsSection(val title: String, val icon: String) {
+    NETWORK("Network", "🌐"),
+    PLAN("Plan & Subscription", "💳"),
+    PREFERENCES("Preferences", "⚙️"),
+    DEV_MODE("Developer Mode", "🛠️"),
+    REMINDERS("Reminders", "🔔"),
+    FEEDS("Bulletin Feeds", "📡")
+}
+
+@Composable
+private fun SettingsListRow(
+    palette: BrandPalette,
+    icon: String,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    color = palette.textPrimary,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        color = palette.textMuted,
+                        fontSize = 11.5.sp
+                    )
+                }
+            }
+        }
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = "Open $title",
+            tint = palette.textMuted,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AccountSettingsScreen(params: AccountSettingsParams) {
     val flavor = params.flavor
@@ -165,6 +226,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     val activeRemindersCount = reminderStates.values.count { it }
     val activeFeedsCount = matchedFeeds.count { !it.isMuted }
     val mutedFeedsCount = matchedFeeds.count { it.isMuted }
+    var activeSection by remember { mutableStateOf<SettingsSection?>(null) }
 
     Column(
         modifier = Modifier
@@ -201,63 +263,85 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                 )
             }
 
-            // UNBOXED ACCORDION LIST
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = palette.border.copy(alpha = 0.6f),
-                        shape = RoundedCornerShape(0.dp)
-                    )
-            ) {
-                // ==================== 1. NETWORK ACCORDION ITEM ====================
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 0.5.dp,
-                            color = palette.border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(0.dp)
-                        )
+            // Native Settings List
+            SurfaceListContainer(palette = palette) {
+                SettingsListRow(
+                    palette = palette,
+                    icon = SettingsSection.NETWORK.icon,
+                    title = SettingsSection.NETWORK.title,
+                    subtitle = networkLocationName.ifBlank { null },
+                    onClick = { activeSection = SettingsSection.NETWORK }
+                )
+                SurfaceListDivider(palette)
+                SettingsListRow(
+                    palette = palette,
+                    icon = SettingsSection.PLAN.icon,
+                    title = SettingsSection.PLAN.title,
+                    subtitle = params.entitlementTier,
+                    onClick = { activeSection = SettingsSection.PLAN }
+                )
+                SurfaceListDivider(palette)
+                SettingsListRow(
+                    palette = palette,
+                    icon = SettingsSection.PREFERENCES.icon,
+                    title = SettingsSection.PREFERENCES.title,
+                    subtitle = null,
+                    onClick = { activeSection = SettingsSection.PREFERENCES }
+                )
+                SurfaceListDivider(palette)
+                SettingsListRow(
+                    palette = palette,
+                    icon = SettingsSection.DEV_MODE.icon,
+                    title = SettingsSection.DEV_MODE.title,
+                    subtitle = if (params.isDeveloperMode) "Enabled" else "Disabled",
+                    onClick = { activeSection = SettingsSection.DEV_MODE }
+                )
+                SurfaceListDivider(palette)
+                SettingsListRow(
+                    palette = palette,
+                    icon = SettingsSection.REMINDERS.icon,
+                    title = SettingsSection.REMINDERS.title,
+                    subtitle = "$activeRemindersCount active",
+                    onClick = { activeSection = SettingsSection.REMINDERS }
+                )
+                SurfaceListDivider(palette)
+                SettingsListRow(
+                    palette = palette,
+                    icon = SettingsSection.FEEDS.icon,
+                    title = SettingsSection.FEEDS.title,
+                    subtitle = "$activeFeedsCount active • $mutedFeedsCount muted",
+                    onClick = { activeSection = SettingsSection.FEEDS }
+                )
+            }
+
+            if (activeSection != null) {
+                DetailModalDialog(
+                    palette = palette,
+                    onDismissRequest = { activeSection = null }
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { isNetworkOpen = !isNetworkOpen }
-                            .padding(vertical = 14.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text("🌐", fontSize = 16.sp)
-                            Text(
-                                text = "Network",
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (networkLocationName.isNotBlank()) {
-                                Text(
-                                    text = networkLocationName,
-                                    color = palette.accent,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
                         Text(
-                            text = if (isNetworkOpen) "▾" else "›",
-                            color = palette.textMuted,
-                            fontSize = 14.sp,
+                            text = activeSection!!.title,
+                            color = palette.textPrimary,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
-                    }
-
-                    AnimatedVisibility(visible = isNetworkOpen) {
+                        SurfaceListDivider(palette)
+                // ==================== 1. NETWORK ACCORDION ITEM ====================
+                if (activeSection == SettingsSection.NETWORK) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (activeSection == SettingsSection.NETWORK) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -317,53 +401,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     }
                 }
 
+                }
                 // ==================== 1B. PLAN & ENTITLEMENT ACCORDION ITEM ====================
+                if (activeSection == SettingsSection.PLAN) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 0.5.dp,
-                            color = palette.border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(0.dp)
-                        )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiAction("togglePlanAccordion")
-                            .clickable { isPlanOpen = !isPlanOpen }
-                            .padding(vertical = 14.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text("⚡", fontSize = 16.sp)
-                            Text(
-                                text = "Plan & Multi-Site",
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (isProTier1) "PRO TIER 1" else "FREE TIER",
-                                color = if (isProTier1) TuesdayTheme.LedOkGreen else palette.textMuted,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = if (isPlanOpen) "▾" else "›",
-                            color = palette.textMuted,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    AnimatedVisibility(visible = isPlanOpen) {
+                    if (activeSection == SettingsSection.PLAN) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -551,55 +595,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     }
                 }
 
+                }
                 // ==================== 1C. PREFERENCES ACCORDION ITEM ====================
-                val activePrefsCount = listOf(params.showStateFilterStrip, params.showZoneFilterStrip).count { it }
+                if (activeSection == SettingsSection.PREFERENCES) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 0.5.dp,
-                            color = palette.border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(0.dp)
-                        )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiAction("togglePreferencesAccordion")
-                            .clickable { isPreferencesOpen = !isPreferencesOpen }
-                            .padding(vertical = 14.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.uiSlot("preferences-accordion-header")
-                        ) {
-                            Text("🎛️", fontSize = 16.sp)
-                            Text(
-                                text = "Preferences",
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "$activePrefsCount of 2 Active",
-                                color = palette.accent,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Text(
-                            text = if (isPreferencesOpen) "▾" else "›",
-                            color = palette.textMuted,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    AnimatedVisibility(visible = isPreferencesOpen) {
+                    if (activeSection == SettingsSection.PREFERENCES) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -697,45 +699,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     }
                 }
 
+                }
                 // ==================== 2. DEVELOPER MODE ACCORDION ITEM ====================
+                if (activeSection == SettingsSection.DEV_MODE) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 0.5.dp,
-                            color = palette.border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(0.dp)
-                        )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isDevModeOpen = !isDevModeOpen }
-                            .padding(vertical = 14.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text("🛠️", fontSize = 16.sp)
-                            Text(
-                                text = "Developer Mode",
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = if (isDevModeOpen) "▾" else "›",
-                            color = palette.textMuted,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    AnimatedVisibility(visible = isDevModeOpen) {
+                    if (activeSection == SettingsSection.DEV_MODE) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1123,52 +1093,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     }
                 }
 
+                }
                 // ==================== 3. REMINDERS ACCORDION ITEM ====================
+                if (activeSection == SettingsSection.REMINDERS) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 0.5.dp,
-                            color = palette.border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(0.dp)
-                        )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isRemindersOpen = !isRemindersOpen }
-                            .padding(vertical = 14.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text("🔔", fontSize = 16.sp)
-                            Text(
-                                text = "Reminders",
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "$activeRemindersCount of ${REMINDER_DEFINITIONS.size} Active",
-                                color = TuesdayTheme.LedOkGreen,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Text(
-                            text = if (isRemindersOpen) "▾" else "›",
-                            color = palette.textMuted,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    AnimatedVisibility(visible = isRemindersOpen) {
+                    if (activeSection == SettingsSection.REMINDERS) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1199,9 +1130,9 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Text(
                                                 text = def.title,
@@ -1214,13 +1145,15 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(4.dp))
                                                         .background(TuesdayTheme.LedCveRed.copy(alpha = 0.14f))
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                                 ) {
                                                     Text(
                                                         text = "IN-APP ALWAYS",
                                                         color = TuesdayTheme.LedCveRed,
                                                         fontSize = 8.5.sp,
-                                                        fontWeight = FontWeight.Bold
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false
                                                     )
                                                 }
                                             }
@@ -1259,51 +1192,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     }
                 }
 
+                }
                 // ==================== 4. FEEDS ACCORDION ITEM ====================
+                if (activeSection == SettingsSection.FEEDS) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 0.5.dp,
-                            color = palette.border.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(0.dp)
-                        )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isFeedsOpen = !isFeedsOpen }
-                            .padding(vertical = 14.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text("📡", fontSize = 16.sp)
-                            Text(
-                                text = "Feeds",
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "$activeFeedsCount Active • $mutedFeedsCount Muted",
-                                color = palette.textMuted,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        Text(
-                            text = if (isFeedsOpen) "▾" else "›",
-                            color = palette.textMuted,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    AnimatedVisibility(visible = isFeedsOpen) {
+                    if (activeSection == SettingsSection.FEEDS) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1409,10 +1304,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                         }
                     }
                 }
+                }
+            }
+                    }
+                }
             }
         }
     }
-}
 
 @Composable
 private fun DevStateSimButton(
