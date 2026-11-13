@@ -4,14 +4,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,11 +25,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import sh.tuesday.app.theme.BrandPalette
+import sh.tuesday.app.theme.TuesdayDimens
 
 @Composable
 fun SurfaceListContainer(
@@ -34,9 +42,9 @@ fun SurfaceListContainer(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
             .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(10.dp)),
+            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard)),
         content = content
     )
 }
@@ -50,29 +58,36 @@ fun SurfaceListDivider(palette: BrandPalette) {
 }
 
 @Composable
-fun StatusListRow(
+fun TuesdayListRow(
     palette: BrandPalette,
-    dotColor: Color,
     title: String,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    contentDescription: String = "Expand item",
-    subtitle: @Composable () -> Unit
+    minHeight: Dp = 44.dp,
+    titleMaxLines: Int = 1,
+    leadingContent: (@Composable RowScope.() -> Unit)? = null,
+    subtitleContent: (@Composable ColumnScope.() -> Unit)? = null,
+    trailingContent: (@Composable RowScope.() -> Unit)? = {
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = "Expand item",
+            tint = palette.textMuted,
+            modifier = Modifier.size(18.dp)
+        )
+    }
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .heightIn(min = minHeight)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = TuesdayDimens.CardPadding, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
+        if (leadingContent != null) {
+            leadingContent()
+        }
 
         Column(
             modifier = Modifier.weight(1f),
@@ -83,25 +98,60 @@ fun StatusListRow(
                 color = palette.textPrimary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
+                maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis
             )
-            subtitle()
+            if (subtitleContent != null) {
+                subtitleContent()
+            }
         }
 
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = contentDescription,
-            tint = palette.textMuted,
-            modifier = Modifier.size(18.dp)
-        )
+        if (trailingContent != null) {
+            trailingContent()
+        }
     }
+}
+
+@Composable
+fun StatusListRow(
+    palette: BrandPalette,
+    dotColor: Color,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentDescription: String = "Expand item",
+    subtitle: @Composable () -> Unit
+) {
+    TuesdayListRow(
+        palette = palette,
+        title = title,
+        onClick = onClick,
+        modifier = modifier,
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dotColor)
+            )
+        },
+        subtitleContent = { subtitle() },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = contentDescription,
+                tint = palette.textMuted,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    )
 }
 
 @Composable
 fun DetailModalDialog(
     palette: BrandPalette,
     onDismissRequest: () -> Unit,
+    closeActionModifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     Dialog(
@@ -118,8 +168,8 @@ fun DetailModalDialog(
                 horizontalAlignment = Alignment.End
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(32.dp)
+                    modifier = closeActionModifier
+                        .size(TuesdayDimens.HitTargetCompact)
                         .clip(CircleShape)
                         .background(palette.surface)
                         .border(1.dp, palette.border, CircleShape)
@@ -137,4 +187,91 @@ fun DetailModalDialog(
             }
         }
     }
+}
+
+@Composable
+fun TuesdayModalCard(
+    palette: BrandPalette,
+    title: String,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    borderColor: Color = palette.border,
+    closeActionModifier: Modifier = Modifier,
+    subtitle: String? = null,
+    leadingContent: (@Composable RowScope.() -> Unit)? = null,
+    headerTrailing: (@Composable RowScope.() -> Unit)? = null,
+    scrollable: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    DetailModalDialog(
+        palette = palette,
+        onDismissRequest = onDismissRequest,
+        closeActionModifier = closeActionModifier
+    ) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(TuesdayDimens.RadiusModalCard))
+                .background(palette.surface)
+                .border(1.dp, borderColor, RoundedCornerShape(TuesdayDimens.RadiusModalCard))
+                .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (leadingContent != null) {
+                        leadingContent()
+                    }
+                    Text(
+                        text = title,
+                        color = palette.textPrimary,
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (headerTrailing != null) {
+                    headerTrailing()
+                }
+            }
+
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            }
+
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TuesdayBottomSheet(
+    palette: BrandPalette,
+    onDismissRequest: () -> Unit,
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        containerColor = palette.surface,
+        contentColor = palette.textPrimary,
+        content = content
+    )
 }

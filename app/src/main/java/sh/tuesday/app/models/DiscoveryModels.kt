@@ -9,13 +9,19 @@ enum class AiProviderType(val displayName: String, val badgeLabel: String) {
 }
 
 enum class ApiEndpointPreset(val label: String, val shortBadge: String, val url: String) {
+    PROD_GCP("Prod (api.tuesday.sh)", "☁️ PROD API", "https://api.tuesday.sh"),
     LOCAL_TAILSCALE("Local Dev (Tailscale)", "💻 LOCAL TS", "http://100.108.40.3:3000"),
-    LOCAL_LAN("Local Dev (LAN)", "🏠 LOCAL LAN", "http://192.168.9.201:3000"),
-    PROD_GCP("Prod (GCP Cloud Run)", "☁️ PROD GCP", "https://tuesday-server-1076233850924.us-west1.run.app");
+    LOCAL_LAN("Local Dev (LAN)", "🏠 LOCAL LAN", "http://192.168.9.201:3000");
 
     companion object {
         fun fromUrl(url: String): ApiEndpointPreset? {
             val clean = url.trim().trimEnd('/')
+            if (
+                clean.equals("https://tuesday-server-1076233850924.us-west1.run.app", ignoreCase = true) ||
+                clean.equals("https://tuesday-server-julc3chjpa-uw.a.run.app", ignoreCase = true)
+            ) {
+                return PROD_GCP
+            }
             return entries.find { it.url.trimEnd('/').equals(clean, ignoreCase = true) }
         }
     }
@@ -33,7 +39,7 @@ data class HacsConfig(
     val isConnected: Boolean = true,
     val lastSyncedEpochMs: Long = System.currentTimeMillis(),
     val aiProvider: AiProviderType = AiProviderType.ELASTIX,
-    val tuesdayApiBaseUrl: String = "http://100.108.40.3:3000",
+    val tuesdayApiBaseUrl: String = "https://api.tuesday.sh",
     val elastixApiKey: String = "",
     val elastixModel: String = "qwen3.8-27b",
     val geminiApiKey: String = "",

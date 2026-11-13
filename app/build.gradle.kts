@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,7 +15,7 @@ android {
         applicationId = "sh.tuesday.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
+        versionCode = 5
         versionName = "1.0.0"
         manifestPlaceholders["appLabel"] = "Tuesday.sh"
 
@@ -89,6 +91,15 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
+            all {
+                it.timeout.set(Duration.ofSeconds(90))
+                it.maxHeapSize = "2048m"
+                it.testLogging {
+                    events("started", "passed", "skipped", "failed")
+                    showStandardStreams = true
+                    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.SHORT
+                }
+            }
         }
     }
 }
@@ -119,8 +130,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
-    // Google Play Billing v7 (In-App Subscriptions & Entitlement Verification)
-    implementation("com.android.billingclient:billing-ktx:7.1.1")
+    // Google Play Billing v8 (In-App Subscriptions & Entitlement Verification)
+    implementation("com.android.billingclient:billing:8.0.0")
 
     // Networking & Serialization
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

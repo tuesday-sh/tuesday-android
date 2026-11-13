@@ -82,7 +82,7 @@ class TuesdayRepository(context: Context) {
     private val _isDeveloperMode = MutableStateFlow(false)
     val isDeveloperMode: StateFlow<Boolean> = _isDeveloperMode.asStateFlow()
 
-    private val _isVisionDebugEnabled = MutableStateFlow(true)
+    private val _isVisionDebugEnabled = MutableStateFlow(false)
     val isVisionDebugEnabled: StateFlow<Boolean> = _isVisionDebugEnabled.asStateFlow()
 
     private val _isDiagnosticsEnabled = MutableStateFlow(false)
@@ -502,7 +502,7 @@ class TuesdayRepository(context: Context) {
 
     private fun loadConfig() {
         _isDeveloperMode.value = prefs.getBoolean("is_developer_mode", false)
-        _isVisionDebugEnabled.value = prefs.getBoolean("is_vision_debug_enabled", true)
+        _isVisionDebugEnabled.value = prefs.getBoolean("is_vision_debug_enabled", false)
         _isDiagnosticsEnabled.value = prefs.getBoolean("is_diagnostics_enabled", false)
         val raw = prefs.getString("hacs_config", null)
         if (raw != null) {
@@ -665,6 +665,10 @@ class TuesdayRepository(context: Context) {
         return updated
     }
 
+    fun billingAccountIdentifier(): String = "device-$clientDeviceId"
+
+    fun billingProfileSlug(): String = "skyway-lab"
+
     fun upgradeToProTier1(
         productId: String = TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL,
         purchaseToken: String? = null
@@ -674,11 +678,17 @@ class TuesdayRepository(context: Context) {
             "sh.tuesday.multisite.tier1.annual", "sh.tuesday.pro.yearly" -> TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL
             else -> productId
         }
+        val isSandbox = purchaseToken.isNullOrBlank() ||
+            purchaseToken.startsWith("gp_sandbox_") ||
+            purchaseToken.startsWith("gp_token_")
+        val entitlementSource = if (isSandbox) "sandbox" else "google_play"
+
         _entitlementTier.value = "pro_tier_1"
         _activeSubscriptionSku.value = canonicalSku
         prefs.edit()
             .putString("entitlement_tier", "pro_tier_1")
             .putString("active_subscription_sku", canonicalSku)
+            .putString("entitlement_source", entitlementSource)
             .apply()
 
         emitTelemetryEventAsync(
@@ -687,15 +697,20 @@ class TuesdayRepository(context: Context) {
             targetEntityId = _activeNetworkId.value,
             properties = mapOf(
                 "productId" to canonicalSku,
-                "entitlementTier" to "pro_tier_1"
+                "entitlementTier" to "pro_tier_1",
+                "entitlementSource" to entitlementSource
             )
         )
+
+        if (isRobolectricJvm()) return
 
         ioScope.launch {
             try {
                 val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+                val canonicalPkg = BuildConfig.APPLICATION_ID.removeSuffix(".debug")
                 val payload = JSONObject().apply {
                     put("platform", "android")
+                    put("package_name", canonicalPkg)
                     put("product_id", canonicalSku)
                     put("purchase_token", purchaseToken?.takeIf { it.isNotBlank() } ?: "gp_token_${UUID.randomUUID()}")
                 }
@@ -717,6 +732,9 @@ class TuesdayRepository(context: Context) {
                                 prefs.edit().putString("entitlement_tier", serverTier).apply()
                             }
                         }
+                    } else if (!isSandbox && resp.code in listOf(403, 409, 422)) {
+                        Log.w("TuesdayRepoSync", "Server rejected Play receipt (HTTP ${resp.code}); reverting local tier to free")
+                        downgradeToFreeTier()
                     }
                 }
             } catch (e: Exception) {
@@ -727,10 +745,27 @@ class TuesdayRepository(context: Context) {
 
     fun downgradeToFreeTier() {
         _entitlementTier.value = "free"
-        prefs.edit().putString("entitlement_tier", "free").apply()
+        prefs.edit()
+            .putString("entitlement_tier", "free")
+            .remove("entitlement_source")
+            .apply()
+    }
+
+    suspend fun reconcileWhenPlayHasNoActivePurchase() {
+        val currentSource = prefs.getString("entitlement_source", null)
+        if (currentSource == "sandbox" && (BuildConfig.DEBUG || _isDeveloperMode.value)) {
+            return
+        }
+        if (isProTier1Entitled(_entitlementTier.value)) {
+            val serverTier = fetchServerEntitlementStatus()
+            if (!isProTier1Entitled(serverTier) && currentSource == "google_play") {
+                downgradeToFreeTier()
+            }
+        }
     }
 
     suspend fun fetchServerEntitlementStatus(): String = withContext(Dispatchers.IO) {
+        if (isRobolectricJvm()) return@withContext _entitlementTier.value
         try {
             val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
             val req = Request.Builder()
@@ -744,6 +779,11 @@ class TuesdayRepository(context: Context) {
                     val bodyStr = resp.body?.string().orEmpty()
                     val root = JSONObject(bodyStr)
                     val serverTier = root.optString("entitlementTier", "")
+                    val serverSku = root.optString("activeSubscriptionSku", "")
+                    if (serverSku.isNotBlank()) {
+                        _activeSubscriptionSku.value = serverSku
+                        prefs.edit().putString("active_subscription_sku", serverSku).apply()
+                    }
                     if (serverTier.isNotBlank()) {
                         _entitlementTier.value = serverTier
                         prefs.edit().putString("entitlement_tier", serverTier).apply()
@@ -758,6 +798,7 @@ class TuesdayRepository(context: Context) {
     }
 
     private fun syncDeviceCreateToServerAsync(dev: RackPortDevice, meta: DiscoveredDeviceMetadata?) {
+        if (isRobolectricJvm()) return
         ioScope.launch {
             try {
                 val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
@@ -798,6 +839,7 @@ class TuesdayRepository(context: Context) {
         targetEntityId: String? = null,
         properties: Map<String, Any?> = emptyMap()
     ) {
+        if (isRobolectricJvm()) return
         ioScope.launch {
             try {
                 val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
@@ -829,6 +871,7 @@ class TuesdayRepository(context: Context) {
     }
 
     private fun syncDevicePatchToServerAsync(deviceId: String, payload: JSONObject) {
+        if (isRobolectricJvm()) return
         ioScope.launch {
             try {
                 val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
@@ -915,6 +958,7 @@ class TuesdayRepository(context: Context) {
         forceResend: Boolean = false,
         includeAllSites: Boolean = true
     ): Int = withContext(Dispatchers.IO) {
+        if (isRobolectricJvm()) return@withContext 0
         try {
             val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
 
@@ -1036,7 +1080,7 @@ class TuesdayRepository(context: Context) {
                 }
             }
 
-            if (syncedDevicesFromNotifs.isNotEmpty()) {
+            if (syncedDevicesFromNotifs.isNotEmpty() && _activeNetworkId.value != "net-demo") {
                 val existingById = _rackDevices.value.associateBy { it.id }.toMutableMap()
                 for (d in syncedDevicesFromNotifs) {
                     existingById[d.id] = d
@@ -1119,6 +1163,9 @@ class TuesdayRepository(context: Context) {
         _dispatchSubscribed.value = false
         _showStateFilterStrip.value = false
         _showZoneFilterStrip.value = false
+        _isDeveloperMode.value = false
+        _isVisionDebugEnabled.value = false
+        _isDiagnosticsEnabled.value = false
         _entitlementTier.value = "free"
         _userNetworks.value = defaultUserNetworks()
         _hacsConfig.value = HacsConfig()
@@ -1131,6 +1178,9 @@ class TuesdayRepository(context: Context) {
             .putBoolean("dispatch_subscribed", false)
             .putBoolean("pref_show_state_filter_strip", false)
             .putBoolean("pref_show_zone_filter_strip", false)
+            .putBoolean("is_developer_mode", false)
+            .putBoolean("is_vision_debug_enabled", false)
+            .putBoolean("is_diagnostics_enabled", false)
             .putString("entitlement_tier", "free")
             .apply()
         persistConfig()
@@ -1204,6 +1254,9 @@ class TuesdayRepository(context: Context) {
     }
 
     companion object {
+        internal fun isRobolectricJvm(): Boolean =
+            android.os.Build.FINGERPRINT.equals("robolectric", ignoreCase = true)
+
         fun defaultUserNetworks(): List<NetworkSite> = listOf(
             NetworkSite(id = "net-default", name = "My Network", devicesCount = 0, role = "Primary Site"),
             NetworkSite(id = "net-demo", name = "Demo Network", devicesCount = 12, role = "Evaluation Homelab (Demo Mode)")

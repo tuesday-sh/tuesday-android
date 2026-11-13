@@ -37,9 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import sh.tuesday.app.domain.TimelineStatusEvaluator
 import sh.tuesday.app.models.*
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.theme.TuesdayTypeTokens
+import sh.tuesday.app.ui.components.HelpIconButton
+import sh.tuesday.app.ui.components.SelectableFilterChip
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -123,27 +127,12 @@ internal fun InventoryCard(
                     }
                 }
                 // Secondary CTA 1: "?" Reference Guide button (36dp x 36dp circle)
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(palette.elevated)
-                        .border(1.dp, palette.border, CircleShape)
-                        .clickable { onOpenReferenceGuide() }
-                        .semantics {
-                            contentDescription = "Inventory Reference Guide"
-                        }
-                        .uiAction("openReferenceGuide")
-                ) {
-                    Text(
-                        text = "?",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        modifier = Modifier.uiSlot("help-button")
+                Box(modifier = Modifier.uiSlot("help-button")) {
+                    HelpIconButton(
+                        palette = palette,
+                        onClick = onOpenReferenceGuide,
+                        modifier = Modifier.uiAction("openReferenceGuide"),
+                        contentDescriptionText = "Inventory Reference Guide"
                     )
                 }
             }
@@ -269,7 +258,7 @@ internal fun LedLegendStripTab(
                 dimmed -> palette.textMuted.copy(alpha = 0.45f)
                 else -> palette.textMuted
             },
-            fontSize = 8.5.sp,
+            fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
             maxLines = 1,
@@ -297,7 +286,7 @@ internal fun InventoryChassisCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF0B0D11))
+            .background(palette.chassisRecessed)
             .border(1.dp, palette.border, RoundedCornerShape(8.dp))
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -369,14 +358,19 @@ internal fun InventoryChassisCard(
                 modifier = Modifier
                     .matchParentSize()
                     .uiComponent("BotanicalGridOverlay")
-                    .uiSlot("botanical-overlay")
             ) {
-                BotanicalGridOverlay(
-                    scaleTier = scaleTier,
-                    activeCount = devices.size,
-                    isStn = isStn,
-                    palette = palette
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .uiSlot("botanical-overlay")
+                ) {
+                    BotanicalGridOverlay(
+                        scaleTier = scaleTier,
+                        activeCount = devices.size,
+                        isStn = isStn,
+                        palette = palette
+                    )
+                }
             }
         }
 
@@ -448,24 +442,20 @@ internal fun CategoryFaceplateStrip(
                 val hasDevices = count > 0
 
                 // Worst severity in category (lowest severityPriority number = worst severity)
-                val worstState = matchingDevs
-                    .minByOrNull { it.portState.severityPriority }
-                    ?.portState
+                val worstState = TimelineStatusEvaluator.worstCategoryState(category, devices)
 
                 val stateColor = if (worstState != null) {
                     TuesdayTheme.ledColorFor(worstState, isStn)
                 } else {
-                    if (isStn) Color(0xFF94A3B8) else Color(0xFF4B5563)
+                    palette.textMuted
                 }
 
                 val isCategorySelected = activeContextCategory == category
-                val emptyBorder = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2D323E)
+                val emptyBorder = palette.borderStrong
                 val iconBoxBg = if (isCategorySelected) {
                     palette.accent.copy(alpha = 0.22f)
-                } else if (isStn) {
-                    Color(0xFFF8FAFC)
                 } else {
-                    Color(0xFF20232B)
+                    palette.elevated
                 }
                 val iconBorderColor = if (isCategorySelected) {
                     palette.accent
@@ -475,9 +465,9 @@ internal fun CategoryFaceplateStrip(
                     emptyBorder
                 }
                 val tickColor = if (hasDevices) stateColor.copy(alpha = 0.53f) else emptyBorder
-                val tileBgColor = if (hasDevices) stateColor else if (isStn) Color(0xFFE2E8F0) else Color(0xFF20232A)
+                val tileBgColor = if (hasDevices) stateColor else palette.border
                 val tileTextColor = when {
-                    !hasDevices -> Color(0xFF6B7280)
+                    !hasDevices -> palette.textMuted
                     !isStn && (worstState == PortLifecycleState.OK || worstState == PortLifecycleState.EOL) -> Color(0xFF090D0A)
                     else -> Color.White
                 }
@@ -539,9 +529,7 @@ internal fun CategoryFaceplateStrip(
                         Text(
                             text = count.toString(),
                             color = tileTextColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
+                            style = TuesdayTypeTokens.HardwareCounterFixed
                         )
                     }
                 }
@@ -597,9 +585,7 @@ internal fun CategoryPopover(
     onAddDevice: () -> Unit,
     onClose: () -> Unit
 ) {
-    val pointerXFraction = if (stripWidthPx > 0f) {
-        (anchorXInStripPx / stripWidthPx).coerceIn(0.08f, 0.92f)
-    } else 0.5f
+    val pointerXFraction = TimelineStatusEvaluator.clampPopoverArrowFraction(anchorXInStripPx, stripWidthPx)
 
     Column(
         modifier = Modifier
@@ -624,7 +610,7 @@ internal fun CategoryPopover(
             }
             drawPath(
                 path = path,
-                color = if (isStn) Color(0xFFE2E8F0) else Color(0xFF282C37)
+                color = palette.borderStrong
             )
             val fillPath = Path().apply {
                 moveTo(arrowCenterX - arrowWidth / 2f + 1f, arrowHeight)
@@ -634,7 +620,7 @@ internal fun CategoryPopover(
             }
             drawPath(
                 path = fillPath,
-                color = if (isStn) Color(0xFFFFFFFF) else Color(0xFF14171F)
+                color = palette.surface
             )
         }
 
@@ -645,10 +631,10 @@ internal fun CategoryPopover(
                 .clip(RoundedCornerShape(12.dp))
                 .border(
                     width = 1.dp,
-                    color = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2E3442),
+                    color = palette.borderStrong,
                     shape = RoundedCornerShape(12.dp)
                 ),
-            color = if (isStn) Color(0xFFFFFFFF) else Color(0xFF14171F),
+            color = palette.surface,
             shadowElevation = 8.dp
         ) {
             Column(
@@ -701,7 +687,7 @@ internal fun CategoryPopover(
                                 Text(
                                     text = "${category.code} · ${category.osiLayer}",
                                     color = palette.textMuted,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
@@ -712,7 +698,7 @@ internal fun CategoryPopover(
                                 text = if (devices.isEmpty()) "0 devices in inventory"
                                 else "${devices.size} ${if (category == StnHardwareCategory.C8_GUEST) "user(s)" else "device(s)"} enrolled",
                                 color = palette.textMuted,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -743,7 +729,7 @@ internal fun CategoryPopover(
                 }
 
                 HorizontalDivider(
-                    color = if (isStn) Color(0xFFE2E8F0) else Color(0xFF222631),
+                    color = palette.border,
                     thickness = 1.dp
                 )
 
@@ -796,7 +782,7 @@ internal fun CategoryPopover(
                             val devStateColor = TuesdayTheme.ledColorFor(dev.portState, isStn)
                             Column(
                                 modifier = Modifier
-                                    .width(62.dp)
+                                    .width(68.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { onInspectDevice(dev.id) }
                                     .padding(vertical = 4.dp)
@@ -808,7 +794,7 @@ internal fun CategoryPopover(
                                     modifier = Modifier
                                         .size(46.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isStn) Color(0xFFF1F5F9) else Color(0xFF1E222B))
+                                        .background(palette.elevated)
                                         .border(
                                             width = 1.5.dp,
                                             color = devStateColor.copy(alpha = 0.8f),
@@ -825,7 +811,7 @@ internal fun CategoryPopover(
                                 Text(
                                     text = dev.shortLabel,
                                     color = palette.textPrimary,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
                                     textAlign = TextAlign.Center
@@ -833,7 +819,7 @@ internal fun CategoryPopover(
                                 Text(
                                     text = dev.trustZone.shortCode,
                                     color = palette.textMuted,
-                                    fontSize = 8.sp,
+                                    fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center
@@ -844,7 +830,7 @@ internal fun CategoryPopover(
                         // Always provide an inline "+ Add <Category>" tile at the end of the squircle gallery
                         Column(
                             modifier = Modifier
-                                .width(62.dp)
+                                .width(68.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onAddDevice() }
                                 .padding(vertical = 4.dp)
@@ -866,7 +852,7 @@ internal fun CategoryPopover(
                             ) {
                                 Text(
                                     text = "+",
-                                    color = palette.accent,
+                                    color = palette.accentText,
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.uiSlot("category-popover-add-cta", "category=${category.code}")
@@ -874,8 +860,8 @@ internal fun CategoryPopover(
                             }
                             Text(
                                 text = "Add ${category.shortName}",
-                                color = palette.accent,
-                                fontSize = 9.sp,
+                                color = palette.accentText,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 softWrap = false,
@@ -884,7 +870,7 @@ internal fun CategoryPopover(
                             Text(
                                 text = category.code,
                                 color = palette.textMuted,
-                                fontSize = 8.sp,
+                                fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center
@@ -905,33 +891,14 @@ internal fun StateFilterChip(
     palette: BrandPalette,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .uiAction("filterPortState")
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (selected) palette.accent.copy(alpha = 0.18f) else palette.surface)
-            .border(1.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(6.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        if (dotColor != null) {
-            Box(
-                modifier = Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(dotColor)
-            )
-        }
-        Text(
-            text = label,
-            color = if (selected) palette.accent else palette.textPrimary,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace
-        )
-    }
+    SelectableFilterChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
+        palette = palette,
+        modifier = Modifier.uiAction("filterPortState"),
+        leadingDotColor = dotColor
+    )
 }
 
 @Composable
@@ -941,21 +908,11 @@ internal fun ZoneFilterPill(
     palette: BrandPalette,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .uiAction("filterZone")
-            .clip(RoundedCornerShape(5.dp))
-            .background(if (selected) palette.accent.copy(alpha = 0.18f) else palette.elevated)
-            .border(1.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(5.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            color = if (selected) palette.accent else palette.textMuted,
-            fontSize = 8.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-    }
+    SelectableFilterChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
+        palette = palette,
+        modifier = Modifier.uiAction("filterZone")
+    )
 }

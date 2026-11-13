@@ -2,10 +2,8 @@ package sh.tuesday.app.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -18,16 +16,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import sh.tuesday.app.models.AppBrandFlavor
-import sh.tuesday.app.models.NetworkSite
 import sh.tuesday.app.models.StnHardwareCategory
 import sh.tuesday.app.theme.BrandPalette
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.DetailModalDialog
+import sh.tuesday.app.ui.components.MonospaceBadge
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
-import sh.tuesday.app.ui.uiSlot
 
 @Composable
 fun ReferenceGuideModalDialog(
@@ -37,64 +34,42 @@ fun ReferenceGuideModalDialog(
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
     val scrollState = rememberScrollState()
+    val cardShape = RoundedCornerShape(TuesdayDimens.RadiusModalCard)
 
-    Dialog(
+    DetailModalDialog(
+        palette = palette,
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        closeActionModifier = Modifier.uiAction("closeReferenceGuide")
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
+                .fillMaxWidth()
+                .fillMaxHeight(0.84f)
                 .uiComponent("ReferenceGuideModal")
-                .clip(RoundedCornerShape(16.dp))
+                .clip(cardShape)
                 .background(palette.surface)
-                .border(1.dp, palette.border, RoundedCornerShape(16.dp))
+                .border(1.dp, palette.border, cardShape)
         ) {
-            // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(palette.bg)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(palette.accent.copy(alpha = 0.14f))
-                            .border(1.dp, palette.accent.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "REFERENCE GUIDE",
-                            color = palette.accent,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Text(
-                        text = "SureThingNet Standard & Ordinal Spine",
-                        color = palette.textPrimary,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.uiAction("closeReferenceGuide")
-                ) {
-                    Text("✕", color = palette.textMuted, fontWeight = FontWeight.Bold)
-                }
+                MonospaceBadge(
+                    text = "REFERENCE GUIDE",
+                    color = palette.accentText
+                )
+                Text(
+                    text = "SureThingNet Standard & Ordinal Spine",
+                    color = palette.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
-            // Scrollable Body
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -102,7 +77,6 @@ fun ReferenceGuideModalDialog(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Section 1: SureThingNet Standard Categories (Scale C: C1 -> C8)
                 Text(
                     text = "SureThingNet Standard Categories (Scale C)",
                     color = palette.textPrimary,
@@ -112,8 +86,8 @@ fun ReferenceGuideModalDialog(
                 Text(
                     text = "The 8 semantic hardware categories (C1 → C8) that govern our faceplate port strip, inventory classification, and progressive disclosure model.",
                     color = palette.textMuted,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
+                    fontSize = 12.sp,
+                    lineHeight = 16.5.sp
                 )
 
                 StnHardwareCategory.entries.chunked(2).forEach { pair ->
@@ -125,9 +99,9 @@ fun ReferenceGuideModalDialog(
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                                     .background(palette.elevated)
-                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
                                     .padding(9.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -139,34 +113,26 @@ fun ReferenceGuideModalDialog(
                                     Text(
                                         text = if (isStn) cat.stnLabel else cat.proLabel,
                                         color = palette.textPrimary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(palette.accent.copy(alpha = 0.14f))
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(
-                                            text = "${cat.code} • ${cat.osiLayer}",
-                                            color = palette.accent,
-                                            fontSize = 8.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
+                                    MonospaceBadge(
+                                        text = "${cat.code}•${cat.osiLayer}",
+                                        color = palette.accentText,
+                                        borderAlpha = 0f
+                                    )
                                 }
                                 Text(
                                     text = cat.description,
                                     color = palette.textMuted,
-                                    fontSize = 10.sp,
-                                    lineHeight = 13.5.sp
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.5.sp
                                 )
                                 Text(
                                     text = cat.examples,
-                                    color = palette.accent,
-                                    fontSize = 8.5.sp,
+                                    color = palette.accentText,
+                                    fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
@@ -174,7 +140,6 @@ fun ReferenceGuideModalDialog(
                     }
                 }
 
-                // Section 2: Industry-Standard Ordinal Scales (S0->S6, Z0->Z5, R1->R4)
                 HorizontalDivider(color = palette.border)
                 Text(
                     text = "📐 Industry-Standard Ordinal Scales (S0→S6 • Z0→Z5 • R1→R4)",
@@ -227,7 +192,6 @@ fun ReferenceGuideModalDialog(
                     palette = palette
                 )
 
-                // Section 3: Classical OSI 7+1 Layer Model
                 HorizontalDivider(color = palette.border)
                 Text(
                     text = "🌐 The OSI 7+1 Layer Reference Model (L1–L8)",
@@ -252,44 +216,33 @@ fun ReferenceGuideModalDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                             .background(if (isHuman) TuesdayTheme.LedEolAmber.copy(alpha = 0.1f) else palette.elevated)
                             .border(
                                 1.dp,
                                 if (isHuman) TuesdayTheme.LedEolAmber else palette.border,
-                                RoundedCornerShape(8.dp)
+                                RoundedCornerShape(TuesdayDimens.RadiusControl)
                             )
                             .padding(10.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(palette.bg)
-                                .border(1.dp, if (isHuman) TuesdayTheme.LedEolAmber else palette.border, RoundedCornerShape(5.dp))
-                                .padding(horizontal = 7.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = badge,
-                                color = if (isHuman) TuesdayTheme.LedEolAmber else palette.accent,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                        MonospaceBadge(
+                            text = badge,
+                            color = if (isHuman) TuesdayTheme.LedEolAmber else palette.accentText
+                        )
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 text = title,
                                 color = palette.textPrimary,
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = desc,
                                 color = palette.textMuted,
-                                fontSize = 10.5.sp,
-                                lineHeight = 14.sp
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
                             )
                         }
                     }
@@ -299,7 +252,7 @@ fun ReferenceGuideModalDialog(
                     onClick = onDismiss,
                     colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(TuesdayDimens.RadiusControl)
                 ) {
                     Text("Done Reading", color = Color.White, fontWeight = FontWeight.Bold)
                 }
@@ -319,9 +272,9 @@ private fun OrdinalScaleCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
             .background(palette.elevated)
-            .border(1.dp, palette.border, RoundedCornerShape(9.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -331,23 +284,23 @@ private fun OrdinalScaleCard(
         ) {
             Text(
                 text = tag,
-                color = palette.accent,
-                fontSize = 10.sp,
+                color = palette.accentText,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = FontFamily.Monospace
             )
             Text(
                 text = title,
                 color = palette.textPrimary,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
         }
         Text(
             text = description,
             color = palette.textMuted,
-            fontSize = 10.sp,
-            lineHeight = 13.5.sp
+            fontSize = 11.sp,
+            lineHeight = 14.5.sp
         )
         rows.forEach { (ord, pro, stn) ->
             Row(
@@ -359,23 +312,23 @@ private fun OrdinalScaleCard(
             ) {
                 Text(
                     text = ord,
-                    color = palette.accent,
-                    fontSize = 10.sp,
+                    color = palette.accentText,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.width(26.dp)
+                    modifier = Modifier.width(28.dp)
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = pro,
                         color = palette.textPrimary,
-                        fontSize = 10.5.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = stn,
                         color = palette.textMuted,
-                        fontSize = 9.5.sp
+                        fontSize = 11.sp
                     )
                 }
             }

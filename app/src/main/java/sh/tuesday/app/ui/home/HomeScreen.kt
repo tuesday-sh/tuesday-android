@@ -62,7 +62,9 @@ import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.bulletins.BulletinsScreen
 import sh.tuesday.app.ui.components.BulletinChecklistStep
-import sh.tuesday.app.ui.components.DetailModalDialog
+import sh.tuesday.app.ui.components.SurfaceListDivider
+import sh.tuesday.app.ui.components.TuesdayBottomSheet
+import sh.tuesday.app.ui.components.TuesdayModalCard
 import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.ui.tabs.MiniCandleBar
 import sh.tuesday.app.ui.components.NotchBulletinCard
@@ -228,6 +230,7 @@ fun HomeScreen(
                 showNetworkPicker = false
                 networkPickerInitialUpgradePrompt = false
                 showReferenceGuide = false
+                showProComingSoonModal = false
                 inspectedDevice = null
                 expandNetworkInSettings = false
                 expandPlanInSettings = false
@@ -544,7 +547,7 @@ fun HomeScreen(
                         label = {
                             Text(
                                 text = if (isStn) tab.labelStn else tab.labelPro,
-                                fontSize = 10.5.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                 maxLines = 1,
                                 softWrap = false,
@@ -678,7 +681,8 @@ fun HomeScreen(
                     flavor = brandFlavor,
                     palette = palette,
                     devices = visibleDevices,
-                    bulletins = bulletinsPayload.inbox
+                    bulletins = bulletinsPayload.inbox,
+                    onOpenReferenceGuide = { showReferenceGuide = true }
                 )
                 MainNavTab.ACCOUNT -> AccountSettingsScreen(
                     params = AccountSettingsParams(
@@ -770,9 +774,9 @@ fun HomeScreen(
     }
 
     inspectedDevice?.let { device ->
-        ModalBottomSheet(
-            onDismissRequest = { inspectedDevice = null },
-            containerColor = palette.surface
+        TuesdayBottomSheet(
+            palette = palette,
+            onDismissRequest = { inspectedDevice = null }
         ) {
             DeviceInspectorBottomSheet(
                 device = device,
@@ -864,33 +868,18 @@ fun HomeScreen(
     }
 
     if (showProComingSoonModal) {
-        DetailModalDialog(
+        TuesdayModalCard(
             palette = palette,
+            title = "Coming Soon",
             onDismissRequest = { showProComingSoonModal = false }
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(palette.surface)
-                    .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = "Coming Soon",
-                    color = palette.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                SurfaceListDivider(palette)
-                Text(
-                    text = "Multi-site inventory and family sharing",
-                    color = palette.textMuted,
-                    fontSize = 13.5.sp,
-                    lineHeight = 19.sp
-                )
-            }
+            SurfaceListDivider(palette)
+            Text(
+                text = "Multi-site inventory and family sharing",
+                color = palette.textMuted,
+                fontSize = 13.5.sp,
+                lineHeight = 19.sp
+            )
         }
     }
 }

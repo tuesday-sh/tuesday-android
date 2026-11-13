@@ -1,6 +1,7 @@
 package sh.tuesday.app.ui.home
 
-import androidx.compose.animation.AnimatedVisibility
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,9 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,23 +16,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import android.content.Intent
-import android.net.Uri
+import sh.tuesday.app.R
+import sh.tuesday.app.domain.EntitlementGatePolicy
+import sh.tuesday.app.models.ApiEndpointPreset
 import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.MatchedFeedView
+import sh.tuesday.app.models.PortLifecycleState
 import sh.tuesday.app.services.GoldenCorpusRecorder
 import sh.tuesday.app.services.SubscriptionPlanOffer
 import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.theme.BrandPalette
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
-import sh.tuesday.app.ui.components.DetailModalDialog
+import sh.tuesday.app.ui.components.PlanOfferSelector
+import sh.tuesday.app.ui.components.PreferenceToggleRow
+import sh.tuesday.app.ui.components.SelectableFilterChip
 import sh.tuesday.app.ui.components.SurfaceListContainer
 import sh.tuesday.app.ui.components.SurfaceListDivider
+import sh.tuesday.app.ui.components.TuesdayListRow
+import sh.tuesday.app.ui.components.TuesdayModalCard
+import sh.tuesday.app.ui.components.TuesdayTextField
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -62,11 +70,11 @@ data class AccountSettingsParams(
     val onDowngradeFreeTier: () -> Unit = {},
     val onSaveNetworkName: (String) -> Unit = {},
     val onToggleDeveloperMode: (Boolean) -> Unit = {},
-    val isVisionDebugEnabled: Boolean = true,
+    val isVisionDebugEnabled: Boolean = false,
     val onToggleVisionDebugMode: (Boolean) -> Unit = {},
     val isDiagnosticsEnabled: Boolean = false,
     val onToggleDiagnosticsMode: (Boolean) -> Unit = {},
-    val tuesdayApiBaseUrl: String = "http://100.108.40.3:3000",
+    val tuesdayApiBaseUrl: String = "https://api.tuesday.sh",
     val onSetTuesdayApiBaseUrl: (String) -> Unit = {},
     val onSetSimulatedDeviceCount: (Int) -> Unit = {},
     val onSwitchToFleetTab: () -> Unit = {},
@@ -123,61 +131,38 @@ val REMINDER_DEFINITIONS = listOf(
     )
 )
 
-private enum class SettingsSection(val title: String, val icon: String) {
-    NETWORK("Network", "🌐"),
-    PLAN("Plan & Subscription", "💳"),
-    PREFERENCES("Preferences", "⚙️"),
-    DEV_MODE("Developer Mode", "🛠️"),
-    REMINDERS("Reminders", "🔔"),
-    FEEDS("Bulletin Feeds", "📡")
+private enum class SettingsSection(val title: String) {
+    NETWORK("Network"),
+    PLAN("Plan & Subscription"),
+    PREFERENCES("Preferences"),
+    DEV_MODE("Developer Mode"),
+    REMINDERS("Reminders"),
+    FEEDS("Bulletin Feeds")
 }
 
 @Composable
-private fun SettingsListRow(
+private fun SettingsMenuRow(
     palette: BrandPalette,
-    icon: String,
     title: String,
     subtitle: String? = null,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    TuesdayListRow(
+        palette = palette,
+        title = title,
+        onClick = onClick,
+        subtitleContent = if (!subtitle.isNullOrBlank()) {
+            {
                 Text(
-                    text = title,
-                    color = palette.textPrimary,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Bold
+                    text = subtitle,
+                    color = palette.textMuted,
+                    fontSize = 11.5.sp
                 )
-                if (!subtitle.isNullOrBlank()) {
-                    Text(
-                        text = subtitle,
-                        color = palette.textMuted,
-                        fontSize = 11.5.sp
-                    )
-                }
             }
-        }
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = "Open $title",
-            tint = palette.textMuted,
-            modifier = Modifier.size(18.dp)
-        )
-    }
+        } else null
+    )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AccountSettingsScreen(params: AccountSettingsParams) {
     val flavor = params.flavor
@@ -203,16 +188,10 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     var pushSimFeedback by remember { mutableStateOf<String?>(null) }
     var isResendingNotifs by remember { mutableStateOf(false) }
 
-    // Accordion Expansion States
-    var isNetworkOpen by remember(params.initialExpandNetwork) { mutableStateOf(params.initialExpandNetwork) }
-    var isPlanOpen by remember(params.initialExpandPlan) { mutableStateOf(params.initialExpandPlan) }
-    var isPreferencesOpen by remember(params.initialExpandPreferences) { mutableStateOf(params.initialExpandPreferences) }
-    var isDevModeOpen by remember(isDeveloperMode) { mutableStateOf(isDeveloperMode) }
-    var isRemindersOpen by remember(params.initialExpandReminders) { mutableStateOf(params.initialExpandReminders) }
-    var isFeedsOpen by remember { mutableStateOf(false) }
-
-    val isProTier1 = params.entitlementTier == "pro_tier_1" || params.entitlementTier == "multisite_tier_1" || params.entitlementTier == "fleet"
+    val isProTier1 = EntitlementGatePolicy.isProTier1Entitled(params.entitlementTier)
     var draftPlanSku by remember(params.selectedProductId) { mutableStateOf(params.selectedProductId) }
+    val okGreen = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn)
+    val cveRed = TuesdayTheme.ledColorFor(PortLifecycleState.CVE_KEV, isStn)
 
     val reminderStates = remember(params.remindersEnabled) {
         mutableStateMapOf(
@@ -226,13 +205,28 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     val activeRemindersCount = reminderStates.values.count { it }
     val activeFeedsCount = matchedFeeds.count { !it.isMuted }
     val mutedFeedsCount = matchedFeeds.count { it.isMuted }
-    var activeSection by remember { mutableStateOf<SettingsSection?>(null) }
+    var activeSection by remember(
+        params.initialExpandPreferences,
+        params.initialExpandPlan,
+        params.initialExpandReminders,
+        params.initialExpandNetwork
+    ) {
+        mutableStateOf(
+            when {
+                params.initialExpandPreferences -> SettingsSection.PREFERENCES
+                params.initialExpandPlan -> SettingsSection.PLAN
+                params.initialExpandReminders -> SettingsSection.REMINDERS
+                params.initialExpandNetwork -> SettingsSection.NETWORK
+                else -> null
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = TuesdayDimens.ScreenPaddingHorizontal, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(
@@ -241,7 +235,6 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                 .uiComponent("AccountSettingsCard"),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header (Unboxed)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -263,584 +256,360 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                 )
             }
 
-            // Native Settings List
             SurfaceListContainer(palette = palette) {
-                SettingsListRow(
+                SettingsMenuRow(
                     palette = palette,
-                    icon = SettingsSection.NETWORK.icon,
                     title = SettingsSection.NETWORK.title,
                     subtitle = networkLocationName.ifBlank { null },
                     onClick = { activeSection = SettingsSection.NETWORK }
                 )
                 SurfaceListDivider(palette)
-                SettingsListRow(
+                SettingsMenuRow(
                     palette = palette,
-                    icon = SettingsSection.PLAN.icon,
                     title = SettingsSection.PLAN.title,
                     subtitle = params.entitlementTier,
                     onClick = { activeSection = SettingsSection.PLAN }
                 )
                 SurfaceListDivider(palette)
-                SettingsListRow(
+                SettingsMenuRow(
                     palette = palette,
-                    icon = SettingsSection.PREFERENCES.icon,
                     title = SettingsSection.PREFERENCES.title,
                     subtitle = null,
                     onClick = { activeSection = SettingsSection.PREFERENCES }
                 )
                 SurfaceListDivider(palette)
-                SettingsListRow(
+                SettingsMenuRow(
                     palette = palette,
-                    icon = SettingsSection.DEV_MODE.icon,
                     title = SettingsSection.DEV_MODE.title,
                     subtitle = if (params.isDeveloperMode) "Enabled" else "Disabled",
                     onClick = { activeSection = SettingsSection.DEV_MODE }
                 )
                 SurfaceListDivider(palette)
-                SettingsListRow(
+                SettingsMenuRow(
                     palette = palette,
-                    icon = SettingsSection.REMINDERS.icon,
                     title = SettingsSection.REMINDERS.title,
                     subtitle = "$activeRemindersCount active",
                     onClick = { activeSection = SettingsSection.REMINDERS }
                 )
                 SurfaceListDivider(palette)
-                SettingsListRow(
+                SettingsMenuRow(
                     palette = palette,
-                    icon = SettingsSection.FEEDS.icon,
                     title = SettingsSection.FEEDS.title,
                     subtitle = "$activeFeedsCount active • $mutedFeedsCount muted",
                     onClick = { activeSection = SettingsSection.FEEDS }
                 )
             }
 
-            if (activeSection != null) {
-                DetailModalDialog(
-                    palette = palette,
-                    onDismissRequest = { activeSection = null }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = activeSection!!.title,
-                            color = palette.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+            DiscordCommunityCard(
+                palette = palette,
+                onOpenInvite = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(DISCORD_INVITE_URL)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
                         )
-                        SurfaceListDivider(palette)
-                // ==================== 1. NETWORK ACCORDION ITEM ====================
-                if (activeSection == SettingsSection.NETWORK) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (activeSection == SettingsSection.NETWORK) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 6.dp, end = 6.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // Hidden slot retained for cross-platform parity
-                            Box(modifier = Modifier.uiSlot("account-profile-summary"))
+                    }
+                }
+            )
 
+            val section = activeSection
+            if (section != null) {
+                TuesdayModalCard(
+                    palette = palette,
+                    title = section.title,
+                    onDismissRequest = { activeSection = null },
+                    scrollable = true
+                ) {
+                    SurfaceListDivider(palette)
+
+                    when (section) {
+                        SettingsSection.NETWORK -> {
                             Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .uiSlot("location-name-editor"),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text(
-                                    text = if (isStn) "HOME NETWORK NAME" else "LOCATION / NETWORK NAME",
-                                    color = palette.textMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Box(modifier = Modifier.uiSlot("account-profile-summary"))
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .uiSlot("location-name-editor"),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    OutlinedTextField(
-                                        value = draftName,
-                                        onValueChange = { draftName = it },
-                                        singleLine = true,
-                                        placeholder = {
-                                            Text(
-                                                if (isStn) "e.g. Our House, Main Home Wi-Fi" else "e.g. Primary Homelab, Main Rack",
-                                                fontSize = 12.5.sp
-                                            )
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedTextColor = palette.textPrimary,
-                                            unfocusedTextColor = palette.textPrimary,
-                                            focusedBorderColor = palette.accent,
-                                            unfocusedBorderColor = palette.border
-                                        )
-                                    )
-                                    Button(
-                                        onClick = { onSaveNetworkName(draftName) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.uiAction("saveNetworkName")
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        TuesdayTextField(
+                                            value = draftName,
+                                            onValueChange = { draftName = it },
+                                            label = if (isStn) "Home Network Name" else "Location / Network Name",
+                                            placeholder = if (isStn) "e.g. Our House, Main Home Wi-Fi" else "e.g. Primary Homelab, Main Rack",
+                                            palette = palette,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Button(
+                                            onClick = { onSaveNetworkName(draftName) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                                            modifier = Modifier
+                                                .heightIn(min = TuesdayDimens.HitTargetStandard)
+                                                .uiAction("saveNetworkName")
+                                        ) {
+                                            Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                }
 
-                }
-                // ==================== 1B. PLAN & ENTITLEMENT ACCORDION ITEM ====================
-                if (activeSection == SettingsSection.PLAN) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (activeSection == SettingsSection.PLAN) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("account-plan-entitlement")
-                                .padding(start = 6.dp, end = 6.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = if (isProTier1) {
-                                    "Your Tuesday.sh Pro Tier 1 subscription is active. You can create unlimited network locations with live cloud sync and cross-site security telemetry."
-                                } else {
-                                    "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play to track unlimited locations with live cloud sync."
-                                },
-                                color = palette.textMuted,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
-                            )
+                        SettingsSection.PLAN -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .uiSlot("account-plan-entitlement"),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = if (isProTier1) {
+                                        "Your Tuesday.sh Pro Tier 1 subscription is active. You can create unlimited network locations with live cloud sync and cross-site security telemetry."
+                                    } else {
+                                        "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play to track unlimited locations with live cloud sync."
+                                    },
+                                    color = palette.textMuted,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
 
-                            if (!isProTier1) {
-                                // Plan Selector (Annual vs Monthly)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    params.plans.forEach { offer ->
-                                        val isSelected = draftPlanSku == offer.productId
-                                        Column(
+                                if (!isProTier1) {
+                                    PlanOfferSelector(
+                                        plans = params.plans,
+                                        selectedProductId = draftPlanSku,
+                                        onSelectPlan = { sku ->
+                                            draftPlanSku = sku
+                                            params.onSelectPlan(sku)
+                                        },
+                                        palette = palette,
+                                        cardModifier = { Modifier.uiAction("selectTier1Plan") }
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { params.onUpgradeProTier1(draftPlanSku) },
+                                            enabled = !params.isPurchasing,
+                                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
+                                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .uiAction("selectTier1Plan")
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) palette.accent.copy(alpha = 0.14f) else palette.elevated)
-                                                .border(
-                                                    width = if (isSelected) 1.5.dp else 1.dp,
-                                                    color = if (isSelected) palette.accent else palette.border,
-                                                    shape = RoundedCornerShape(8.dp)
-                                                )
-                                                .clickable {
-                                                    draftPlanSku = offer.productId
-                                                    params.onSelectPlan(offer.productId)
-                                                }
-                                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                .uiAction("upgradeProTier1")
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = offer.title,
-                                                    color = if (isSelected) palette.accent else palette.textPrimary,
-                                                    fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                if (offer.badge != null) {
-                                                    Text(
-                                                        text = offer.badge,
-                                                        color = TuesdayTheme.LedOkGreen,
-                                                        fontSize = 8.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontFamily = FontFamily.Monospace
-                                                    )
-                                                }
-                                            }
                                             Text(
-                                                text = "${offer.formattedPrice} ${offer.periodLabel}",
+                                                text = if (params.isPurchasing) "Processing..." else "Upgrade to Pro Tier 1",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { params.onRestorePurchases() },
+                                            enabled = !params.isRestoring,
+                                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                                            modifier = Modifier.uiAction("restorePurchases")
+                                        ) {
+                                            Text(
+                                                text = if (params.isRestoring) "Restoring..." else "Restore",
                                                 color = palette.textPrimary,
-                                                fontSize = 12.5.sp,
-                                                fontWeight = FontWeight.ExtraBold
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                            .background(okGreen.copy(alpha = 0.12f))
+                                            .border(1.dp, okGreen.copy(alpha = 0.45f), RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = "✓ Active • Tuesday.sh Pro Tier 1",
+                                                color = okGreen,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "SKU: ${params.activeSubscriptionSku}",
+                                                color = palette.textMuted,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                val playUri = Uri.parse(
+                                                    "https://play.google.com/store/account/subscriptions?sku=${params.activeSubscriptionSku}&package=${context.packageName}"
+                                                )
+                                                runCatching {
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW, playUri))
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(TuesdayDimens.RadiusBadge),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.uiAction("managePlaySubscription")
+                                        ) {
+                                            Text(
+                                                text = "Manage in Play",
+                                                color = palette.textPrimary,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+
+                                    if (isDeveloperMode) {
+                                        OutlinedButton(
+                                            onClick = { params.onDowngradeFreeTier() },
+                                            shape = RoundedCornerShape(TuesdayDimens.RadiusBadge),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .uiAction("resetEntitlementFree")
+                                        ) {
+                                            Text(
+                                                text = "🛠️ Dev: Reset Entitlement to Free Tier",
+                                                color = palette.textMuted,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace
                                             )
                                         }
                                     }
                                 }
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Button(
-                                        onClick = { params.onUpgradeProTier1(draftPlanSku) },
-                                        enabled = !params.isPurchasing,
-                                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .uiAction("upgradeProTier1")
-                                    ) {
-                                        Text(
-                                            text = if (params.isPurchasing) "Processing..." else "Upgrade to Pro Tier 1",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                    OutlinedButton(
-                                        onClick = { params.onRestorePurchases() },
-                                        enabled = !params.isRestoring,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.uiAction("restorePurchases")
-                                    ) {
-                                        Text(
-                                            text = if (params.isRestoring) "Restoring..." else "Restore",
-                                            color = palette.textPrimary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
+                                if (!params.billingStatusMessage.isNullOrBlank()) {
+                                    Text(
+                                        text = params.billingStatusMessage,
+                                        color = palette.textPrimary,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
                                 }
-                            } else {
-                                // Active Pro Tier 1 Card & Play Store Subscription Link
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(TuesdayTheme.LedOkGreen.copy(alpha = 0.12f))
-                                        .border(1.dp, TuesdayTheme.LedOkGreen.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(
-                                            text = "✓ Active • Tuesday.sh Pro Tier 1",
-                                            color = TuesdayTheme.LedOkGreen,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "SKU: ${params.activeSubscriptionSku}",
-                                            color = palette.textMuted,
-                                            fontSize = 10.5.sp,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            val playUri = Uri.parse(
-                                                "https://play.google.com/store/account/subscriptions?sku=${params.activeSubscriptionSku}&package=${context.packageName}"
-                                            )
-                                            runCatching {
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, playUri))
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(6.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        modifier = Modifier.uiAction("managePlaySubscription")
-                                    ) {
-                                        Text(
-                                            text = "Manage in Play",
-                                            color = palette.textPrimary,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
-
-                                if (isDeveloperMode) {
-                                    OutlinedButton(
-                                        onClick = { params.onDowngradeFreeTier() },
-                                        shape = RoundedCornerShape(6.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .uiAction("resetEntitlementFree")
-                                    ) {
-                                        Text(
-                                            text = "🛠️ Dev: Reset Entitlement to Free Tier",
-                                            color = palette.textMuted,
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (!params.billingStatusMessage.isNullOrBlank()) {
-                                Text(
-                                    text = params.billingStatusMessage,
-                                    color = palette.textPrimary,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
                             }
                         }
-                    }
-                }
 
-                }
-                // ==================== 1C. PREFERENCES ACCORDION ITEM ====================
-                if (activeSection == SettingsSection.PREFERENCES) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (activeSection == SettingsSection.PREFERENCES) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("preferences-toggle-list")
-                                .padding(start = 4.dp, end = 4.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Customize which filter strips appear inside the Inventory card across both HOME and PRO flavors.",
-                                color = palette.textMuted,
-                                fontSize = 11.5.sp,
-                                lineHeight = 15.sp
-                            )
-
-                            // Toggle 1: Lifecycle State Filter Strip (All, CVE/KEV, EOL, Guessed, Update, OK)
-                            Row(
+                        SettingsSection.PREFERENCES -> {
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .uiSlot("pref-state-filter-row")
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(palette.elevated)
-                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                                    .padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .uiSlot("preferences-toggle-list"),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = if (isStn) "Device Health Filter Strip" else "Lifecycle State Filter Strip",
-                                        color = palette.textPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Shows the lifecycle state filter chips (CVE/KEV, EOL, Guessed, Update, OK) above the device list when at least 1 device is enrolled.",
-                                        color = palette.textMuted,
-                                        fontSize = 10.5.sp,
-                                        lineHeight = 14.sp,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
-                                Switch(
+                                Text(
+                                    text = "Customize which filter strips appear inside the Inventory card across both HOME and PRO flavors.",
+                                    color = palette.textMuted,
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 15.sp
+                                )
+
+                                PreferenceToggleRow(
+                                    title = if (isStn) "Device Health Filter Strip" else "Lifecycle State Filter Strip",
+                                    description = "Shows the lifecycle state filter chips (CVE/KEV, EOL, Guessed, Update, OK) above the device list when at least 1 device is enrolled.",
                                     checked = params.showStateFilterStrip,
                                     onCheckedChange = params.onToggleShowStateFilterStrip,
-                                    modifier = Modifier.uiAction("toggleShowStateFilterStrip"),
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = palette.accent,
-                                        uncheckedThumbColor = Color.White,
-                                        uncheckedTrackColor = palette.border
-                                    )
+                                    palette = palette,
+                                    modifier = Modifier
+                                        .uiSlot("pref-state-filter-row")
+                                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .background(palette.elevated)
+                                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .padding(10.dp),
+                                    switchModifier = Modifier.uiAction("toggleShowStateFilterStrip")
                                 )
-                            }
 
-                            // Toggle 2: Trust Zone Filter Strip (All Zones, Z1..Z4)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .uiSlot("pref-zone-filter-row")
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(palette.elevated)
-                                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                                    .padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = if (isStn) "Network Lane Filter Strip" else "Trust Zone Filter Strip",
-                                        color = palette.textPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Shows network segmentation pills (All Zones, Main / Trusted, IoT, Guest, Infrastructure) when at least 1 device is enrolled.",
-                                        color = palette.textMuted,
-                                        fontSize = 10.5.sp,
-                                        lineHeight = 14.sp,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
-                                Switch(
+                                PreferenceToggleRow(
+                                    title = if (isStn) "Network Lane Filter Strip" else "Trust Zone Filter Strip",
+                                    description = "Shows network segmentation pills (All Zones, Main / Trusted, IoT, Guest, Infrastructure) when at least 1 device is enrolled.",
                                     checked = params.showZoneFilterStrip,
                                     onCheckedChange = params.onToggleShowZoneFilterStrip,
-                                    modifier = Modifier.uiAction("toggleShowZoneFilterStrip"),
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = palette.accent,
-                                        uncheckedThumbColor = Color.White,
-                                        uncheckedTrackColor = palette.border
-                                    )
+                                    palette = palette,
+                                    modifier = Modifier
+                                        .uiSlot("pref-zone-filter-row")
+                                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .background(palette.elevated)
+                                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .padding(10.dp),
+                                    switchModifier = Modifier.uiAction("toggleShowZoneFilterStrip")
                                 )
                             }
                         }
-                    }
-                }
 
-                }
-                // ==================== 2. DEVELOPER MODE ACCORDION ITEM ====================
-                if (activeSection == SettingsSection.DEV_MODE) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (activeSection == SettingsSection.DEV_MODE) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 4.dp, end = 4.dp, bottom = 16.dp)
-                        ) {
+                        SettingsSection.DEV_MODE -> {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .uiSlot("developer-mode-card")
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                                     .background(palette.accent.copy(alpha = 0.06f))
-                                    .border(1.dp, palette.accent.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, palette.accent.copy(alpha = 0.22f), RoundedCornerShape(TuesdayDimens.RadiusControl))
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (isStn) "Household Scale Tester" else "State Simulator",
-                                            color = palette.textPrimary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = if (isStn) {
-                                                "Test different household device scales and prototype states."
-                                            } else {
-                                                "Enables in-app state controls & diagnostic testing tools."
-                                            },
-                                            color = palette.textMuted,
-                                            fontSize = 10.5.sp
-                                        )
-                                    }
-                                    Switch(
-                                        checked = isDeveloperMode,
-                                        onCheckedChange = onToggleDeveloperMode,
-                                        modifier = Modifier.uiAction("toggleDeveloperMode"),
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = palette.accent,
-                                            uncheckedThumbColor = Color.White,
-                                            uncheckedTrackColor = palette.border
-                                        )
-                                    )
-                                }
+                                PreferenceToggleRow(
+                                    title = if (isStn) "Household Scale Tester" else "State Simulator",
+                                    description = if (isStn) {
+                                        "Test different household device scales and prototype states."
+                                    } else {
+                                        "Enables in-app state controls & diagnostic testing tools."
+                                    },
+                                    checked = isDeveloperMode,
+                                    onCheckedChange = onToggleDeveloperMode,
+                                    palette = palette,
+                                    switchModifier = Modifier.uiAction("toggleDeveloperMode")
+                                )
 
                                 if (isDeveloperMode) {
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
 
-                                    // Vision API Debug Console Toggle
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .uiSlot("vision-debug-toggle-row"),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "🐞 Vision API Debug & Raw Match Logs",
-                                                color = palette.textPrimary,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = "Shows a live monospace API log view on Add Device with raw LLM matches and Gold Datalake alignment diagnostics.",
-                                                color = palette.textMuted,
-                                                fontSize = 10.5.sp,
-                                                lineHeight = 14.sp
-                                            )
-                                        }
-                                        Switch(
-                                            checked = params.isVisionDebugEnabled,
-                                            onCheckedChange = params.onToggleVisionDebugMode,
-                                            modifier = Modifier.uiAction("toggleVisionDebugMode"),
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color.White,
-                                                checkedTrackColor = TuesdayTheme.HealthyGreen,
-                                                uncheckedThumbColor = Color.White,
-                                                uncheckedTrackColor = palette.border
-                                            )
-                                        )
-                                    }
+                                    PreferenceToggleRow(
+                                        title = "🐞 Vision API Debug & Raw Match Logs",
+                                        description = "Shows a live monospace API log view on Add Device with raw LLM matches and Gold Datalake alignment diagnostics.",
+                                        checked = params.isVisionDebugEnabled,
+                                        onCheckedChange = params.onToggleVisionDebugMode,
+                                        palette = palette,
+                                        accentTrackColor = okGreen,
+                                        modifier = Modifier.uiSlot("vision-debug-toggle-row"),
+                                        switchModifier = Modifier.uiAction("toggleVisionDebugMode")
+                                    )
 
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
 
-                                    // Diagnostics Local Capture Toggle
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .uiSlot("diagnostics-toggle-row"),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "Diagnostics",
-                                                color = palette.textPrimary,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = "Saves captured photos and debug logs locally to /sdcard/.../diagnostics/.",
-                                                color = palette.textMuted,
-                                                fontSize = 10.5.sp,
-                                                lineHeight = 14.sp
-                                            )
-                                        }
-                                        Switch(
-                                            checked = params.isDiagnosticsEnabled,
-                                            onCheckedChange = params.onToggleDiagnosticsMode,
-                                            modifier = Modifier.uiAction("toggleDiagnosticsMode"),
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color.White,
-                                                checkedTrackColor = TuesdayTheme.HealthyGreen,
-                                                uncheckedThumbColor = Color.White,
-                                                uncheckedTrackColor = palette.border
-                                            )
-                                        )
-                                    }
+                                    PreferenceToggleRow(
+                                        title = "Diagnostics",
+                                        description = "Saves captured photos and debug logs locally to /sdcard/.../diagnostics/.",
+                                        checked = params.isDiagnosticsEnabled,
+                                        onCheckedChange = params.onToggleDiagnosticsMode,
+                                        palette = palette,
+                                        accentTrackColor = okGreen,
+                                        modifier = Modifier.uiSlot("diagnostics-toggle-row"),
+                                        switchModifier = Modifier.uiAction("toggleDiagnosticsMode")
+                                    )
 
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
 
-                                    // API Endpoint Target Switcher (Local vs Prod GCP)
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .uiSlot("dev-api-endpoint-selector"),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val activePreset = sh.tuesday.app.models.ApiEndpointPreset.fromUrl(params.tuesdayApiBaseUrl)
+                                        val activePreset = ApiEndpointPreset.fromUrl(params.tuesdayApiBaseUrl)
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -849,14 +618,14 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             Text(
                                                 text = "TUESDAY API ENDPOINT TARGET:",
                                                 color = palette.textMuted,
-                                                fontSize = 9.5.sp,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 fontFamily = FontFamily.Monospace
                                             )
                                             Text(
                                                 text = activePreset?.shortBadge ?: "⚙️ CUSTOM URL",
-                                                color = if (activePreset == sh.tuesday.app.models.ApiEndpointPreset.PROD_GCP) TuesdayTheme.HacsCyan else TuesdayTheme.HealthyGreen,
-                                                fontSize = 9.5.sp,
+                                                color = if (activePreset == ApiEndpointPreset.PROD_GCP) palette.accentText else okGreen,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 fontFamily = FontFamily.Monospace
                                             )
@@ -866,11 +635,10 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            sh.tuesday.app.models.ApiEndpointPreset.entries.forEach { preset ->
-                                                val isSel = activePreset == preset
+                                            ApiEndpointPreset.entries.forEach { preset ->
                                                 DevStateSimButton(
                                                     label = preset.shortBadge,
-                                                    isSelected = isSel,
+                                                    isSelected = activePreset == preset,
                                                     palette = palette,
                                                     modifier = Modifier.weight(1f),
                                                     onClick = {
@@ -886,29 +654,21 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            OutlinedTextField(
+                                            TuesdayTextField(
                                                 value = draftApiUrl,
                                                 onValueChange = { draftApiUrl = it },
-                                                singleLine = true,
-                                                textStyle = androidx.compose.ui.text.TextStyle(
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontSize = 11.5.sp,
-                                                    color = palette.textPrimary
-                                                ),
-                                                placeholder = {
-                                                    Text("http://100.108.40.3:3000 or https://api.tuesday.sh", fontSize = 11.sp)
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedBorderColor = palette.accent,
-                                                    unfocusedBorderColor = palette.border
-                                                )
+                                                label = "Endpoint URL",
+                                                placeholder = "http://100.108.40.3:3000 or https://api.tuesday.sh",
+                                                palette = palette,
+                                                modifier = Modifier.weight(1f)
                                             )
                                             Button(
                                                 onClick = { params.onSetTuesdayApiBaseUrl(draftApiUrl) },
                                                 colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-                                                shape = RoundedCornerShape(8.dp),
-                                                modifier = Modifier.uiAction("saveApiEndpoint")
+                                                shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                                                modifier = Modifier
+                                                    .heightIn(min = TuesdayDimens.HitTargetStandard)
+                                                    .uiAction("saveApiEndpoint")
                                             ) {
                                                 Text("Set", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
                                             }
@@ -917,7 +677,6 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
 
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
 
-                                    // Push Notification & Patch Tuesday Simulator
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -927,7 +686,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         Text(
                                             text = "PUSH NOTIFICATIONS & PATCH TUESDAY SIMULATOR:",
                                             color = palette.textMuted,
-                                            fontSize = 9.5.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             fontFamily = FontFamily.Monospace
                                         )
@@ -936,9 +695,9 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .uiAction("resendInventoryNotifications")
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                                                 .background(palette.accent.copy(alpha = 0.16f))
-                                                .border(1.dp, palette.accent.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                                                .border(1.dp, palette.accent.copy(alpha = 0.65f), RoundedCornerShape(TuesdayDimens.RadiusBadge))
                                                 .clickable(enabled = !isResendingNotifs) {
                                                     scope.launch {
                                                         isResendingNotifs = true
@@ -957,7 +716,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                                 } else {
                                                     "🔔 Resend Inventory Notifications (Force Dispatch)"
                                                 },
-                                                color = palette.accent,
+                                                color = palette.accentText,
                                                 fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -967,9 +726,9 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .uiAction("triggerMockPatchTuesday")
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.14f))
-                                                .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                                .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                                .background(okGreen.copy(alpha = 0.14f))
+                                                .border(1.dp, okGreen.copy(alpha = 0.6f), RoundedCornerShape(TuesdayDimens.RadiusBadge))
                                                 .clickable {
                                                     val shown = params.onTriggerMockPatchTuesday()
                                                     pushSimFeedback = if (shown) {
@@ -983,7 +742,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         ) {
                                             Text(
                                                 text = "📅 Send Mock Patch Tuesday Bulletin",
-                                                color = TuesdayTheme.HealthyGreen,
+                                                color = okGreen,
                                                 fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -993,7 +752,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             Text(
                                                 text = pushSimFeedback!!,
                                                 color = palette.textPrimary,
-                                                fontSize = 10.5.sp,
+                                                fontSize = 11.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 modifier = Modifier.padding(top = 2.dp)
                                             )
@@ -1004,7 +763,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                     Text(
                                         text = "INVENTORY SEEDS:",
                                         color = palette.textMuted,
-                                        fontSize = 9.5.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = FontFamily.Monospace
                                     )
@@ -1062,14 +821,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         )
                                     }
 
-                                    // Offline Golden Corpus Purge Control
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .uiAction("purgeGoldenCorpus")
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(TuesdayTheme.LedCveRed.copy(alpha = 0.14f))
-                                            .border(1.dp, TuesdayTheme.LedCveRed.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                                            .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                            .background(cveRed.copy(alpha = 0.14f))
+                                            .border(1.dp, cveRed.copy(alpha = 0.55f), RoundedCornerShape(TuesdayDimens.RadiusBadge))
                                             .clickable {
                                                 scope.launch {
                                                     val removed = GoldenCorpusRecorder.purgeAllCaptures(context)
@@ -1082,7 +840,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                     ) {
                                         Text(
                                             text = purgeFeedback ?: "🗑️ Purge Diagnostic Captures ($savedCorpusCount Saved)",
-                                            color = TuesdayTheme.LedCveRed,
+                                            color = cveRed,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -1090,83 +848,28 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 }
                             }
                         }
-                    }
-                }
 
-                }
-                // ==================== 3. REMINDERS ACCORDION ITEM ====================
-                if (activeSection == SettingsSection.REMINDERS) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (activeSection == SettingsSection.REMINDERS) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 4.dp, end = 4.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = if (isStn) {
-                                    "Choose which notifications ring your phone. Turning off a reminder keeps security bulletins visible inside the app without noisy alerts."
-                                } else {
-                                    "Configure generalized notification channels. Disabling a category stops push alerts while preserving in-app inbox items."
-                                },
-                                color = palette.textMuted,
-                                fontSize = 11.5.sp,
-                                lineHeight = 15.sp
-                            )
+                        SettingsSection.REMINDERS -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (isStn) {
+                                        "Choose which notifications ring your phone. Turning off a reminder keeps security bulletins visible inside the app without noisy alerts."
+                                    } else {
+                                        "Configure generalized notification channels. Disabling a category stops push alerts while preserving in-app inbox items."
+                                    },
+                                    color = palette.textMuted,
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 15.sp
+                                )
 
-                            REMINDER_DEFINITIONS.forEach { def ->
-                                val isChecked = reminderStates[def.key] ?: false
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(palette.elevated)
-                                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = def.title,
-                                                color = palette.textPrimary,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            if (def.isCritical) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(TuesdayTheme.LedCveRed.copy(alpha = 0.14f))
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "IN-APP ALWAYS",
-                                                        color = TuesdayTheme.LedCveRed,
-                                                        fontSize = 8.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        maxLines = 1,
-                                                        softWrap = false
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Text(
-                                            text = def.desc,
-                                            color = palette.textMuted,
-                                            fontSize = 10.5.sp,
-                                            lineHeight = 14.sp,
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        )
-                                    }
-                                    Switch(
+                                REMINDER_DEFINITIONS.forEach { def ->
+                                    val isChecked = reminderStates[def.key] ?: false
+                                    PreferenceToggleRow(
+                                        title = def.title,
+                                        description = def.desc,
                                         checked = isChecked,
                                         onCheckedChange = { checked ->
                                             reminderStates[def.key] = checked
@@ -1174,129 +877,122 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                                 params.onToggleReminders?.invoke(checked)
                                             }
                                         },
-                                        modifier = if (def.key == "monthly_rhythm") {
+                                        palette = palette,
+                                        badgeText = if (def.isCritical) "IN-APP ALWAYS" else null,
+                                        badgeColor = cveRed,
+                                        accentTrackColor = okGreen,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                            .background(palette.elevated)
+                                            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                            .padding(10.dp),
+                                        switchModifier = if (def.key == "monthly_rhythm") {
                                             Modifier.uiAction("toggleMonthlyReminders")
                                         } else {
                                             Modifier
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = TuesdayTheme.LedOkGreen,
-                                            uncheckedThumbColor = Color.White,
-                                            uncheckedTrackColor = palette.border
-                                        )
+                                        }
                                     )
                                 }
                             }
                         }
-                    }
-                }
 
-                }
-                // ==================== 4. FEEDS ACCORDION ITEM ====================
-                if (activeSection == SettingsSection.FEEDS) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (activeSection == SettingsSection.FEEDS) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 4.dp, end = 4.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // High Severity Advisory Box
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(TuesdayTheme.LedCveRed.copy(alpha = 0.08f))
-                                    .border(1.dp, TuesdayTheme.LedCveRed.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                    .padding(10.dp)
+                        SettingsSection.FEEDS -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(
-                                        text = "⚠️ High Severity Guardrail Policy",
-                                        color = TuesdayTheme.LedCveRed,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "High Severity bulletins (CISA KEV disclosures and physical recalls) cannot be muted. You can snooze them or disable push reminders so they only show in-app.",
-                                        color = palette.textMuted,
-                                        fontSize = 11.sp,
-                                        lineHeight = 15.sp
-                                    )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .background(cveRed.copy(alpha = 0.08f))
+                                        .border(1.dp, cveRed.copy(alpha = 0.3f), RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .padding(10.dp)
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(
+                                            text = "⚠️ High Severity Guardrail Policy",
+                                            color = cveRed,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "High Severity bulletins (CISA KEV disclosures and physical recalls) cannot be muted. You can snooze them or disable push reminders so they only show in-app.",
+                                            color = palette.textMuted,
+                                            fontSize = 11.sp,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
                                 }
-                            }
 
-                            Text(
-                                text = if (isStn) "MATCHED HOME DEVICE FEEDS:" else "MATCHED HARDWARE FEEDS:",
-                                color = palette.textMuted,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-
-                            if (matchedFeeds.isEmpty()) {
                                 Text(
-                                    text = "No feeds matched yet. Add devices to activate security feeds.",
+                                    text = if (isStn) "MATCHED HOME DEVICE FEEDS:" else "MATCHED HARDWARE FEEDS:",
                                     color = palette.textMuted,
                                     fontSize = 11.sp,
-                                    modifier = Modifier.padding(vertical = 4.dp)
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
                                 )
-                            } else {
-                                matchedFeeds.forEach { feed ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(palette.elevated)
-                                            .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Text(if (feed.isMuted) "🔕" else "📡", fontSize = 11.sp)
+
+                                if (matchedFeeds.isEmpty()) {
+                                    Text(
+                                        text = "No feeds matched yet. Add devices to activate security feeds.",
+                                        color = palette.textMuted,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                } else {
+                                    matchedFeeds.forEach { feed ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                                .background(palette.elevated)
+                                                .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(if (feed.isMuted) "🔕" else "📡", fontSize = 11.sp)
+                                                    Text(
+                                                        text = feed.name,
+                                                        color = palette.textPrimary,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                                 Text(
-                                                    text = feed.name,
-                                                    color = palette.textPrimary,
-                                                    fontSize = 11.5.sp,
+                                                    text = feed.matchedPorts.joinToString(", "),
+                                                    color = palette.textMuted,
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+
+                                            Button(
+                                                onClick = { onToggleMuteFeed(feed.slug) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (feed.isMuted) palette.border else palette.elevated,
+                                                    contentColor = if (feed.isMuted) palette.textPrimary else palette.accentText
+                                                ),
+                                                shape = RoundedCornerShape(TuesdayDimens.RadiusBadge),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier.border(
+                                                    1.dp,
+                                                    if (feed.isMuted) palette.textMuted else palette.accent,
+                                                    RoundedCornerShape(TuesdayDimens.RadiusBadge)
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = if (feed.isMuted) "Muted" else "Mute",
+                                                    fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
-                                            Text(
-                                                text = feed.matchedPorts.joinToString(", "),
-                                                color = palette.textMuted,
-                                                fontSize = 10.sp,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-
-                                        Button(
-                                            onClick = { onToggleMuteFeed(feed.slug) },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (feed.isMuted) palette.border else palette.elevated,
-                                                contentColor = if (feed.isMuted) palette.textPrimary else palette.accent
-                                            ),
-                                            shape = RoundedCornerShape(6.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            modifier = Modifier.border(
-                                                1.dp,
-                                                if (feed.isMuted) palette.textMuted else palette.accent,
-                                                RoundedCornerShape(6.dp)
-                                            )
-                                        ) {
-                                            Text(
-                                                text = if (feed.isMuted) "Muted" else "Mute",
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
                                         }
                                     }
                                 }
@@ -1304,13 +1000,68 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                         }
                     }
                 }
-                }
-            }
-                    }
-                }
             }
         }
     }
+}
+
+internal const val DISCORD_INVITE_URL = "https://discord.gg/2KEYJARecD"
+private val DiscordBlurple = Color(0xFF5865F2)
+
+@Composable
+internal fun DiscordCommunityCard(
+    palette: BrandPalette,
+    onOpenInvite: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SurfaceListContainer(
+        palette = palette,
+        modifier = modifier.uiSlot("discord-community-card")
+    ) {
+        TuesdayListRow(
+            palette = palette,
+            title = "Join our Discord Community",
+            minHeight = 56.dp,
+            titleMaxLines = 2,
+            onClick = onOpenInvite,
+            modifier = Modifier.uiAction("openDiscordInvite"),
+            leadingContent = {
+                Box(
+                    modifier = Modifier
+                        .size(TuesdayDimens.HitTargetCompact)
+                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                        .background(DiscordBlurple),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_discord),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            },
+            subtitleContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = "Have feedback, hardware questions, or feature ideas? Come hang out and chat directly with the team.",
+                        color = palette.textMuted,
+                        fontSize = 11.5.sp,
+                        lineHeight = 15.5.sp
+                    )
+                    Text(
+                        text = "https://discord.gg/2KEYJARecD ↗",
+                        color = palette.accentText,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace,
+                        textDecoration = TextDecoration.Underline
+                    )
+                }
+            }
+        )
+    }
+}
 
 @Composable
 private fun DevStateSimButton(
@@ -1320,21 +1071,11 @@ private fun DevStateSimButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .uiAction("setSimulatedDeviceCount")
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (isSelected) palette.accent.copy(alpha = 0.2f) else palette.surface)
-            .border(1.dp, if (isSelected) palette.accent else palette.border, RoundedCornerShape(6.dp))
-            .clickable { onClick() }
-            .padding(vertical = 8.dp, horizontal = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = if (isSelected) palette.accent else palette.textPrimary,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
+    SelectableFilterChip(
+        label = label,
+        selected = isSelected,
+        onClick = onClick,
+        palette = palette,
+        modifier = modifier.uiAction("setSimulatedDeviceCount")
+    )
 }

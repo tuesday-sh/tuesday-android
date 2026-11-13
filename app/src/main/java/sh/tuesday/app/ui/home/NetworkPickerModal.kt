@@ -9,7 +9,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.East
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -20,16 +19,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import sh.tuesday.app.domain.EntitlementGatePolicy
 import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.NetworkSite
 import sh.tuesday.app.services.SubscriptionPlanOffer
 import sh.tuesday.app.services.TuesdayBillingManager
 import sh.tuesday.app.theme.BrandPalette
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.MonospaceBadge
+import sh.tuesday.app.ui.components.PlanOfferSelector
+import sh.tuesday.app.ui.components.SegmentedTabRow
+import sh.tuesday.app.ui.components.TuesdayModalCard
+import sh.tuesday.app.ui.components.TuesdayTextField
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -57,10 +62,7 @@ fun NetworkPickerModalDialog(
     var showUpgradePrompt by remember(initialShowUpgradePrompt) { mutableStateOf(initialShowUpgradePrompt) }
     var activePlanSku by remember(selectedProductId) { mutableStateOf(selectedProductId) }
 
-    // In Free tier: only 1 real network + 1 demo network allowed. Creating additional real networks requires Multi-Site (Tier 1) on Tuesday.sh Pro.
-    val isMultiSiteAllowed = entitlementTier == "multisite_tier_1" || entitlementTier == "pro_tier_1"
-    val realNetworksCount = networks.count { it.id != "net-demo" }
-    val canAddNetworkWithoutUpgrade = isMultiSiteAllowed || realNetworksCount < 1
+    val canAddNetworkWithoutUpgrade = EntitlementGatePolicy.canCreateAdditionalNetwork(entitlementTier, networks)
 
     val currentNetwork = remember(networks, activeNetworkId) {
         networks.find { it.id == activeNetworkId } ?: networks.firstOrNull() ?: NetworkSite(
@@ -104,55 +106,21 @@ fun NetworkPickerModalDialog(
             onDismiss = { showUpgradePrompt = false }
         )
     } else {
-        Dialog(
+        TuesdayModalCard(
+            palette = palette,
+            title = "Networks",
             onDismissRequest = onDismiss,
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+            modifier = Modifier.uiComponent("NetworkPickerModal"),
+            closeActionModifier = Modifier.uiAction("closeNetworkPicker")
         ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .uiComponent("NetworkPickerModal")
-                .clip(RoundedCornerShape(16.dp))
-                .background(palette.surface)
-                .border(1.dp, palette.border, RoundedCornerShape(16.dp))
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Header Row: "Networks" title and Close button
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Networks",
-                    color = palette.textPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .uiAction("closeNetworkPicker")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = palette.textMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
             // Current Network Widget with Cog button
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiSlot("current-network-widget")
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(TuesdayDimens.RadiusModalCard))
                     .background(palette.accent.copy(alpha = 0.08f))
-                    .border(1.dp, palette.accent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .border(1.dp, palette.accent.copy(alpha = 0.6f), RoundedCornerShape(TuesdayDimens.RadiusModalCard))
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -173,29 +141,28 @@ fun NetworkPickerModalDialog(
                         )
                         Text(
                             text = "CURRENT NETWORK",
-                            color = palette.accent,
-                            fontSize = 9.5.sp,
+                            color = palette.accentText,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.5.sp
                         )
                     }
 
-                    // Settings / Edit Network Cog Button
                     IconButton(
                         onClick = {
                             onDismiss()
                             onOpenNetworkSettings()
                         },
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(TuesdayDimens.HitTargetCompact)
                             .uiAction("openNetworkSettings")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Edit Network Details",
                             tint = palette.textPrimary,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -226,11 +193,11 @@ fun NetworkPickerModalDialog(
                         Text(
                             text = currentNetwork.role,
                             color = palette.textMuted,
-                            fontSize = 11.5.sp
+                            fontSize = 12.sp
                         )
                     }
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusBadge),
                         color = palette.surface,
                         border = BorderStroke(1.dp, palette.border)
                     ) {
@@ -245,7 +212,6 @@ fun NetworkPickerModalDialog(
                 }
             }
 
-            // Available Networks (excluding current network)
             if (availableNetworks.isNotEmpty()) {
                 Column(
                     modifier = Modifier.uiSlot("available-networks-list"),
@@ -254,7 +220,7 @@ fun NetworkPickerModalDialog(
                     Text(
                         text = "SWITCH TO NETWORK",
                         color = palette.textMuted,
-                        fontSize = 9.5.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 0.5.sp
@@ -265,9 +231,9 @@ fun NetworkPickerModalDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .uiAction("selectNetwork")
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
                                 .background(palette.elevated)
-                                .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
                                 .clickable {
                                     onSelectNetwork(net.id)
                                     onDismiss()
@@ -290,13 +256,13 @@ fun NetworkPickerModalDialog(
                                     Text(
                                         text = net.name.ifBlank { "My Network" },
                                         color = palette.textPrimary,
-                                        fontSize = 13.5.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
                                         text = "${net.role} • ${net.devicesCount} devices",
                                         color = palette.textMuted,
-                                        fontSize = 10.sp
+                                        fontSize = 11.sp
                                     )
                                 }
                             }
@@ -306,14 +272,14 @@ fun NetworkPickerModalDialog(
                             ) {
                                 Text(
                                     text = "Switch",
-                                    color = palette.accent,
+                                    color = palette.accentText,
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Icon(
                                     imageVector = Icons.Default.East,
                                     contentDescription = null,
-                                    tint = palette.accent,
+                                    tint = palette.accentText,
                                     modifier = Modifier.size(13.dp)
                                 )
                             }
@@ -322,7 +288,6 @@ fun NetworkPickerModalDialog(
                 }
             }
 
-            // "Add a network" Button -> Opens "Setup a network" Modal (or opens Tier 1 Upgrade Modal if on Free)
             Button(
                 onClick = {
                     if (canAddNetworkWithoutUpgrade) {
@@ -334,7 +299,7 @@ fun NetworkPickerModalDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiAction("openSetupNetworkModal"),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = palette.accent,
                     contentColor = Color.White
@@ -354,7 +319,6 @@ fun NetworkPickerModalDialog(
             }
         }
     }
-    }
 }
 
 @Composable
@@ -368,195 +332,99 @@ fun Tier1UpgradeModalDialog(
     onConfirmUpgrade: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(
+    TuesdayModalCard(
+        palette = palette,
+        title = "Tuesday.sh Pro Tier 1",
+        subtitle = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations, Family Site Management, and live cloud sync.",
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        modifier = Modifier.uiComponent("Tier1UpgradeModal"),
+        borderColor = palette.accent.copy(alpha = 0.6f),
+        closeActionModifier = Modifier.uiAction("closeTier1UpgradeModal"),
+        leadingContent = {
+            Text("⚡", fontSize = 18.sp)
+        },
+        headerTrailing = {
+            MonospaceBadge(
+                text = "MULTI-SITE",
+                color = palette.accentText
+            )
+        }
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .uiComponent("Tier1UpgradeModal")
+                .fillMaxWidth()
                 .uiSlot("tier1-upgrade-card")
-                .clip(RoundedCornerShape(16.dp))
-                .background(palette.surface)
-                .border(1.dp, palette.accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
+                .background(palette.elevated)
+                .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Header Row: Title, Badge, and Close button
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("⚡", fontSize = 18.sp)
-                    Text(
-                        text = "Tuesday.sh Pro Tier 1",
-                        color = palette.textPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = palette.accent.copy(alpha = 0.16f)
-                    ) {
-                        Text(
-                            text = "MULTI-SITE",
-                            color = palette.accent,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .uiAction("closeTier1UpgradeModal")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = palette.textMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
             Text(
-                text = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations, Family Site Management, and live cloud sync.",
-                color = palette.textMuted,
-                fontSize = 12.5.sp,
-                lineHeight = 17.sp
+                text = "✓ Unlimited physical sites & remote locations",
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
             )
+            Text(
+                text = "✓ Family & Team Site Delegation (QR & invite pairing)",
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "✓ Live cross-site security bulletins & cloud sync",
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
 
-            // Feature Highlights
-            Column(
+        PlanOfferSelector(
+            plans = plans,
+            selectedProductId = selectedProductId,
+            onSelectPlan = onSelectPlan,
+            palette = palette,
+            cardModifier = { Modifier.uiAction("selectTier1Plan") }
+        )
+
+        if (!billingStatusMessage.isNullOrBlank()) {
+            Text(
+                text = billingStatusMessage,
+                color = palette.textPrimary,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { onConfirmUpgrade(selectedProductId) },
+                enabled = !isPurchasing,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(palette.elevated)
-                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .weight(1f)
+                    .uiAction("confirmTier1Upgrade"),
+                shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = palette.accent,
+                    contentColor = Color.White
+                )
             ) {
                 Text(
-                    text = "✓ Unlimited physical sites & remote locations",
-                    color = palette.textPrimary,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "✓ Family & Team Site Delegation (QR & invite pairing)",
-                    color = palette.textPrimary,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "✓ Live cross-site security bulletins & cloud sync",
-                    color = palette.textPrimary,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = if (isPurchasing) "Processing..." else "Upgrade & Continue",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
-
-            // Monthly vs Annual Plan Selector
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+                border = BorderStroke(1.dp, palette.border)
             ) {
-                plans.forEach { offer ->
-                    val isSelected = selectedProductId == offer.productId
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .uiAction("selectTier1Plan")
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) palette.accent.copy(alpha = 0.14f) else palette.elevated)
-                            .border(
-                                width = if (isSelected) 1.5.dp else 1.dp,
-                                color = if (isSelected) palette.accent else palette.border,
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .clickable { onSelectPlan(offer.productId) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = offer.title,
-                                color = if (isSelected) palette.accent else palette.textPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (offer.badge != null) {
-                                Text(
-                                    text = offer.badge,
-                                    color = TuesdayTheme.LedOkGreen,
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                        Text(
-                            text = "${offer.formattedPrice} ${offer.periodLabel}",
-                            color = palette.textPrimary,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-            }
-
-            if (!billingStatusMessage.isNullOrBlank()) {
-                Text(
-                    text = billingStatusMessage,
-                    color = palette.textPrimary,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { onConfirmUpgrade(selectedProductId) },
-                    enabled = !isPurchasing,
-                    modifier = Modifier
-                        .weight(1f)
-                        .uiAction("confirmTier1Upgrade"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = palette.accent,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text(
-                        text = if (isPurchasing) "Processing..." else "Upgrade & Continue",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                OutlinedButton(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, palette.border)
-                ) {
-                    Text("Not Now", color = palette.textMuted, fontSize = 12.5.sp)
-                }
+                Text("Not Now", color = palette.textMuted, fontSize = 12.5.sp)
             }
         }
     }
@@ -568,191 +436,87 @@ fun SetupNetworkModalDialog(
     onCreateNetwork: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedFlow by remember { mutableStateOf("new") } // "new" or "join"
+    var selectedFlowIndex by remember { mutableIntStateOf(0) } // 0 = New, 1 = Join
     var newNetworkName by remember { mutableStateOf("") }
 
-    Dialog(
+    TuesdayModalCard(
+        palette = palette,
+        title = "Setup a network",
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        modifier = Modifier.uiComponent("SetupNetworkModal")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .uiComponent("SetupNetworkModal")
-                .clip(RoundedCornerShape(16.dp))
-                .background(palette.surface)
-                .border(1.dp, palette.border, RoundedCornerShape(16.dp))
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Header Row: "Setup a network" title and Close button
-            Row(
+        SegmentedTabRow(
+            options = listOf("New", "Join"),
+            selectedIndex = selectedFlowIndex,
+            onSelect = { selectedFlowIndex = it },
+            palette = palette,
+            useAccentFillOnSelected = false,
+            badgeForIndex = { idx -> if (idx == 1) "SOON" else null }
+        )
+
+        if (selectedFlowIndex == 0) {
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Setup a network",
-                    color = palette.textPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "Create a new isolated site or installation profile for your hardware rack.",
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = palette.textMuted,
-                        modifier = Modifier.size(18.dp)
+
+                TuesdayTextField(
+                    value = newNetworkName,
+                    onValueChange = { newNetworkName = it },
+                    label = "Network Name",
+                    placeholder = "e.g. Vacation Cabin, Office Rack",
+                    palette = palette
+                )
+
+                Button(
+                    onClick = {
+                        val trimmed = newNetworkName.trim()
+                        if (trimmed.isNotEmpty()) {
+                            onCreateNetwork(trimmed)
+                        }
+                    },
+                    enabled = newNetworkName.trim().isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.accent,
+                        contentColor = Color.White
                     )
+                ) {
+                    Text("Create Network & Join", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
-
-            // Tabs / Segmented Control: New vs Join
-            Row(
+        } else {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
                     .background(palette.elevated)
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Surface(
-                    onClick = { selectedFlow = "new" },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (selectedFlow == "new") palette.surface else Color.Transparent,
-                    border = if (selectedFlow == "new") BorderStroke(1.dp, palette.border) else null
-                ) {
-                    Box(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "New",
-                            color = if (selectedFlow == "new") palette.textPrimary else palette.textMuted,
-                            fontSize = 12.5.sp,
-                            fontWeight = if (selectedFlow == "new") FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = { selectedFlow = "join" },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (selectedFlow == "join") palette.surface else Color.Transparent,
-                    border = if (selectedFlow == "join") BorderStroke(1.dp, palette.border) else null
-                ) {
-                    Box(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "Join",
-                                color = if (selectedFlow == "join") palette.textPrimary else palette.textMuted,
-                                fontSize = 12.5.sp,
-                                fontWeight = if (selectedFlow == "join") FontWeight.Bold else FontWeight.Medium
-                            )
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = palette.accent.copy(alpha = 0.15f)
-                            ) {
-                                Text(
-                                    text = "SOON",
-                                    color = palette.accent,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Flow 1: New Network
-            if (selectedFlow == "new") {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "Create a new isolated site or installation profile for your hardware rack.",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-
-                    OutlinedTextField(
-                        value = newNetworkName,
-                        onValueChange = { newNetworkName = it },
-                        label = { Text("Network Name", fontSize = 12.sp) },
-                        placeholder = {
-                            Text("e.g. Vacation Cabin, Office Rack", fontSize = 12.sp, color = palette.textMuted)
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = palette.textPrimary,
-                            unfocusedTextColor = palette.textPrimary,
-                            focusedBorderColor = palette.accent,
-                            unfocusedBorderColor = palette.border
-                        )
-                    )
-
-                    Button(
-                        onClick = {
-                            val trimmed = newNetworkName.trim()
-                            if (trimmed.isNotEmpty()) {
-                                onCreateNetwork(trimmed)
-                            }
-                        },
-                        enabled = newNetworkName.trim().isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = palette.accent,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("Create Network & Join", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-                }
-            } else {
-                // Flow 2: Join Network (Coming Soon)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.elevated)
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "🤝 Family & Team Delegation",
-                        color = palette.textPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Joining existing networks via QR code invitation or pairing tokens is coming soon in M4 (Family Delegation Networks).",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
+                Text(
+                    text = "🤝 Family & Team Delegation",
+                    color = palette.textPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Joining existing networks via QR code invitation or pairing tokens is coming soon in M4 (Family Delegation Networks).",
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.5.sp,
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }

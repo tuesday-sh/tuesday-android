@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,6 +53,8 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import sh.tuesday.app.domain.BarcodeIdentifierParser
+import sh.tuesday.app.domain.ManualEnrollmentResolver
 import sh.tuesday.app.models.*
 import sh.tuesday.app.services.GeminiDiscoveryService
 import sh.tuesday.app.services.GoldClueItem
@@ -58,7 +62,15 @@ import sh.tuesday.app.services.GoldClueKind
 import sh.tuesday.app.services.GoldClueSuggestionRepository
 import sh.tuesday.app.services.GoldenCorpusRecorder
 import sh.tuesday.app.services.TuesdayRepository
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.MonospaceBadge
+import sh.tuesday.app.ui.components.SegmentedTabRow
+import sh.tuesday.app.ui.components.SurfaceListContainer
+import sh.tuesday.app.ui.components.SurfaceListDivider
+import sh.tuesday.app.ui.components.TuesdayBottomSheet
+import sh.tuesday.app.ui.components.TuesdayListRow
+import sh.tuesday.app.ui.components.TuesdayTextField
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -280,25 +292,14 @@ fun AddDeviceScreen(
     }
 
     fun applyDecodedBarcode(rawValue: String, format: Int, sourceBitmap: Bitmap? = null) {
-        val cleaned = rawValue.trim()
-        if (cleaned.isEmpty()) return
-        val is2D = format == Barcode.FORMAT_QR_CODE ||
-            format == Barcode.FORMAT_DATA_MATRIX ||
-            format == Barcode.FORMAT_AZTEC ||
-            format == Barcode.FORMAT_PDF417
-        // Normalize 13-digit 0-prefixed EAN-13 into 12-digit UPC-A for cross-platform Android/iOS parity
-        val normalized = if (!is2D && cleaned.length == 13 && cleaned.startsWith("0") && cleaned.all { it.isDigit() }) {
-            cleaned.removePrefix("0")
+        val parsed = BarcodeIdentifierParser.parse(rawValue, format) ?: return
+        if (parsed.is2DMatrix) {
+            accumulatedIdentifiers.qrCode = parsed.normalizedValue
         } else {
-            cleaned
+            accumulatedIdentifiers.barcode = parsed.normalizedValue
         }
-        if (is2D) {
-            accumulatedIdentifiers.qrCode = normalized
-        } else {
-            accumulatedIdentifiers.barcode = normalized
-        }
-        if (!scannedBarcodesList.contains(normalized)) {
-            scannedBarcodesList = scannedBarcodesList + normalized
+        if (!scannedBarcodesList.contains(parsed.normalizedValue)) {
+            scannedBarcodesList = scannedBarcodesList + parsed.normalizedValue
         }
         if (sourceBitmap != null && !capturedBitmaps.contains(sourceBitmap)) {
             capturedBitmaps = capturedBitmaps + sourceBitmap
@@ -452,10 +453,14 @@ fun AddDeviceScreen(
         var showResultsMenu by remember { mutableStateOf(false) }
 
         // Left-side highlight card container for dev controls (2 columns: pickers left, toggles right)
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .uiComponent("DevControlsCallout")
+        ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
                 .uiSlot("dev-controls")
                 .clip(RoundedCornerShape(8.dp))
                 .background(palette.elevated.copy(alpha = 0.6f))
@@ -689,6 +694,7 @@ fun AddDeviceScreen(
                 Box {
                     Row(
                         modifier = Modifier
+                            .heightIn(min = 32.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(TuesdayTheme.HacsCyan.copy(alpha = 0.12f))
                             .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
@@ -699,7 +705,7 @@ fun AddDeviceScreen(
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ListAlt,
+                            imageVector = Icons.AutoMirrored.Filled.ListAlt,
                             contentDescription = null,
                             tint = TuesdayTheme.HacsCyan,
                             modifier = Modifier.size(13.dp)
@@ -707,7 +713,7 @@ fun AddDeviceScreen(
                         Text(
                             text = "Results...",
                             color = TuesdayTheme.HacsCyan,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1
                         )
@@ -916,6 +922,7 @@ fun AddDeviceScreen(
                 }
             }
         }
+        }
     }
 
     Scaffold(
@@ -924,7 +931,7 @@ fun AddDeviceScreen(
                 title = { Text(if (isStn) "Add Home Device" else "Add Device", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
@@ -943,72 +950,33 @@ fun AddDeviceScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             // Mode Switcher Tabs: Photo | Scan | Manual
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("enrollment-mode-tabs")
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(palette.surface)
-                    .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                EnrollmentMode.entries.forEach { item ->
-                    val isSelected = mode == item
-                    val tabIcon = when (item) {
-                        EnrollmentMode.PHOTO_WIZARD -> Icons.Default.CameraAlt
-                        EnrollmentMode.BARCODE_SCAN -> Icons.Default.QrCodeScanner
-                        EnrollmentMode.MANUAL_AGENT -> Icons.Default.Terminal
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .uiAction("switchEnrollmentMode")
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) TuesdayTheme.HealthyGreen else Color.Transparent)
-                            .clickable {
-                                val prevMode = mode
-                                mode = item
-                                if (prevMode != item && discoveryService.currentTurnCount() > 0) {
-                                    scope.launch {
-                                        discoveryService.emitProductTelemetryEvent(
-                                            eventName = "discovery.mode_pivoted",
-                                            targetEntityType = "DiscoverySession",
-                                            targetEntityId = currentSessionId,
-                                            properties = mapOf(
-                                                "fromMode" to prevMode.name.lowercase(),
-                                                "toMode" to item.name.lowercase(),
-                                                "turnsSoFar" to discoveryService.currentTurnCount()
-                                            ),
-                                            serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
-                                        )
-                                    }
-                                }
-                            }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = tabIcon,
-                                contentDescription = null,
-                                tint = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = item.title,
-                                color = if (isSelected) Color.Black else palette.textPrimary.copy(alpha = 0.75f),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                maxLines = 1
+            SegmentedTabRow(
+                options = EnrollmentMode.entries.map { it.title },
+                selectedIndex = EnrollmentMode.entries.indexOf(mode),
+                onSelect = { index ->
+                    val item = EnrollmentMode.entries[index]
+                    val prevMode = mode
+                    mode = item
+                    if (prevMode != item && discoveryService.currentTurnCount() > 0) {
+                        scope.launch {
+                            discoveryService.emitProductTelemetryEvent(
+                                eventName = "discovery.mode_pivoted",
+                                targetEntityType = "DiscoverySession",
+                                targetEntityId = currentSessionId,
+                                properties = mapOf(
+                                    "fromMode" to prevMode.name.lowercase(),
+                                    "toMode" to item.name.lowercase(),
+                                    "turnsSoFar" to discoveryService.currentTurnCount()
+                                ),
+                                serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
                             )
                         }
                     }
-                }
-            }
+                },
+                palette = palette,
+                modifier = Modifier.uiSlot("enrollment-mode-tabs"),
+                itemModifier = { Modifier.uiAction("switchEnrollmentMode") }
+            )
 
             // Clue Collection Section (Unified 3-Mode Architecture)
             Text(
@@ -1071,11 +1039,12 @@ fun AddDeviceScreen(
                             )
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = { galleryLauncher.launch("image/*") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.ElevatedPill,
-                                contentColor = Color.White
+                            border = BorderStroke(1.dp, palette.border),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.elevated,
+                                contentColor = palette.textPrimary
                             ),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.uiAction("uploadHardwarePhoto")
@@ -1108,11 +1077,12 @@ fun AddDeviceScreen(
                             )
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = { scanFileLauncher.launch("image/*") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.ElevatedPill,
-                                contentColor = Color.White
+                            border = BorderStroke(1.dp, palette.border),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.elevated,
+                                contentColor = palette.textPrimary
                             ),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.uiAction("uploadBarcodeImage")
@@ -1134,20 +1104,28 @@ fun AddDeviceScreen(
                                 Text(
                                     text = "CAPTURED SCANS & BARCODES",
                                     color = palette.textMuted,
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
                                 )
-                                Text(
-                                    text = "Clear All",
-                                    color = TuesdayTheme.CriticalRed.copy(alpha = 0.85f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable {
-                                        capturedBitmaps = emptyList()
-                                        scannedBarcodesList = emptyList()
-                                    }
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .heightIn(min = 28.dp)
+                                        .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                        .clickable {
+                                            capturedBitmaps = emptyList()
+                                            scannedBarcodesList = emptyList()
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Clear All",
+                                        color = TuesdayTheme.CriticalRed,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
 
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1165,10 +1143,10 @@ fun AddDeviceScreen(
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(18.dp)
+                                                .padding(3.dp)
+                                                .size(28.dp)
                                                 .clip(CircleShape)
-                                                .background(Color.Black.copy(alpha = 0.75f))
+                                                .background(Color.Black.copy(alpha = 0.78f))
                                                 .clickable {
                                                     capturedBitmaps = capturedBitmaps - bmp
                                                 },
@@ -1178,7 +1156,7 @@ fun AddDeviceScreen(
                                                 Icons.Default.Close,
                                                 contentDescription = "Remove Scan",
                                                 tint = Color.White,
-                                                modifier = Modifier.size(12.dp)
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
                                     }
@@ -1187,11 +1165,11 @@ fun AddDeviceScreen(
                                     val displayCode = if (code.length > 28) code.take(25) + "…" else code
                                     Box(
                                         modifier = Modifier
-                                            .size(width = 135.dp, height = 75.dp)
+                                            .size(width = 140.dp, height = 75.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(TuesdayTheme.HacsCyan.copy(alpha = 0.12f))
-                                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                            .padding(8.dp)
+                                            .background(palette.accent.copy(alpha = 0.12f))
+                                            .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                            .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 8.dp)
                                     ) {
                                         Column(
                                             modifier = Modifier.fillMaxSize(),
@@ -1205,19 +1183,25 @@ fun AddDeviceScreen(
                                                 Icon(
                                                     Icons.Default.QrCodeScanner,
                                                     contentDescription = null,
-                                                    tint = TuesdayTheme.HacsCyan,
+                                                    tint = palette.accentText,
                                                     modifier = Modifier.size(16.dp)
                                                 )
-                                                Icon(
-                                                    Icons.Default.Close,
-                                                    contentDescription = "Remove Barcode",
-                                                    tint = TuesdayTheme.HacsCyan,
+                                                Box(
                                                     modifier = Modifier
-                                                        .size(14.dp)
+                                                        .size(28.dp)
+                                                        .clip(CircleShape)
                                                         .clickable {
                                                             scannedBarcodesList = scannedBarcodesList - code
-                                                        }
-                                                )
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Close,
+                                                        contentDescription = "Remove Barcode",
+                                                        tint = palette.accentText,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
                                             }
                                             Text(
                                                 text = displayCode,
@@ -1238,25 +1222,15 @@ fun AddDeviceScreen(
                 EnrollmentMode.MANUAL_AGENT -> {
                     val pickedGoldModel = selectedClueItems.lastOrNull { it.kind == GoldClueKind.MODEL }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedTextField(
+                        TuesdayTextField(
                             value = manualHostname,
                             onValueChange = {
                                 manualHostname = it
                                 if (manualError != null) manualError = null
                             },
-                            label = { Text("DEVICE NAME", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                            placeholder = {
-                                Text(
-                                    text = pickedGoldModel?.chipLabel ?: "e.g. Living Room Router, Front Doorbell, Synology NAS",
-                                    fontSize = 13.sp
-                                )
-                            },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = TuesdayTheme.HealthyGreen,
-                                unfocusedBorderColor = palette.border
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            label = "Device Name",
+                            placeholder = pickedGoldModel?.chipLabel ?: "e.g. Living Room Router, Front Doorbell, Synology NAS",
+                            palette = palette
                         )
 
                         if (manualHostname.isBlank() && pickedGoldModel != null) {
@@ -1311,7 +1285,9 @@ fun AddDeviceScreen(
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiSlot("selected-clue-chips")
                 ) {
                     items(capturedBitmaps) { bmp ->
                         Box {
@@ -1320,7 +1296,7 @@ fun AddDeviceScreen(
                                 contentDescription = "Captured Photo",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .size(56.dp)
+                                    .size(60.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .border(1.dp, TuesdayTheme.HealthyGreen.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                             )
@@ -1328,9 +1304,9 @@ fun AddDeviceScreen(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(2.dp)
-                                    .size(16.dp)
+                                    .size(26.dp)
                                     .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.78f))
+                                    .background(Color.Black.copy(alpha = 0.80f))
                                     .clickable {
                                         capturedBitmaps = capturedBitmaps - bmp
                                     },
@@ -1340,7 +1316,7 @@ fun AddDeviceScreen(
                                     Icons.Default.Close,
                                     contentDescription = "Remove Photo",
                                     tint = Color.White,
-                                    modifier = Modifier.size(10.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
@@ -1364,11 +1340,11 @@ fun AddDeviceScreen(
                                 )
                             },
                             colors = InputChipDefaults.inputChipColors(
-                                selectedContainerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.16f),
-                                selectedLabelColor = Color.White,
-                                selectedTrailingIconColor = Color.White.copy(alpha = 0.75f)
+                                selectedContainerColor = palette.accent.copy(alpha = 0.14f),
+                                selectedLabelColor = palette.textPrimary,
+                                selectedTrailingIconColor = palette.textMuted
                             ),
-                            border = BorderStroke(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.45f))
+                            border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.45f))
                         )
                     }
                 }
@@ -1428,7 +1404,7 @@ fun AddDeviceScreen(
                     onClick = onNavigateBack,
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, palette.border),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White.copy(alpha = 0.75f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.textPrimary),
                     modifier = Modifier.uiAction("cancelAddDevice")
                 ) {
                     Text(
@@ -1443,70 +1419,40 @@ fun AddDeviceScreen(
                     Button(
                         onClick = {
                             val trimmedClue = clueInputText.trim()
+                            var effectiveClues = selectedClueItems
                             if (trimmedClue.isNotBlank()) {
-                                val resolved = clueIndex?.classifyFreeTextClue(trimmedClue) ?: GoldClueItem(
+                                val resolvedClue = clueIndex?.classifyFreeTextClue(trimmedClue) ?: GoldClueItem(
                                     id = "custom:${trimmedClue.lowercase()}",
                                     kind = GoldClueKind.CUSTOM,
                                     title = trimmedClue,
                                     subtitle = "Custom clue"
                                 )
-                                addClueItem(resolved)
+                                addClueItem(resolvedClue)
+                                if (effectiveClues.none { it.id == resolvedClue.id }) {
+                                    effectiveClues = effectiveClues + resolvedClue
+                                }
                                 clueInputText = ""
                             }
 
-                            val matchedModelClue = selectedClueItems.lastOrNull { it.kind == GoldClueKind.MODEL }
-                            val matchedBrandClue = selectedClueItems.lastOrNull { !it.vendor.isNullOrBlank() }
-                            val matchedTypeClue = selectedClueItems.lastOrNull { it.kind == GoldClueKind.DEVICE_TYPE }
-
-                            val resolvedName = manualHostname.trim().ifBlank {
-                                matchedModelClue?.chipLabel ?: ""
-                            }
-                            if (resolvedName.isBlank()) {
+                            val resolvedManual = ManualEnrollmentResolver.resolve(
+                                manualHostname = manualHostname,
+                                selectedClues = effectiveClues,
+                                accumulatedIdentifiers = accumulatedIdentifiers
+                            )
+                            if (resolvedManual == null) {
                                 manualError = "Enter a Device Name or pick a SureThingNet Insights Model clue."
                                 return@Button
                             }
 
                             scope.launch {
                                 isSaving = true
-                                val vendor = matchedModelClue?.vendor
-                                    ?: matchedBrandClue?.vendor
-                                    ?: "Manual"
-                                val model = matchedModelClue?.model
-                                    ?: accumulatedIdentifiers.modelNumber
-                                    ?: matchedTypeClue?.title
-                                    ?: resolvedName
-                                val mac = selectedClueItems.lastOrNull { !it.macAddress.isNullOrBlank() }?.macAddress
-                                    ?: accumulatedIdentifiers.macAddress
-                                val serial = accumulatedIdentifiers.serialNumber
-                                val barcode = selectedClueItems.lastOrNull { !it.upc.isNullOrBlank() }?.upc
-                                    ?: accumulatedIdentifiers.barcode
-
-                                val meta = DiscoveredDeviceMetadata(
-                                    manufacturer = vendor,
-                                    modelNumber = model,
-                                    macAddress = mac,
-                                    serialNumber = serial,
-                                    barcodeOrQr = barcode
-                                )
-
-                                val osSummary = buildList {
-                                    if (matchedModelClue != null) add("Gold Verified") else add("Manual Entry")
-                                    matchedTypeClue?.title?.let { add(it) }
-                                    if (vendor != "Manual") add(vendor)
-                                    if (!matchedModelClue?.model.isNullOrBlank()) add(matchedModelClue!!.model!!)
-                                }.joinToString(" • ")
-
                                 repository.enrollDevice(
-                                    hostname = resolvedName,
-                                    osDetails = osSummary,
+                                    hostname = resolvedManual.hostname,
+                                    osDetails = resolvedManual.osSummary,
                                     packageManager = PackageManagerType.FIRMWARE,
                                     agentToken = "manual_entry_${System.currentTimeMillis()}",
-                                    inventoryState = if (matchedModelClue != null || !accumulatedIdentifiers.modelNumber.isNullOrBlank()) {
-                                        InventoryConfidenceState.ENROLLED
-                                    } else {
-                                        InventoryConfidenceState.INCOMPLETE_OR_GUESSED
-                                    },
-                                    discoveredMetadata = meta
+                                    inventoryState = resolvedManual.inventoryState,
+                                    discoveredMetadata = resolvedManual.metadata
                                 )
                                 isSaving = false
                                 onNavigateBack()
@@ -1537,25 +1483,25 @@ fun AddDeviceScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(TuesdayTheme.CardSurface)
-                            .border(1.dp, TuesdayTheme.HacsCyan.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         CircularProgressIndicator(
-                            color = TuesdayTheme.HacsCyan,
+                            color = palette.accent,
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp
                         )
                         Column {
                             Text(
                                 "Analyzing device with ${hacsConfig.aiProvider.displayName}...",
-                                color = Color.White,
+                                color = palette.textPrimary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text("Inspecting chassis profile, ports, OUI prefix, and printed labels", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
+                            Text("Inspecting chassis profile, ports, OUI prefix, and printed labels", color = palette.textMuted, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1575,25 +1521,32 @@ fun AddDeviceScreen(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.6.sp
                         )
-                        Text(
-                            text = "Clear All",
-                            color = TuesdayTheme.HacsCyan,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
+                        Box(
                             modifier = Modifier
+                                .heightIn(min = 28.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .clickable {
-                                    discoveryResult = null
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                .uiAction("clearDiscoveryResults")
-                        )
+                                .clickable { discoveryResult = null }
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                .uiAction("clearDiscoveryResults"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Clear All",
+                                color = palette.accentText,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
 
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .uiComponent("AiDiscoveryPanel")
+                    ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
                             .uiSlot("ai-discovery-panel"),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
@@ -1602,14 +1555,14 @@ fun AddDeviceScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFFFB020).copy(alpha = 0.12f))
-                                    .border(1.dp, Color(0xFFFFB020).copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .background(TuesdayTheme.WarningAmber.copy(alpha = 0.12f))
+                                    .border(1.dp, TuesdayTheme.WarningAmber.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
                                     text = "UNSUPPORTED DEVICE",
-                                    color = Color(0xFFFFB020),
+                                    color = TuesdayTheme.ledColorFor(PortLifecycleState.EOL, isStn),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.8.sp
@@ -1617,7 +1570,7 @@ fun AddDeviceScreen(
                                 Text(
                                     text = result.outOfScopeReason
                                         ?: "This item does not appear to have Wi-Fi or Ethernet networking and isn't tracked in SureThingNet Insights.",
-                                    color = Color.White.copy(alpha = 0.88f),
+                                    color = palette.textPrimary,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 )
@@ -1630,7 +1583,7 @@ fun AddDeviceScreen(
                                         launchCameraWithUri()
                                     },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFFB020),
+                                        containerColor = TuesdayTheme.WarningAmber,
                                         contentColor = Color.Black
                                     ),
                                     shape = RoundedCornerShape(8.dp),
@@ -1646,32 +1599,20 @@ fun AddDeviceScreen(
                                 }
                             }
                         } else {
-
-
-
-                        // Discovered identifiers chips
-                        if (accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
-                            Text("DISCOVERED IDENTIFIERS", color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(accumulatedIdentifiers.nonEmptyPairs()) { pair ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(TuesdayTheme.HealthyGreen.copy(alpha = 0.15f))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
+                            // Discovered identifiers chips
+                            if (accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
+                                Text("DISCOVERED IDENTIFIERS", color = palette.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(accumulatedIdentifiers.nonEmptyPairs()) { pair ->
+                                        MonospaceBadge(
                                             text = "${pair.first.rawValue}: ${pair.second}",
-                                            color = TuesdayTheme.HealthyGreen,
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.SemiBold
+                                            color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn),
+                                            borderAlpha = 0f
                                         )
                                     }
                                 }
                             }
                         }
-                    }
 
                     // Multi-Device Confidence Warning Banner
                     if (result.multipleDevicesDetected || !result.multiDeviceWarning.isNullOrBlank()) {
@@ -1691,7 +1632,7 @@ fun AddDeviceScreen(
                         ) {
                             Text(
                                 text = "⚠ MULTIPLE DEVICES IN PHOTO — LOWER CONFIDENCE",
-                                color = TuesdayTheme.WarningAmber,
+                                color = TuesdayTheme.ledColorFor(PortLifecycleState.EOL, isStn),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
@@ -1699,7 +1640,7 @@ fun AddDeviceScreen(
                             Text(
                                 text = result.multiDeviceWarning
                                     ?: "Multiple devices detected in this photo. Confidence can be lower when neighboring chassis appear in frame — for best results, snap a new photo framed around a single device.",
-                                color = Color.White.copy(alpha = 0.9f),
+                                color = palette.textPrimary,
                                 fontSize = 13.5.sp,
                                 lineHeight = 19.sp
                             )
@@ -1709,67 +1650,56 @@ fun AddDeviceScreen(
                     // Candidate Cards
                     Text(
                         text = "CANDIDATE DEVICE MATCHES (${result.candidates.size})",
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = palette.textMuted,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
 
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .uiComponent("CandidateResultsList")
-                            .uiSlot("candidate-results-list")
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
                     ) {
-                        result.candidates.forEachIndexed { index, candidate ->
-                            val badgeColor = if (candidate.confidencePercent >= 80) TuesdayTheme.HealthyGreen else (if (candidate.confidencePercent >= 50) TuesdayTheme.WarningAmber else TuesdayTheme.HacsCyan)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .uiComponent("CandidateResultItem")
-                                    .clickable { inspectedCandidate = candidate }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = candidate.displayName,
-                                    color = palette.textPrimary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp,
-                                    maxLines = 2,
-                                    modifier = Modifier.weight(1f).padding(end = 10.dp)
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(badgeColor.copy(alpha = 0.16f))
-                                        .border(1.dp, badgeColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "${candidate.confidencePercent}% match",
-                                        color = badgeColor,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
+                        SurfaceListContainer(
+                            palette = palette,
+                            modifier = Modifier.uiSlot("candidate-results-list")
+                        ) {
+                            result.candidates.forEachIndexed { index, candidate ->
+                                val badgeColor = when {
+                                    candidate.confidencePercent >= 80 -> TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn)
+                                    candidate.confidencePercent >= 50 -> TuesdayTheme.ledColorFor(PortLifecycleState.EOL, isStn)
+                                    else -> palette.accentText
                                 }
-                            }
-                            if (index < result.candidates.lastIndex) {
-                                HorizontalDivider(color = palette.border.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                TuesdayListRow(
+                                    palette = palette,
+                                    title = candidate.displayName,
+                                    titleMaxLines = 2,
+                                    onClick = { inspectedCandidate = candidate },
+                                    modifier = Modifier.uiComponent("CandidateResultItem"),
+                                    trailingContent = {
+                                        MonospaceBadge(
+                                            text = "${candidate.confidencePercent}% match",
+                                            color = badgeColor
+                                        )
+                                    }
+                                )
+                                if (index < result.candidates.lastIndex) {
+                                    SurfaceListDivider(palette)
+                                }
                             }
                         }
                     }
 
                     inspectedCandidate?.let { candidate ->
-                        val badgeColor = if (candidate.confidencePercent >= 80) TuesdayTheme.HealthyGreen else (if (candidate.confidencePercent >= 50) TuesdayTheme.WarningAmber else TuesdayTheme.HacsCyan)
-                        ModalBottomSheet(
-                            onDismissRequest = { inspectedCandidate = null },
-                            containerColor = palette.elevated
+                        val badgeColor = when {
+                            candidate.confidencePercent >= 80 -> TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn)
+                            candidate.confidencePercent >= 50 -> TuesdayTheme.ledColorFor(PortLifecycleState.EOL, isStn)
+                            else -> palette.accentText
+                        }
+                        TuesdayBottomSheet(
+                            palette = palette,
+                            onDismissRequest = { inspectedCandidate = null }
                         ) {
                             Column(
                                 modifier = Modifier
@@ -1789,20 +1719,10 @@ fun AddDeviceScreen(
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.weight(1f).padding(end = 10.dp)
                                     )
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(badgeColor.copy(alpha = 0.16f))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "${candidate.confidencePercent}% match",
-                                            color = badgeColor,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
+                                    MonospaceBadge(
+                                        text = "${candidate.confidencePercent}% match",
+                                        color = badgeColor
+                                    )
                                 }
 
                                 HorizontalDivider(color = palette.border.copy(alpha = 0.5f))
@@ -1909,255 +1829,6 @@ fun AddDeviceScreen(
                         }
                     }
 
-                    if (false) {
-                    result.candidates.forEachIndexed { index, candidate ->
-                        val badgeColor = if (candidate.confidencePercent >= 80) TuesdayTheme.HealthyGreen else (if (candidate.confidencePercent >= 50) TuesdayTheme.WarningAmber else TuesdayTheme.HacsCyan)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiSlot("candidate-match-card")
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(TuesdayTheme.CardSurface)
-                                .border(1.dp, if (index == 0) badgeColor.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(candidate.displayName, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    Text("${candidate.manufacturer} • Model ${candidate.modelNumber} • ${candidate.deviceCategory}", color = TuesdayTheme.HacsCyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(badgeColor.copy(alpha = 0.15f))
-                                        .padding(horizontal = 7.dp, vertical = 3.dp)
-                                ) {
-                                    Text("${candidate.confidencePercent}% MATCH", color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                }
-                            }
-
-                            Text(candidate.reasoning, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
-
-                            candidate.goldAlignment?.let { ga ->
-                                val isAligned = ga.aligned
-                                val gaColor = if (isAligned) TuesdayTheme.HealthyGreen else TuesdayTheme.WarningAmber
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(gaColor.copy(alpha = 0.1f))
-                                        .border(1.dp, gaColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Text(
-                                        text = if (isAligned) {
-                                            "✓ SURETHINGNET INSIGHTS • ${ga.matchedFeedSlug ?: "built-in-catalog"}"
-                                        } else if (!ga.matchedFeedSlug.isNullOrBlank()) {
-                                            "⚠ ${ga.statusLabel} • ${ga.matchedFeedSlug}"
-                                        } else {
-                                            "⚠ ${ga.statusLabel}"
-                                        },
-                                        color = gaColor,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (ga.inferredPurl.isNotBlank()) {
-                                        Text(
-                                            text = ga.inferredPurl,
-                                            color = Color.White.copy(alpha = 0.7f),
-                                            fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (showVisionDebug && ga.diagnosticNote.isNotBlank()) {
-                                        Text(
-                                            text = ga.diagnosticNote,
-                                            color = Color.White.copy(alpha = 0.78f),
-                                            fontSize = 10.5.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            lineHeight = 14.sp
-                                        )
-                                    }
-                                }
-                            }
-
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        isSaving = true
-                                        val resolvedModel = accumulatedIdentifiers.modelNumber ?: candidate.modelNumber
-                                        if (capturedBitmaps.isNotEmpty()) {
-                                            GoldenCorpusRecorder.saveCaptureSession(
-                                                context = context,
-                                                sessionId = currentSessionId,
-                                                bitmaps = capturedBitmaps,
-                                                result = result,
-                                                accumulatedIdentifiers = accumulatedIdentifiers,
-                                                userClueNotes = userClueNotes,
-                                                status = "user_confirmed",
-                                                captureSource = currentCaptureSource,
-                                                confirmedCandidate = candidate,
-                                                confirmedModelOverride = resolvedModel
-                                            )
-                                            savedCorpusCount = GoldenCorpusRecorder.getSavedSessionCount(context)
-                                            savedManifests = GoldenCorpusRecorder.listSavedManifests(context)
-                                        }
-                                        val meta = DiscoveredDeviceMetadata(
-                                            manufacturer = candidate.manufacturer,
-                                            modelNumber = resolvedModel,
-                                            deviceCategory = candidate.deviceCategory,
-                                            serialNumber = accumulatedIdentifiers.serialNumber,
-                                            macAddress = accumulatedIdentifiers.macAddress,
-                                            barcodeOrQr = accumulatedIdentifiers.barcode ?: accumulatedIdentifiers.qrCode,
-                                            confidenceScore = candidate.confidencePercent,
-                                            discoveryNotes = "Verified via Tuesday Hosted AI Proxy (${candidate.confidencePercent}% confidence)"
-                                        )
-                                        discoveryService.confirmDeviceDiscovery(
-                                            inferredVendor = candidate.manufacturer,
-                                            inferredModel = candidate.modelNumber,
-                                            confirmedVendor = candidate.manufacturer,
-                                            confirmedModel = resolvedModel,
-                                            wasEdited = (resolvedModel != candidate.modelNumber) || (index > 0),
-                                            accumulatedIdentifiers = accumulatedIdentifiers,
-                                            userClueNotes = userClueNotes,
-                                            selectedCandidateRank = index,
-                                            resolutionStatus = if (mode == EnrollmentMode.BARCODE_SCAN && capturedBitmaps.isNotEmpty()) "pivoted_to_barcode" else "confirmed_candidate",
-                                            initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
-                                            finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
-                                            candidateModels = result.candidates.map { it.modelNumber },
-                                            serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
-                                        )
-                                        val enrolledHostname = if (mode == EnrollmentMode.MANUAL_AGENT && manualHostname.isNotBlank()) {
-                                            manualHostname.trim()
-                                        } else {
-                                            candidate.suggestedHostname
-                                        }
-                                        repository.enrollDevice(
-                                            hostname = enrolledHostname,
-                                            osDetails = "${candidate.displayName} • ${candidate.suggestedOsDetails}",
-                                            packageManager = candidate.resolvedPackageManager,
-                                            agentToken = "tuesday_ai_tok_${(1000..9999).random()}",
-                                            inventoryState = InventoryConfidenceState.VERIFIED_MATCH,
-                                            discoveredMetadata = meta
-                                        )
-                                        isSaving = false
-                                        onNavigateBack()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = TuesdayTheme.HealthyGreen, contentColor = Color.Black),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .uiAction("enrollConfirmedDevice")
-                            ) {
-                                Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Confirm Match & Add to Inventory", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            }
-                        }
-                    }
-
-                    // Incomplete / Best-Guess Card
-                    val bestGuess = result.candidates.firstOrNull()
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .uiSlot("incomplete-guess-fallback-card")
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(TuesdayTheme.CardSurface)
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.HelpOutline, contentDescription = null, tint = TuesdayTheme.WarningAmber, modifier = Modifier.size(16.dp))
-                            Text("Not Sure or Label Unreadable?", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Text(
-                            "You can stop narrowing at any time and add this device to your Tuesday.sh inventory as an Incomplete / Best-Guess entry to finish auditing later.",
-                            color = Color.White.copy(alpha = 0.68f),
-                            fontSize = 12.sp
-                        )
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    isSaving = true
-                                    val meta = DiscoveredDeviceMetadata(
-                                        manufacturer = bestGuess?.manufacturer ?: "Unknown Vendor",
-                                        modelNumber = accumulatedIdentifiers.modelNumber ?: (bestGuess?.modelNumber ?: "Unidentified Hardware"),
-                                        deviceCategory = bestGuess?.deviceCategory ?: "Network / IoT Device",
-                                        serialNumber = accumulatedIdentifiers.serialNumber,
-                                        macAddress = accumulatedIdentifiers.macAddress,
-                                        barcodeOrQr = accumulatedIdentifiers.barcode ?: accumulatedIdentifiers.qrCode,
-                                        confidenceScore = bestGuess?.confidencePercent ?: 35,
-                                        discoveryNotes = "Added via AI Photo Wizard as Incomplete/Guessed"
-                                    )
-                                    val host = bestGuess?.let { "${it.suggestedHostname} (guessed)" } ?: "unidentified-device.local"
-                                    GoldenCorpusRecorder.saveCaptureSession(
-                                        context = context,
-                                        sessionId = currentSessionId,
-                                        bitmaps = capturedBitmaps,
-                                        result = result,
-                                        accumulatedIdentifiers = accumulatedIdentifiers,
-                                        userClueNotes = userClueNotes,
-                                        confirmedCandidate = bestGuess,
-                                        status = "saved_best_guess",
-                                        captureSource = currentCaptureSource
-                                    )
-                                    discoveryService.confirmDeviceDiscovery(
-                                        inferredVendor = bestGuess?.manufacturer,
-                                        inferredModel = bestGuess?.modelNumber,
-                                        confirmedVendor = meta.manufacturer ?: "Unknown Vendor",
-                                        confirmedModel = meta.modelNumber ?: "Unidentified Hardware",
-                                        wasEdited = false,
-                                        accumulatedIdentifiers = accumulatedIdentifiers,
-                                        userClueNotes = userClueNotes,
-                                        selectedCandidateRank = null,
-                                        resolutionStatus = "saved_best_guess",
-                                        initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
-                                        finalMode = if (mode == EnrollmentMode.BARCODE_SCAN) "barcode_scan" else if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard",
-                                        candidateModels = result.candidates.map { it.modelNumber },
-                                        serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
-                                    )
-                                    repository.enrollDevice(
-                                        hostname = host,
-                                        osDetails = bestGuess?.let { "${it.displayName} • ${it.suggestedOsDetails}" } ?: "Unverified Hardware Photo (Pending Audit)",
-                                        packageManager = bestGuess?.resolvedPackageManager ?: PackageManagerType.FIRMWARE,
-                                        agentToken = "tuesday_ai_incomplete",
-                                        inventoryState = InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
-                                        discoveredMetadata = meta
-                                    )
-                                    isSaving = false
-                                    onNavigateBack()
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.WarningAmber.copy(alpha = 0.15f),
-                                contentColor = TuesdayTheme.WarningAmber
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .uiAction("enrollGuessedDevice")
-                                .border(1.dp, TuesdayTheme.WarningAmber.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Add as Incomplete / Best-Guess Device", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                        }
                     }
                 }
 

@@ -102,9 +102,10 @@ fun GoldHardwareCluesPicker(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 32.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .clickable { isCluesExpanded = !isCluesExpanded }
-                .padding(vertical = 2.dp),
+                .padding(vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -128,7 +129,7 @@ fun GoldHardwareCluesPicker(
                 if (!isCluesExpanded) {
                     Text(
                         text = if (selectedClues.isNotEmpty()) "(${selectedClues.size} selected · Tap to add)" else "(Tap to add)",
-                        color = TuesdayTheme.HacsCyan.copy(alpha = 0.85f),
+                        color = palette.accentText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -141,8 +142,8 @@ fun GoldHardwareCluesPicker(
                 if (clueIndex != null) {
                     Text(
                         text = "SureThingNet Insights v${clueIndex.datalakeVersion}",
-                        color = TuesdayTheme.HealthyGreen.copy(alpha = 0.85f),
-                        fontSize = 10.5.sp,
+                        color = TuesdayTheme.ledColorFor(sh.tuesday.app.models.PortLifecycleState.OK, palette.isStn),
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -255,8 +256,12 @@ fun GoldHardwareCluesPicker(
                     }
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TuesdayTheme.HacsCyan,
-                    unfocusedBorderColor = palette.border
+                    focusedTextColor = palette.textPrimary,
+                    unfocusedTextColor = palette.textPrimary,
+                    focusedBorderColor = palette.accent,
+                    unfocusedBorderColor = palette.border,
+                    focusedContainerColor = palette.bg,
+                    unfocusedContainerColor = palette.bg
                 ),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
@@ -323,7 +328,7 @@ fun GoldHardwareCluesPicker(
                                 Text(
                                     text = badgeText,
                                     color = colorForClueKind(suggestion.kind, suggestion.warningNote != null, palette),
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace
                                 )
@@ -377,84 +382,6 @@ fun GoldHardwareCluesPicker(
             }
         }
         } // end if (isCluesExpanded)
-
-        // Selected Multi-Item Clues: Material 3 FlowRow + InputChip Group
-        if (false && selectedClues.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (selectedClues.size > 1) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Text(
-                            text = "Clear Clues",
-                            color = TuesdayTheme.CriticalRed.copy(alpha = 0.85f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clickable {
-                                selectedClues.toList().forEach { onRemoveClue(it) }
-                            }
-                        )
-                    }
-                }
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("selected-clue-chips")
-                ) {
-                    selectedClues.forEach { item ->
-                        val accent = colorForClueKind(item.kind, item.warningNote != null, palette)
-                        InputChip(
-                            selected = true,
-                            onClick = { onRemoveClue(item) },
-                            label = {
-                                Text(
-                                    text = item.chipLabel,
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = iconForClueKind(item.kind, item.warningNote != null),
-                                    contentDescription = null,
-                                    tint = accent,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Remove ${item.chipLabel}",
-                                    tint = palette.textMuted,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            },
-                            colors = InputChipDefaults.inputChipColors(
-                                selectedContainerColor = accent.copy(alpha = 0.14f),
-                                selectedLabelColor = palette.textPrimary
-                            ),
-                            border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
-                        )
-                    }
-                }
-
-                // Surface embedded radio SoC warnings cleanly if any selected FCC ID is a radio module
-                selectedClues.mapNotNull { it.warningNote }.distinct().forEach { warn ->
-                    Text(
-                        text = "⚠ $warn",
-                        color = TuesdayTheme.WarningAmber,
-                        fontSize = 11.5.sp,
-                        lineHeight = 16.sp
-                    )
-                }
-            }
-        }
     }
 
 private fun iconForClueKind(kind: GoldClueKind, hasWarning: Boolean) = when {

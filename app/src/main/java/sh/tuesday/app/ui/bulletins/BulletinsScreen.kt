@@ -7,35 +7,36 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import sh.tuesday.app.models.*
 import sh.tuesday.app.theme.BrandPalette
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.components.BulletinChecklistStep
+import sh.tuesday.app.ui.components.BulletinPreferencesDialog
+import sh.tuesday.app.ui.components.CandidateDisambiguationStrip
+import sh.tuesday.app.ui.components.DetailModalDialog
 import sh.tuesday.app.ui.components.InboxItemNotchCard
+import sh.tuesday.app.ui.components.MonospaceBadge
 import sh.tuesday.app.ui.components.NotchBulletinCard
+import sh.tuesday.app.ui.components.SectionHeading
+import sh.tuesday.app.ui.components.StatusListRow
+import sh.tuesday.app.ui.components.SurfaceListContainer
+import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -68,8 +69,6 @@ fun BulletinsScreen(
     initialBulletinId: String? = null,
     onConsumeInitialBulletin: () -> Unit = {}
 ) {
-    val isStn = flavor == AppBrandFlavor.SURETHING_HOME
-    val context = LocalContext.current
     var showIgnoreDialog by remember { mutableStateOf(false) }
     var expandedModal by remember { mutableStateOf<ExpandedBulletinModal?>(null) }
 
@@ -92,74 +91,80 @@ fun BulletinsScreen(
     val isComplete = allStepsDone || bulletinDismissed
 
     expandedModal?.let { modal ->
-        sh.tuesday.app.ui.components.DetailModalDialog(
+        DetailModalDialog(
             palette = palette,
             onDismissRequest = { expandedModal = null }
         ) {
             when (modal) {
-                        is ExpandedBulletinModal.Inbox -> {
-                            InboxItemNotchCard(
-                                palette = palette,
-                                item = modal.item,
-                                onClick = {
-                                    expandedModal = null
-                                    onInspectDevice(modal.item.externalId)
-                                },
-                                onConfirmModel = onConfirmModel,
-                                onRejectModel = onRejectModel,
-                                isCompleted = modal.isCompleted
-                            )
+                is ExpandedBulletinModal.Inbox -> {
+                    InboxItemNotchCard(
+                        palette = palette,
+                        item = modal.item,
+                        onClick = {
+                            expandedModal = null
+                            onInspectDevice(modal.item.externalId)
+                        },
+                        onConfirmModel = onConfirmModel,
+                        onRejectModel = onRejectModel,
+                        isCompleted = modal.isCompleted
+                    )
+                }
+                is ExpandedBulletinModal.Welcome -> {
+                    WelcomeNotchBulletinCard(
+                        palette = palette,
+                        isCompleted = modal.isCompleted,
+                        step1Done = step1Done,
+                        step2Done = step2Done,
+                        step3Done = step3Done,
+                        allStepsDone = allStepsDone,
+                        onNavigateToAddDevice = {
+                            expandedModal = null
+                            onNavigateToAddDevice()
+                        },
+                        onEnableReminders = onEnableReminders,
+                        onSetDispatchSubscribed = onSetDispatchSubscribed,
+                        onNavigateToCheckUp = {
+                            expandedModal = null
+                            onNavigateToCheckUp()
+                        },
+                        onSetBulletinDismissed = { dismissed ->
+                            if (dismissed) expandedModal = null
+                            onSetBulletinDismissed(dismissed)
+                        },
+                        onSetBulletinSnoozed = { snoozed ->
+                            if (snoozed) expandedModal = null
+                            onSetBulletinSnoozed(snoozed)
+                        },
+                        onShowIgnoreDialog = {
+                            expandedModal = null
+                            showIgnoreDialog = true
                         }
-                        is ExpandedBulletinModal.Welcome -> {
-                            WelcomeNotchBulletinCard(
-                                palette = palette,
-                                isCompleted = modal.isCompleted,
-                                step1Done = step1Done,
-                                step2Done = step2Done,
-                                step3Done = step3Done,
-                                allStepsDone = allStepsDone,
-                                onNavigateToAddDevice = {
-                                    expandedModal = null
-                                    onNavigateToAddDevice()
-                                },
-                                onEnableReminders = onEnableReminders,
-                                onSetDispatchSubscribed = onSetDispatchSubscribed,
-                                onNavigateToCheckUp = {
-                                    expandedModal = null
-                                    onNavigateToCheckUp()
-                                },
-                                onSetBulletinDismissed = onSetBulletinDismissed,
-                                onSetBulletinSnoozed = onSetBulletinSnoozed,
-                                onShowIgnoreDialog = {
-                                    expandedModal = null
-                                    showIgnoreDialog = true
-                                }
-                            )
+                    )
+                }
+                is ExpandedBulletinModal.Feed -> {
+                    MatchedFeedCard(
+                        palette = palette,
+                        feed = modal.feed,
+                        onToggleMuteFeed = { slug ->
+                            expandedModal = null
+                            onToggleMuteFeed(slug)
+                        },
+                        onConfirmModel = { model ->
+                            expandedModal = null
+                            onConfirmModel(model)
+                        },
+                        onRejectModel = {
+                            expandedModal = null
+                            onRejectModel()
                         }
-                        is ExpandedBulletinModal.Feed -> {
-                            MatchedFeedCard(
-                                palette = palette,
-                                feed = modal.feed,
-                                onToggleMuteFeed = { slug ->
-                                    expandedModal = null
-                                    onToggleMuteFeed(slug)
-                                },
-                                onConfirmModel = { model ->
-                                    expandedModal = null
-                                    onConfirmModel(model)
-                                },
-                                onRejectModel = {
-                                    expandedModal = null
-                                    onRejectModel()
-                                }
-                            )
-                        }
+                    )
+                }
             }
         }
     }
 
     if (showIgnoreDialog) {
-        sh.tuesday.app.ui.components.BulletinPreferencesDialog(
+        BulletinPreferencesDialog(
             palette = palette,
             onDismissRequest = { showIgnoreDialog = false },
             onConfirmMute = {
@@ -179,21 +184,24 @@ fun BulletinsScreen(
         modifier = Modifier
             .fillMaxSize()
             .uiComponent("BulletinsScreen")
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = TuesdayDimens.ScreenPaddingHorizontal),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        // 0. Hidden placeholder to maintain 7-dimension parity for AiSummaryCard marker
         item {
             Box(
                 modifier = Modifier
                     .size(0.dp)
                     .uiComponent("AiSummaryCard")
-                    .uiSlot("ai-summary-card")
-            )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(0.dp)
+                        .uiSlot("ai-summary-card")
+                )
+            }
         }
 
-        // 1. Bulletin Inbox Section Header
         item {
             Row(
                 modifier = Modifier
@@ -203,158 +211,46 @@ fun BulletinsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                sh.tuesday.app.ui.components.SectionHeading(
+                SectionHeading(
                     text = "Bulletin Inbox",
                     palette = palette
                 )
             }
         }
 
-        // 2. Preloaded Monthly Rhythm Bulletin Card (`bul-00-rhythm`) - Muted / Snoozed banners
         if (bulletinMuted) {
-            // Muted Rhythm Banner
             item(key = "rhythm-muted-banner") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("bulletin-inbox-item", "id=bul-00-rhythm;type=muted")
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface.copy(alpha = 0.85f))
-                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF64748B).copy(alpha = 0.18f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "🔕 MUTED",
-                                    color = Color(0xFF64748B),
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Text(
-                                text = "Patch Tuesday Monthly Rhythm Muted",
-                                color = palette.textPrimary,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
-                                .border(1.dp, palette.accent, RoundedCornerShape(5.dp))
-                                .clickable {
-                                    onSetBulletinMuted(false)
-                                    onSetBulletinDismissed(false)
-                                    onSetBulletinSnoozed(false)
-                                }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = "Unmute →",
-                                color = palette.accent,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                RhythmSnoozeOrMuteBanner(
+                    palette = palette,
+                    slotMeta = "id=bul-00-rhythm;type=muted",
+                    badgeText = "🔕 MUTED",
+                    title = "Patch Tuesday Monthly Rhythm Muted",
+                    description = "Monthly checklist reminders are muted. High-severity CVEs and hardware recalls will continue to alert you.",
+                    actionLabel = "Unmute →",
+                    onAction = {
+                        onSetBulletinMuted(false)
+                        onSetBulletinDismissed(false)
+                        onSetBulletinSnoozed(false)
                     }
-                    Text(
-                        text = "Monthly checklist reminders are muted. High-severity CVEs and hardware recalls will continue to alert you.",
-                        color = palette.textMuted,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
-                    )
-                }
+                )
             }
         } else if (bulletinSnoozed) {
-            // Snoozed Rhythm Banner
             item(key = "rhythm-snoozed-banner") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("bulletin-inbox-item", "id=bul-00-rhythm;type=snoozed")
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface.copy(alpha = 0.85f))
-                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF64748B).copy(alpha = 0.18f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "💤 SNOOZED",
-                                    color = Color(0xFF64748B),
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Text(
-                                text = "Patch Tuesday Readiness Reminder",
-                                color = palette.textPrimary,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
-                                .border(1.dp, palette.border, RoundedCornerShape(5.dp))
-                                .clickable {
-                                    onSetBulletinSnoozed(false)
-                                    onSetBulletinDismissed(false)
-                                }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = "Resume →",
-                                color = palette.accent,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                RhythmSnoozeOrMuteBanner(
+                    palette = palette,
+                    slotMeta = "id=bul-00-rhythm;type=snoozed",
+                    badgeText = "💤 SNOOZED",
+                    title = "Patch Tuesday Readiness Reminder",
+                    description = "Snoozed until tomorrow at 10:00 AM. Tap resume to see your 3 readiness actions.",
+                    actionLabel = "Resume →",
+                    onAction = {
+                        onSetBulletinSnoozed(false)
+                        onSetBulletinDismissed(false)
                     }
-                    Text(
-                        text = "Snoozed until tomorrow at 10:00 AM. Tap resume to see your 3 readiness actions.",
-                        color = palette.textMuted,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
-                    )
-                }
+                )
             }
         }
 
-        // 3. Bulletin Inbox ListView (tap row to expand full notch card in modal)
         val showActiveWelcome = !bulletinDismissed && !bulletinSnoozed && !bulletinMuted && !isComplete
         if (showActiveWelcome || payload.inbox.isNotEmpty()) {
             item(key = "inbox-listview") {
@@ -369,7 +265,6 @@ fun BulletinsScreen(
             }
         }
 
-        // 4. Matched Device Feeds Section Header (Bottom, after Inbox)
         item {
             Spacer(modifier = Modifier.height(6.dp))
             Row(
@@ -379,39 +274,38 @@ fun BulletinsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                sh.tuesday.app.ui.components.SectionHeading(
+                SectionHeading(
                     text = "Matched Feeds",
                     palette = palette
                 )
                 Box(
                     modifier = Modifier
+                        .size(TuesdayDimens.HitTargetCompact)
                         .uiAction("openFeedsSettings")
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                         .background(palette.elevated)
-                        .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                        .clickable { onOpenFeedsSettings() }
-                        .padding(6.dp),
+                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                        .clickable { onOpenFeedsSettings() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Feeds settings",
                         tint = palette.textPrimary,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
         }
 
-        // 5. Matched Feed Rows (Confirmed Mute Toggles + Provisional Guess Disambiguation)
         if (payload.matchedFeeds.isEmpty()) {
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                         .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
                         .padding(14.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -419,8 +313,7 @@ fun BulletinsScreen(
                         text = "Add devices to your inventory to get feeds",
                         color = palette.textMuted,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.Default
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -436,7 +329,6 @@ fun BulletinsScreen(
             }
         }
 
-        // 6. Completed Bulletins Section (at the bottom of the bulletins list)
         val completedCount = (if (isComplete) 1 else 0) + payload.completedBulletins.size
         if (completedCount > 0) {
             item {
@@ -448,7 +340,7 @@ fun BulletinsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    sh.tuesday.app.ui.components.SectionHeading(
+                    SectionHeading(
                         text = "Completed",
                         palette = palette
                     )
@@ -468,6 +360,76 @@ fun BulletinsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RhythmSnoozeOrMuteBanner(
+    palette: BrandPalette,
+    slotMeta: String,
+    badgeText: String,
+    title: String,
+    description: String,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .uiSlot("bulletin-inbox-item", slotMeta)
+            .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+            .background(palette.surface.copy(alpha = 0.9f))
+            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                MonospaceBadge(
+                    text = badgeText,
+                    color = palette.textMuted
+                )
+                Text(
+                    text = title,
+                    color = palette.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .heightIn(min = 28.dp)
+                    .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                    .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                    .clickable(onClick = onAction)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = actionLabel,
+                    color = palette.accentText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+        Text(
+            text = description,
+            color = palette.textMuted,
+            fontSize = 11.5.sp,
+            lineHeight = 15.5.sp
+        )
     }
 }
 
@@ -582,13 +544,7 @@ private fun BulletinListView(
     onSelectWelcome: () -> Unit = {},
     onSelectBulletin: (BulletinInboxView) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-    ) {
+    SurfaceListContainer(palette = palette) {
         if (showWelcomeRow) {
             WelcomeBulletinListRow(
                 palette = palette,
@@ -596,10 +552,7 @@ private fun BulletinListView(
                 onClick = onSelectWelcome
             )
             if (items.isNotEmpty()) {
-                HorizontalDivider(
-                    color = palette.border.copy(alpha = 0.6f),
-                    thickness = 1.dp
-                )
+                SurfaceListDivider(palette)
             }
         }
         items.forEachIndexed { index, item ->
@@ -610,10 +563,7 @@ private fun BulletinListView(
                 onClick = { onSelectBulletin(item) }
             )
             if (index < items.lastIndex) {
-                HorizontalDivider(
-                    color = palette.border.copy(alpha = 0.6f),
-                    thickness = 1.dp
-                )
+                SurfaceListDivider(palette)
             }
         }
     }
@@ -625,52 +575,21 @@ private fun WelcomeBulletinListRow(
     isCompleted: Boolean,
     onClick: () -> Unit
 ) {
-    val accentColor = if (isCompleted) TuesdayTheme.LedOkGreen else palette.accent
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiSlot("bulletin-inbox-item", "id=bul-00-rhythm;type=welcome;completed=$isCompleted")
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    val accentColor = if (isCompleted) TuesdayTheme.LedOkGreen else palette.accentText
+    StatusListRow(
+        palette = palette,
+        dotColor = if (isCompleted) TuesdayTheme.LedOkGreen else palette.accent,
+        title = if (isCompleted) "Patch Tuesday Check-Up • Complete" else "Patch Tuesday Readiness",
+        onClick = onClick,
+        contentDescription = "Expand welcome bulletin",
+        modifier = Modifier.uiSlot("bulletin-inbox-item", "id=bul-00-rhythm;type=welcome;completed=$isCompleted")
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(accentColor)
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = if (isCompleted) "Patch Tuesday Check-Up • Complete" else "Patch Tuesday Readiness",
-                color = palette.textPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = if (isCompleted) "CHECK-UP COMPLETE" else "BULLETIN • CHECK-UP",
-                    color = accentColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = "Expand welcome bulletin",
-            tint = palette.textMuted,
-            modifier = Modifier.size(18.dp)
+        Text(
+            text = if (isCompleted) "CHECK-UP COMPLETE" else "BULLETIN • CHECK-UP",
+            color = accentColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
         )
     }
 }
@@ -692,71 +611,43 @@ private fun BulletinListRow(
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiSlot("bulletin-inbox-item", "id=${item.externalId};type=${item.bulletinType};completed=$isCompleted")
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    StatusListRow(
+        palette = palette,
+        dotColor = accentColor,
+        title = item.title,
+        onClick = onClick,
+        contentDescription = "Expand bulletin",
+        modifier = Modifier.uiSlot("bulletin-inbox-item", "id=${item.externalId};type=${item.bulletinType};completed=$isCompleted")
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(accentColor)
-        )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = item.title,
-                color = palette.textPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = item.bulletinType.uppercase(),
+                color = accentColor,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            if (isCompleted) {
                 Text(
-                    text = item.bulletinType.uppercase(),
-                    color = accentColor,
-                    fontSize = 10.sp,
+                    text = "• RESOLVED",
+                    color = TuesdayTheme.LedOkGreen,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
-                if (isCompleted) {
-                    Text(
-                        text = "• RESOLVED",
-                        color = TuesdayTheme.LedOkGreen,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                } else if (item.brokeThroughMute) {
-                    Text(
-                        text = "• HIGH-SEV",
-                        color = TuesdayTheme.LedEolAmber,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+            } else if (item.brokeThroughMute) {
+                Text(
+                    text = "• HIGH-SEV",
+                    color = TuesdayTheme.LedEolAmber,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
             }
         }
-
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = "Expand bulletin",
-            tint = palette.textMuted,
-            modifier = Modifier.size(18.dp)
-        )
     }
 }
 
@@ -766,13 +657,9 @@ private fun MatchedFeedsListView(
     feeds: List<MatchedFeedView>,
     onSelectFeed: (MatchedFeedView) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiComponent("MatchedFeedsSection")
-            .clip(RoundedCornerShape(10.dp))
-            .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+    SurfaceListContainer(
+        palette = palette,
+        modifier = Modifier.uiComponent("MatchedFeedsSection")
     ) {
         feeds.forEachIndexed { index, feed ->
             MatchedFeedListRow(
@@ -781,10 +668,7 @@ private fun MatchedFeedsListView(
                 onClick = { onSelectFeed(feed) }
             )
             if (index < feeds.lastIndex) {
-                HorizontalDivider(
-                    color = palette.border.copy(alpha = 0.6f),
-                    thickness = 1.dp
-                )
+                SurfaceListDivider(palette)
             }
         }
     }
@@ -803,49 +687,21 @@ private fun MatchedFeedListRow(
         else -> TuesdayTheme.LedOkGreen
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .uiSlot("matched-feed-row", "slug=${feed.slug};muted=${feed.isMuted}")
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    StatusListRow(
+        palette = palette,
+        dotColor = dotColor,
+        title = feed.name,
+        onClick = onClick,
+        contentDescription = "Expand feed",
+        modifier = Modifier.uiSlot("matched-feed-row", "slug=${feed.slug};muted=${feed.isMuted}")
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = feed.name,
-                color = palette.textPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "Matched: ${feed.matchedPorts.joinToString(", ")}",
-                color = palette.textMuted,
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = "Expand feed",
-            tint = palette.textMuted,
-            modifier = Modifier.size(18.dp)
+        Text(
+            text = "Matched: ${feed.matchedPorts.joinToString(", ")}",
+            color = palette.textMuted,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -863,12 +719,12 @@ private fun MatchedFeedCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
             .background(palette.surface)
             .border(
                 1.dp,
                 if (isProvisional) TuesdayTheme.LedGuessedGrey else palette.border,
-                RoundedCornerShape(10.dp)
+                RoundedCornerShape(TuesdayDimens.RadiusCard)
             )
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -881,7 +737,8 @@ private fun MatchedFeedCard(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 8.dp)
+                    .padding(end = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -895,54 +752,31 @@ private fun MatchedFeedCard(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     if (isProvisional) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(TuesdayTheme.LedGuessedGrey.copy(alpha = 0.25f))
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "❓ 72% GUESS",
-                                color = palette.textPrimary,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                softWrap = false,
-                                maxLines = 1
-                            )
-                        }
+                        MonospaceBadge(
+                            text = "❓ 72% GUESS",
+                            color = palette.textMuted
+                        )
                     }
                 }
                 Text(
                     text = "Matched: ${feed.matchedPorts.joinToString(", ")}",
                     color = palette.textMuted,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
             }
 
             if (isProvisional) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
-                        .border(1.dp, TuesdayTheme.LedGuessedGrey, RoundedCornerShape(5.dp))
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "⚡ High-Sev Only",
-                        color = palette.textMuted,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        softWrap = false,
-                        maxLines = 1
-                    )
-                }
+                MonospaceBadge(
+                    text = "⚡ High-Sev Only",
+                    color = palette.textMuted
+                )
             } else {
                 Box(
                     modifier = Modifier
+                        .heightIn(min = 28.dp)
                         .uiAction("toggleMuteFeed")
-                        .clip(RoundedCornerShape(5.dp))
+                        .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                         .background(
                             if (feed.isMuted) TuesdayTheme.LedEolAmber.copy(alpha = 0.16f)
                             else palette.elevated
@@ -950,15 +784,16 @@ private fun MatchedFeedCard(
                         .border(
                             1.dp,
                             if (feed.isMuted) TuesdayTheme.LedEolAmber else palette.border,
-                            RoundedCornerShape(5.dp)
+                            RoundedCornerShape(TuesdayDimens.RadiusBadge)
                         )
                         .clickable { onToggleMuteFeed(feed.slug) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = if (feed.isMuted) "🔕 Muted" else "🔔 Active",
                         color = if (feed.isMuted) TuesdayTheme.LedEolAmber else palette.textPrimary,
-                        fontSize = 9.5.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         softWrap = false,
@@ -969,50 +804,65 @@ private fun MatchedFeedCard(
         }
 
         if (isProvisional && feed.candidateModels.isNotEmpty()) {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                feed.candidateModels.forEach { candidate ->
+            if (feed.candidateModels.size == 1) {
+                CandidateDisambiguationStrip(
+                    candidateModel = feed.candidateModels.first(),
+                    palette = palette,
+                    onConfirmModel = onConfirmModel,
+                    onRejectModel = onRejectModel,
+                    confirmModifier = Modifier.uiAction("confirmGuessedModel"),
+                    rejectModifier = Modifier.uiAction("rejectGuessedModel")
+                )
+            } else {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    feed.candidateModels.forEach { candidate ->
+                        Box(
+                            modifier = Modifier
+                                .heightIn(min = 28.dp)
+                                .uiAction("confirmGuessedModel")
+                                .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                .background(palette.accent.copy(alpha = 0.15f))
+                                .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                .clickable { onConfirmModel(candidate) }
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "✓ $candidate",
+                                color = palette.accentText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                softWrap = false,
+                                maxLines = 1
+                            )
+                        }
+                    }
                     Box(
                         modifier = Modifier
-                            .uiAction("confirmGuessedModel")
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(palette.accent.copy(alpha = 0.15f))
-                            .border(1.dp, palette.accent, RoundedCornerShape(4.dp))
-                            .clickable { onConfirmModel(candidate) }
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                            .heightIn(min = 28.dp)
+                            .uiAction("rejectGuessedModel")
+                            .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                            .background(palette.elevated)
+                            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                            .clickable { onRejectModel() }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "✓ $candidate",
-                            color = palette.accent,
-                            fontSize = 8.5.sp,
+                            text = "✕ Not Mine",
+                            color = palette.textMuted,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             softWrap = false,
                             maxLines = 1
                         )
                     }
-                }
-                Box(
-                    modifier = Modifier
-                        .uiAction("rejectGuessedModel")
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(palette.elevated)
-                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-                        .clickable { onRejectModel() }
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "✕ Not Mine",
-                        color = palette.textMuted,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        softWrap = false,
-                        maxLines = 1
-                    )
                 }
             }
         }

@@ -1,6 +1,7 @@
 package sh.tuesday.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
 
 @Composable
@@ -29,18 +31,22 @@ fun WifiWarningOverlay(
 ) {
     if (!isVisible) return
 
+    val palette = TuesdayTheme.colors
+    val shape = RoundedCornerShape(TuesdayDimens.RadiusDialog)
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.88f))
+            .background(Color.Black.copy(alpha = 0.72f))
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(TuesdayTheme.CardSurface)
+                .clip(shape)
+                .background(palette.surface)
+                .border(1.dp, palette.border, shape)
                 .padding(24.dp)
         ) {
             Icon(
@@ -54,7 +60,7 @@ fun WifiWarningOverlay(
 
             Text(
                 text = "Local Wi-Fi Required",
-                color = Color.White,
+                color = palette.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -63,7 +69,7 @@ fun WifiWarningOverlay(
 
             Text(
                 text = "Tuesday.sh is configured to communicate with your Home Assistant HACS integration ($hacsUrl) only while connected to your local network.",
-                color = Color.White.copy(alpha = 0.72f),
+                color = palette.textMuted,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 18.sp
@@ -77,7 +83,7 @@ fun WifiWarningOverlay(
                     containerColor = TuesdayTheme.WarningAmber,
                     contentColor = Color.Black
                 ),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(

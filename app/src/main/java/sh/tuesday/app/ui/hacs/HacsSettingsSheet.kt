@@ -28,9 +28,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import sh.tuesday.app.domain.EntitlementGatePolicy
+import sh.tuesday.app.models.PortLifecycleState
+import sh.tuesday.app.theme.BrandPalette
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.MonospaceBadge
+import sh.tuesday.app.ui.components.TuesdayBottomSheet
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -42,6 +49,7 @@ import java.io.InputStreamReader
 fun HacsSettingsSheet(
     entitlementTier: String = "free",
     activeNetworkName: String = "My Network",
+    palette: BrandPalette = TuesdayTheme.colors,
     onOpenUpgradeModal: () -> Unit = {},
     onOpenNetworkPicker: () -> Unit = {},
     onExportBackupJson: () -> String,
@@ -53,9 +61,10 @@ fun HacsSettingsSheet(
     var importStatusMessage by remember { mutableStateOf<String?>(null) }
     var isSuccessStatus by remember { mutableStateOf(false) }
     var familyInviteFeedback by remember { mutableStateOf<String?>(null) }
-    val isProTier1 = entitlementTier == "pro_tier_1" || entitlementTier == "multisite_tier_1" || entitlementTier == "fleet"
+    val isProTier1 = EntitlementGatePolicy.isProTier1Entitled(entitlementTier)
+    val okGreen = TuesdayTheme.ledColorFor(PortLifecycleState.OK, palette.isStn)
+    val cardShape = RoundedCornerShape(TuesdayDimens.RadiusModalCard)
 
-    // Launcher for exporting backup to system storage (Google Drive, Files, Downloads)
     val exportFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -75,7 +84,6 @@ fun HacsSettingsSheet(
         }
     }
 
-    // Launcher for importing backup from system storage
     val importFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -103,9 +111,9 @@ fun HacsSettingsSheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = TuesdayTheme.Background
+    TuesdayBottomSheet(
+        palette = palette,
+        onDismissRequest = onDismiss
     ) {
         Column(
             modifier = Modifier
@@ -116,51 +124,51 @@ fun HacsSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiSlot("hacs-bridge-header")
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(TuesdayTheme.CardSurface)
+                    .clip(cardShape)
+                    .background(palette.elevated)
+                    .border(1.dp, palette.border, cardShape)
                     .padding(16.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(TuesdayTheme.HacsCyan.copy(alpha = 0.15f)),
+                        .background(palette.accent.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Home,
                         contentDescription = "HACS",
-                        tint = TuesdayTheme.HacsCyan
+                        tint = palette.accent
                     )
                 }
                 Column {
                     Text(
                         text = "Home Assistant Integration",
-                        color = Color.White,
+                        color = palette.textPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Tuesday.sh Bridge",
-                        color = TuesdayTheme.HacsCyan,
+                        color = palette.accentText,
                         fontSize = 12.sp
                     )
                 }
             }
 
-            // Coming Soon Notice Box
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(TuesdayTheme.CardSurface)
+                    .clip(cardShape)
+                    .background(palette.elevated)
+                    .border(1.dp, palette.border, cardShape)
                     .padding(vertical = 24.dp, horizontal = 20.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -170,27 +178,26 @@ fun HacsSettingsSheet(
                 ) {
                     Text(
                         text = "Home Assistant sync coming soon.",
-                        color = Color.White,
+                        color = palette.textPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         text = "Native integration for Home Assistant and HACS is currently in development.",
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = palette.textMuted,
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
             }
 
-            // Sovereign Data Backup & Migration Panel (Local Export / Import)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(TuesdayTheme.CardSurface)
-                    .border(1.dp, Color(0xFF2C3240), RoundedCornerShape(12.dp))
+                    .clip(cardShape)
+                    .background(palette.elevated)
+                    .border(1.dp, palette.border, cardShape)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -201,12 +208,12 @@ fun HacsSettingsSheet(
                     Icon(
                         imageVector = Icons.Default.Save,
                         contentDescription = "Local Backup",
-                        tint = TuesdayTheme.LedOkGreen,
+                        tint = okGreen,
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
                         text = "Local Network Backup & Restore",
-                        color = Color.White,
+                        color = palette.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -214,8 +221,8 @@ fun HacsSettingsSheet(
 
                 Text(
                     text = "Save your full network inventory, device aliases, port allocations, and settings off-device (Google Drive, iCloud, local storage) without creating an account.",
-                    color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 11.5.sp,
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
                     lineHeight = 16.sp
                 )
 
@@ -223,17 +230,16 @@ fun HacsSettingsSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Export Button
-                    Button(
+                    OutlinedButton(
                         onClick = {
                             val defaultFileName = "tuesday_backup_${System.currentTimeMillis() / 1000}.json"
                             exportFileLauncher.launch(defaultFileName)
                         },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1E293B),
-                            contentColor = Color.White
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = palette.surface,
+                            contentColor = palette.textPrimary
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                         modifier = Modifier
                             .weight(1f)
                             .uiAction("exportBackupFile")
@@ -244,19 +250,18 @@ fun HacsSettingsSheet(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Export JSON", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Export JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Import Button
-                    Button(
+                    OutlinedButton(
                         onClick = {
                             importFileLauncher.launch("application/json")
                         },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1E293B),
-                            contentColor = Color.White
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = palette.surface,
+                            contentColor = palette.textPrimary
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                         modifier = Modifier
                             .weight(1f)
                             .uiAction("importBackupFile")
@@ -267,16 +272,17 @@ fun HacsSettingsSheet(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Import JSON", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Import JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                // Copy to Clipboard Fallback
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF14171F))
+                        .heightIn(min = TuesdayDimens.HitTargetCompact)
+                        .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                        .background(palette.bg)
+                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
                         .clickable {
                             val jsonText = onExportBackupJson()
                             clipboardManager.setText(AnnotatedString(jsonText))
@@ -290,41 +296,39 @@ fun HacsSettingsSheet(
                 ) {
                     Text(
                         text = "Copy Backup to Clipboard",
-                        color = Color.White.copy(alpha = 0.8f),
-                        fontSize = 11.sp,
+                        color = palette.textPrimary,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = "COPY",
-                        color = TuesdayTheme.HacsCyan,
-                        fontSize = 9.sp,
+                        color = palette.accentText,
+                        fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                // Status Message if present
                 if (importStatusMessage != null) {
                     Text(
                         text = importStatusMessage!!,
-                        color = if (isSuccessStatus) TuesdayTheme.LedOkGreen else TuesdayTheme.LedCveRed,
+                        color = if (isSuccessStatus) okGreen else TuesdayTheme.ledColorFor(PortLifecycleState.CVE_KEV, palette.isStn),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
-            // Family Site Management Panel (Part of Pro Tier 1 Entitlement)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiSlot("family-site-management-panel")
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(TuesdayTheme.CardSurface)
+                    .clip(cardShape)
+                    .background(palette.elevated)
                     .border(
                         width = 1.dp,
-                        color = if (isProTier1) TuesdayTheme.LedOkGreen.copy(alpha = 0.45f) else TuesdayTheme.ProAccent.copy(alpha = 0.45f),
-                        shape = RoundedCornerShape(12.dp)
+                        color = if (isProTier1) okGreen.copy(alpha = 0.45f) else palette.accent.copy(alpha = 0.45f),
+                        shape = cardShape
                     )
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -341,33 +345,20 @@ fun HacsSettingsSheet(
                         Icon(
                             imageVector = Icons.Default.Group,
                             contentDescription = "Family Site Management",
-                            tint = if (isProTier1) TuesdayTheme.LedOkGreen else TuesdayTheme.ProAccent,
+                            tint = if (isProTier1) okGreen else palette.accent,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
                             text = "Family Site Management",
-                            color = Color.White,
+                            color = palette.textPrimary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (isProTier1) {
-                            TuesdayTheme.LedOkGreen.copy(alpha = 0.16f)
-                        } else {
-                            TuesdayTheme.ProAccent.copy(alpha = 0.18f)
-                        }
-                    ) {
-                        Text(
-                            text = if (isProTier1) "PRO TIER 1 • ACTIVE" else "PRO TIER 1",
-                            color = if (isProTier1) TuesdayTheme.LedOkGreen else TuesdayTheme.ProAccent,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                    MonospaceBadge(
+                        text = if (isProTier1) "PRO TIER 1 • ACTIVE" else "PRO TIER 1",
+                        color = if (isProTier1) okGreen else palette.accentText
+                    )
                 }
 
                 Text(
@@ -376,8 +367,8 @@ fun HacsSettingsSheet(
                     } else {
                         "Part of Tuesday.sh Pro Tier 1. Remotely monitor parents' or family members' home networks, manage unlimited sites, and share delegated pairing invites."
                     },
-                    color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 11.5.sp,
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
                     lineHeight = 16.sp
                 )
 
@@ -386,23 +377,23 @@ fun HacsSettingsSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 val inviteToken = "tuesday://join-site?site=${Uri.encode(activeNetworkName.ifBlank { "My Network" })}&code=FAM-${(1000..9999).random()}"
                                 clipboardManager.setText(AnnotatedString(inviteToken))
                                 familyInviteFeedback = "✓ Copied Family Pairing Invite link to clipboard"
                                 Toast.makeText(context, "Copied family invite link", Toast.LENGTH_SHORT).show()
                             },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF1E293B),
-                                contentColor = Color.White
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.surface,
+                                contentColor = palette.textPrimary
                             ),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                             modifier = Modifier
                                 .weight(1f)
                                 .uiAction("copyFamilySiteInvite")
                         ) {
-                            Text("Copy Family Invite", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Text("Copy Family Invite", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -411,23 +402,23 @@ fun HacsSettingsSheet(
                                 onOpenNetworkPicker()
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = TuesdayTheme.ProAccent,
+                                containerColor = palette.accent,
                                 contentColor = Color.White
                             ),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                             modifier = Modifier
                                 .weight(1f)
                                 .uiAction("manageFamilySites")
                         ) {
-                            Text("Manage Sites", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Text("Manage Sites", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     if (familyInviteFeedback != null) {
                         Text(
                             text = familyInviteFeedback!!,
-                            color = TuesdayTheme.LedOkGreen,
-                            fontSize = 10.5.sp,
+                            color = okGreen,
+                            fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace
                         )
                     }
@@ -438,10 +429,10 @@ fun HacsSettingsSheet(
                             onOpenUpgradeModal()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = TuesdayTheme.ProAccent,
+                            containerColor = palette.accent,
                             contentColor = Color.White
                         ),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                         modifier = Modifier
                             .fillMaxWidth()
                             .uiAction("openFamilyTier1Upgrade")
@@ -451,14 +442,13 @@ fun HacsSettingsSheet(
                 }
             }
 
-            // Dismiss Button (maintains parity action contract)
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = TuesdayTheme.HacsCyan.copy(alpha = 0.15f),
-                    contentColor = TuesdayTheme.HacsCyan
+                    containerColor = palette.accent.copy(alpha = 0.15f),
+                    contentColor = palette.accentText
                 ),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                 modifier = Modifier
                     .fillMaxWidth()
                     .uiAction("saveHacsConfig")

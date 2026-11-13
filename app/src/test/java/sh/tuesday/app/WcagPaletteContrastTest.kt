@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.PortLifecycleState
+import sh.tuesday.app.models.TrustZone
 import sh.tuesday.app.theme.TuesdayTheme
 import java.io.File
 import java.util.Locale
@@ -52,6 +53,16 @@ class WcagPaletteContrastTest {
         return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
     }
 
+    private fun compositeOver(fg: Color, bg: Color): Color {
+        val a = fg.alpha.coerceIn(0f, 1f)
+        return Color(
+            red = fg.red * a + bg.red * (1f - a),
+            green = fg.green * a + bg.green * (1f - a),
+            blue = fg.blue * a + bg.blue * (1f - a),
+            alpha = 1f
+        )
+    }
+
     private fun hexString(color: Color): String {
         val r = (color.red * 255.0f + 0.5f).toInt().coerceIn(0, 255)
         val g = (color.green * 255.0f + 0.5f).toInt().coerceIn(0, 255)
@@ -76,12 +87,19 @@ class WcagPaletteContrastTest {
             // Secondary / muted text & brand accents audited against AAA (7.0) and AA (4.5 / 3.0)
             add(ContrastPair("STN-Pro", "textMuted on bg", pro.textMuted, pro.bg, "Muted Metadata (AAA Target)", 7.0, false))
             add(ContrastPair("STN-Pro", "textMuted on surface", pro.textMuted, pro.surface, "Muted Card Subtext (AAA Target)", 7.0, false))
-            add(ContrastPair("STN-Pro", "accent on surface", pro.accent, pro.surface, "Accent Text / CTA (AA 4.5)", 4.5, false))
-            add(ContrastPair("STN-Pro", "brandPrimary on bg", pro.brandPrimary, pro.bg, "Brand Accent (AA 4.5)", 4.5, false))
+            add(ContrastPair("STN-Pro", "accentText on surface", pro.accentText, pro.surface, "Accent Text / CTA (AA 4.5)", 4.5, true))
+            add(ContrastPair("STN-Pro", "brandPrimary on bg", pro.brandPrimary, pro.bg, "Brand Accent (AA 4.5)", 4.5, true))
 
             add(ContrastPair("STN-Home", "textMuted on bg", home.textMuted, home.bg, "Muted Metadata (AAA Target)", 7.0, false))
             add(ContrastPair("STN-Home", "textMuted on surface", home.textMuted, home.surface, "Muted Card Subtext (AAA Target)", 7.0, false))
-            add(ContrastPair("STN-Home", "accent on surface", home.accent, home.surface, "Accent Text / Link (AA 4.5)", 4.5, false))
+            add(ContrastPair("STN-Home", "accent on surface", home.accent, home.surface, "Accent Fill / Border (SC 1.4.11)", 3.0, true))
+            add(ContrastPair("STN-Home", "accentText on surface", home.accentText, home.surface, "Accent Text / Link (AA 4.5)", 4.5, true))
+
+            // MonospaceBadge alpha-composited fill (`0.14f` tint over surface)
+            val proBadgeBg = compositeOver(pro.accent.copy(alpha = 0.14f), pro.surface)
+            val homeBadgeBg = compositeOver(home.accent.copy(alpha = 0.14f), home.surface)
+            add(ContrastPair("STN-Pro", "accentText on 14% badge tint", pro.accentText, proBadgeBg, "MonospaceBadge Text (AA-Large/UI)", 4.0, true))
+            add(ContrastPair("STN-Home", "accentText on 14% badge tint", home.accentText, homeBadgeBg, "MonospaceBadge Text (AA 4.5)", 4.5, true))
 
             // 6-State Port Lifecycle LEDs against Card Surface (WCAG 1.4.11 Non-text Contrast >= 3.0:1)
             val activeStates = listOf(
@@ -100,7 +118,7 @@ class WcagPaletteContrastTest {
                         pro.surface,
                         "Non-text LED Indicator (SC 1.4.11)",
                         3.0,
-                        false
+                        true
                     )
                 )
                 add(
@@ -111,7 +129,33 @@ class WcagPaletteContrastTest {
                         home.surface,
                         "Non-text LED Indicator (SC 1.4.11)",
                         3.0,
-                        false
+                        true
+                    )
+                )
+            }
+
+            // 5 TrustZone Lane Colors against Card Surface (WCAG 1.4.11 Non-text Contrast >= 3.0:1)
+            for (zone in TrustZone.entries) {
+                add(
+                    ContrastPair(
+                        "STN-Pro",
+                        "Zone ${zone.shortCode} on surface",
+                        TuesdayTheme.zoneColorFor(zone, isStn = false),
+                        pro.surface,
+                        "TrustZone Indicator (SC 1.4.11)",
+                        3.0,
+                        true
+                    )
+                )
+                add(
+                    ContrastPair(
+                        "STN-Home",
+                        "Zone ${zone.shortCode} on surface",
+                        TuesdayTheme.zoneColorFor(zone, isStn = true),
+                        home.surface,
+                        "TrustZone Indicator (SC 1.4.11)",
+                        3.0,
+                        true
                     )
                 )
             }

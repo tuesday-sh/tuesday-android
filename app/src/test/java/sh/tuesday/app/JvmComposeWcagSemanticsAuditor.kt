@@ -41,6 +41,10 @@ object JvmComposeWcagSemanticsAuditor {
         }
     }
 
+    fun target24DpViolations(): List<NodeFinding> = synchronized(allFindings) {
+        allFindings.filter { it.severity == "WCAG_AA_TARGET_24DP" }
+    }
+
     fun auditActiveScreen(
         composeTestRule: ComposeTestRule,
         context: Context,
@@ -72,10 +76,12 @@ object JvmComposeWcagSemanticsAuditor {
             cfg.contains(SemanticsProperties.ToggleableState)
 
         val bounds = node.boundsInWindow
-        val widthDp = bounds.width / density
-        val heightDp = bounds.height / density
+        val visibleWidthDp = bounds.width / density
+        val visibleHeightDp = bounds.height / density
+        val widthDp = kotlin.math.max(visibleWidthDp, node.size.width / density)
+        val heightDp = kotlin.math.max(visibleHeightDp, node.size.height / density)
 
-        if (isInteractive && widthDp > 1f && heightDp > 1f) {
+        if (isInteractive && visibleWidthDp > 1f && visibleHeightDp > 1f) {
             val tag = cfg.getOrNull(SemanticsProperties.TestTag) ?: "<untagged>"
             val texts = cfg.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }.orEmpty()
             val editable = cfg.getOrNull(SemanticsProperties.EditableText)?.text.orEmpty()

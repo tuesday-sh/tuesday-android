@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import sh.tuesday.app.models.*
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.MonospaceBadge
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -182,7 +183,7 @@ internal fun StatusMatrixAndActionListScreen(
                             else -> "NEEDS ATTENTION"
                         },
                         color = palette.textMuted,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -190,17 +191,19 @@ internal fun StatusMatrixAndActionListScreen(
                     if (selectedPortStateFilter == null) {
                         Box(
                             modifier = Modifier
+                                .heightIn(min = 28.dp)
                                 .uiAction("toggleIncludeOk")
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(palette.elevated)
                                 .border(1.dp, palette.border, RoundedCornerShape(6.dp))
                                 .clickable { onToggleIncludeOk() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = if (includeOkDevices) "Hide OK Devices" else "Show OK Devices",
-                                color = palette.accent,
-                                fontSize = 9.sp,
+                                color = palette.accentText,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
                             )
@@ -222,182 +225,184 @@ internal fun StatusMatrixAndActionListScreen(
             val stateColor = TuesdayTheme.ledColorFor(dev.portState, isStn)
             if (isStn) {
                 // STN-Home Consumer Card: 5dp colored left border + Room/Lane chips + Plain-English Headline + Action CTA
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .uiSlot("device-row", "port=${dev.portIndex};state=${dev.portState.key};cat=${dev.category.code}")
-                        .uiAction("inspectDevice")
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .clickable { onInspectDevice(dev.id) }
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .width(5.dp)
-                            .heightIn(min = 92.dp)
-                            .background(stateColor)
-                    )
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                            .fillMaxWidth()
+                            .uiAction("inspectDevice")
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                            .clickable { onInspectDevice(dev.id) }
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Box(
+                            modifier = Modifier
+                                .width(5.dp)
+                                .heightIn(min = 92.dp)
+                                .background(stateColor)
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = dev.name,
-                                color = palette.textPrimary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(stateColor.copy(alpha = 0.14f))
-                                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
+                                    text = dev.name,
+                                    color = palette.textPrimary,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                MonospaceBadge(
                                     text = dev.portState.stnLabel,
                                     color = stateColor,
-                                    fontSize = 9.5.sp,
+                                    borderAlpha = 0f
+                                )
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "📍 ${dev.roomLocation}",
+                                    color = palette.textMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text("•", color = palette.border, fontSize = 11.sp)
+                                Text(
+                                    text = dev.trustZone.stnLabel,
+                                    color = palette.accentText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text("•", color = palette.border, fontSize = 11.sp)
+                                Text(
+                                    text = dev.category.code,
+                                    color = palette.textMuted,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            val topBulletin = remember(dev.id, dev.purls) {
+                                BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
+                            }
+                            val detailBlurb = topBulletin?.stnTitle ?: "${dev.category.stnLabel} • ${dev.roomLocation}"
+                            Text(
+                                text = detailBlurb,
+                                color = palette.textPrimary,
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (dev.portState != PortLifecycleState.OK) stateColor else stateColor.copy(alpha = 0.12f))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = when (dev.portState) {
+                                        PortLifecycleState.CVE_KEV -> "Read Safety Recall & Next Steps"
+                                        PortLifecycleState.EOL -> "Why This Device Can't Be Updated"
+                                        PortLifecycleState.GUESSED -> "Identify & Verify With Camera"
+                                        PortLifecycleState.UPDATE -> "How to Update This Device"
+                                        else -> "Verified & Protected"
+                                    },
+                                    color = if (dev.portState != PortLifecycleState.OK) Color.White else stateColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "→",
+                                    color = if (dev.portState != PortLifecycleState.OK) Color.White else stateColor,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "📍 ${dev.roomLocation}",
-                                color = palette.textMuted,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text("•", color = palette.border, fontSize = 10.sp)
-                            Text(
-                                text = dev.trustZone.stnLabel,
-                                color = palette.accent,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text("•", color = palette.border, fontSize = 10.sp)
-                            Text(
-                                text = dev.category.code,
-                                color = palette.textMuted,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        val topBulletin = remember(dev.id, dev.purls) {
-                            BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
-                        }
-                        val detailBlurb = topBulletin?.stnTitle ?: "${dev.category.stnLabel} • ${dev.roomLocation}"
-                        Text(
-                            text = detailBlurb,
-                            color = palette.textPrimary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (dev.portState != PortLifecycleState.OK) stateColor else stateColor.copy(alpha = 0.12f))
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = when (dev.portState) {
-                                    PortLifecycleState.CVE_KEV -> "Read Safety Recall & Next Steps"
-                                    PortLifecycleState.EOL -> "Why This Device Can't Be Updated"
-                                    PortLifecycleState.GUESSED -> "Identify & Verify With Camera"
-                                    PortLifecycleState.UPDATE -> "How to Update This Device"
-                                    else -> "Verified & Protected"
-                                },
-                                color = if (dev.portState != PortLifecycleState.OK) Color.White else stateColor,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "→",
-                                color = if (dev.portState != PortLifecycleState.OK) Color.White else stateColor,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
                     }
                 }
             } else {
-                // STN-Pro Row: Port Square + Device Name + Asset Tag Pill + Tabular Spine Metadata + 3-Bar Risk Meter
-                Row(
+                // STN-Pro Row: Category Square + Device Name + Tabular Spine Metadata + 3-Bar Risk Meter
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .uiSlot("device-row", "port=${dev.portIndex};state=${dev.portState.key};cat=${dev.category.code}")
-                        .uiAction("inspectDevice")
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                        .clickable { onInspectDevice(dev.id) }
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Category silhouette icon badge
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(stateColor.copy(alpha = 0.16f))
-                            .border(1.dp, stateColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .uiAction("inspectDevice")
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                            .clickable { onInspectDevice(dev.id) }
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        HardwareCategorySvgIcon(
-                            category = dev.category,
-                            tint = stateColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                        // Category silhouette icon badge
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(stateColor.copy(alpha = 0.16f))
+                                .border(1.dp, stateColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            HardwareCategorySvgIcon(
+                                category = dev.category,
+                                tint = stateColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                    val topBulletin = remember(dev.id, dev.purls) {
-                        BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
-                    }
-                    val detailBlurb = if (topBulletin != null) {
-                        if (isStn) topBulletin.stnTitle else topBulletin.proTitle
-                    } else {
-                        val catLabel = if (isStn) dev.category.stnLabel else dev.category.proLabel
-                        "$catLabel • ${dev.roomLocation}"
-                    }
+                        val topBulletin = remember(dev.id, dev.purls) {
+                            BulletinsAndInventoryEngine.findTopBulletinForDevice(dev)
+                        }
+                        val detailBlurb = if (topBulletin != null) {
+                            if (isStn) topBulletin.stnTitle else topBulletin.proTitle
+                        } else {
+                            val catLabel = if (isStn) dev.category.stnLabel else dev.category.proLabel
+                            "$catLabel • ${dev.roomLocation}"
+                        }
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = dev.name,
-                            color = palette.textPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = detailBlurb,
-                            color = if (topBulletin != null) stateColor else palette.textMuted,
-                            fontSize = 10.sp,
-                            lineHeight = 13.sp
-                        )
-                    }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = dev.name,
+                                color = palette.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = detailBlurb,
+                                color = if (topBulletin != null) stateColor else palette.textMuted,
+                                fontSize = 11.sp,
+                                lineHeight = 14.5.sp
+                            )
+                        }
 
-                    val noticeCount = remember(dev.id, dev.purls) {
-                        BulletinsAndInventoryEngine.countBulletinsForDevice(dev)
+                        val noticeCount = remember(dev.id, dev.purls) {
+                            BulletinsAndInventoryEngine.countBulletinsForDevice(dev)
+                        }
+                        RiskMeter(portState = dev.portState, isStn = isStn, noticeCount = noticeCount, palette = palette)
                     }
-                    RiskMeter(portState = dev.portState, isStn = isStn, noticeCount = noticeCount)
                 }
             }
         }
@@ -456,7 +461,7 @@ internal fun WelcomeCard(
         ) {
             Text(
                 text = "💡 Best place to start: Your Router",
-                color = palette.accent,
+                color = palette.accentText,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -521,7 +526,7 @@ internal fun WelcomeCard(
         ) {
             Text(
                 text = "Enable Demo Mode (add example devices)",
-                color = palette.accent,
+                color = palette.accentText,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -563,13 +568,13 @@ internal fun TrackedHardwareProfilesCard(
             Text(
                 text = "Tracked Hardware Profiles",
                 color = palette.textMuted,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = "Recent changes",
                 color = palette.textMuted,
-                fontSize = 9.sp
+                fontSize = 11.sp
             )
         }
 
@@ -583,44 +588,46 @@ internal fun TrackedHardwareProfilesCard(
             featured.forEachIndexed { idx, dev ->
                 val stateColor = TuesdayTheme.ledColorFor(dev.portState, isStn = false)
                 val isSelected = idx == 0
-                Column(
-                    modifier = Modifier
-                        .width(52.dp)
-                        .uiSlot("tracked-profile-squircle")
-                        .uiAction("inspectDevice")
-                        .clickable { onInspectDevice(dev.id) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Box(
+                Box(modifier = Modifier.uiSlot("tracked-profile-squircle")) {
+                    Column(
                         modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(
-                                if (isSelected) palette.accent.copy(alpha = 0.14f)
-                                else Color(0xFF1F222A)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) palette.accent else stateColor.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(11.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                            .width(58.dp)
+                            .uiAction("inspectDevice")
+                            .clickable { onInspectDevice(dev.id) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        HardwareCategorySvgIcon(
-                            category = dev.category,
-                            tint = stateColor,
-                            modifier = Modifier.size(19.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(
+                                    if (isSelected) palette.accent.copy(alpha = 0.14f)
+                                    else palette.elevated
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) palette.accent else stateColor.copy(alpha = 0.35f),
+                                    shape = RoundedCornerShape(11.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            HardwareCategorySvgIcon(
+                                category = dev.category,
+                                tint = stateColor,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                        Text(
+                            text = dev.shortLabel,
+                            color = palette.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
                         )
                     }
-                    Text(
-                        text = dev.shortLabel,
-                        color = palette.textPrimary,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center
-                    )
                 }
             }
         }
@@ -631,7 +638,8 @@ internal fun TrackedHardwareProfilesCard(
 fun RiskMeter(
     portState: PortLifecycleState,
     isStn: Boolean = false,
-    noticeCount: Int = 0
+    noticeCount: Int = 0,
+    palette: BrandPalette = TuesdayTheme.colors
 ) {
     val activeBars = when (portState) {
         PortLifecycleState.CVE_KEV -> 3
@@ -642,7 +650,7 @@ fun RiskMeter(
         PortLifecycleState.UNASSIGNED -> 0
     }
     val activeColor = TuesdayTheme.ledColorFor(portState, isStn)
-    val inactiveColor = if (isStn) Color(0xFFCBD5E1) else Color(0xFF2D323E)
+    val inactiveColor = palette.borderStrong
 
     Column(
         horizontalAlignment = Alignment.End,
@@ -681,15 +689,15 @@ fun RiskMeter(
             Text(
                 text = if (noticeCount == 1) "1 notice" else "$noticeCount notices",
                 color = activeColor,
-                fontSize = 8.5.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace
             )
         } else {
             Text(
                 text = "0 notices",
-                color = if (isStn) Color(0xFF94A3B8) else Color(0xFF6B7280),
-                fontSize = 8.5.sp,
+                color = palette.textMuted,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = FontFamily.Monospace
             )

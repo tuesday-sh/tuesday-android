@@ -226,11 +226,19 @@ class TuesdayComposeSemanticUiTest {
             expectedText = "tuesday.sh"
         )
 
-        // 3. Click toggleBrandFlavor -> flips "tuesday.sh" (PRO) to "SureThingNet" (HOME) and verify "HOME" never wraps!
+        // 3. Click toggleBrandFlavor -> opens "Coming Soon" modal; dismiss it, then verify flavor switching via deep link never wraps!
         composeRule.onNodeWithTag("ui:action:toggleBrandFlavor", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         assertTrue(
-            "Expected SureThingNet title after clicking toggleBrandFlavor",
+            "Expected Coming Soon modal after clicking toggleBrandFlavor pill",
+            composeRule.onAllNodesWithText("Coming Soon", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        )
+        composeRule.onNodeWithContentDescription("Close", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+
+        navigateIntent("tuesday://flavor/home")
+        assertTrue(
+            "Expected SureThingNet title after switching flavor to home",
             composeRule.onAllNodesWithText("SureThingNet", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         )
         assertTextSingleLine(
@@ -244,10 +252,9 @@ class TuesdayComposeSemanticUiTest {
             expectedText = "SureThingNet"
         )
 
-        composeRule.onNodeWithTag("ui:action:toggleBrandFlavor", useUnmergedTree = true).performClick()
-        composeRule.waitForIdle()
+        navigateIntent("tuesday://flavor/pro")
         assertTrue(
-            "Expected tuesday.sh title after toggling back to PRO",
+            "Expected tuesday.sh title after switching back to PRO",
             composeRule.onAllNodesWithText("tuesday.sh", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         )
 
@@ -310,7 +317,7 @@ class TuesdayComposeSemanticUiTest {
         // 2. Verify all 5 NavigationBarItem tabs exist, meet >= 48x48dp hit targets, and have single-line labels in PRO
         val tabNodesPro = composeRule.onAllNodesWithTag("ui:action:switchTab", useUnmergedTree = false).fetchSemanticsNodes()
         assertEquals("Expected 5 tabs in BottomNavigationBar", 5, tabNodesPro.size)
-        val expectedProLabels = listOf("My Net", "Bulletins", "Timeline", "Check-Up", "Account")
+        val expectedProLabels = listOf("My Net", "Bulletins", "Timeline", "Check-Up", "Settings")
         tabNodesPro.forEachIndexed { idx, tabNode ->
             val widthDp = tabNode.boundsInWindow.width / density
             val heightDp = tabNode.boundsInWindow.height / density
@@ -322,10 +329,10 @@ class TuesdayComposeSemanticUiTest {
         // 3. Verify Bulletins unread badge (`ui:slot:bulletins-badge`) renders on Bulletins tab
         assertAnyTagRendered("ui:slot:bulletins-badge")
 
-        // 4. Switch to STN-Home and verify all 5 tab labels ("Home Grid", "Bulletins", "Lifespan", "Check-Up", "Account") remain 1-line unclipped
+        // 4. Switch to STN-Home and verify all 5 tab labels ("Home Grid", "Bulletins", "Lifespan", "Check-Up", "Settings") remain 1-line unclipped
         navigateIntent("tuesday://flavor/home")
         val tabNodesHome = composeRule.onAllNodesWithTag("ui:action:switchTab", useUnmergedTree = false).fetchSemanticsNodes()
-        val expectedHomeLabels = listOf("Home Grid", "Bulletins", "Lifespan", "Check-Up", "Account")
+        val expectedHomeLabels = listOf("Home Grid", "Bulletins", "Lifespan", "Check-Up", "Settings")
         tabNodesHome.forEachIndexed { idx, tabNode ->
             assertTextSingleLine(tabNode, "HOME Tab $idx (${expectedHomeLabels[idx]})", expectedText = expectedHomeLabels[idx])
         }
@@ -459,11 +466,11 @@ class TuesdayComposeSemanticUiTest {
                 .fetchSemanticsNodes().isEmpty()
         )
         assertTrue(
-            "Day 0 should hide TrackedHardwareProfilesCard and legend-row",
+            "Day 0 should hide TrackedHardwareProfilesCard while keeping dimmed legend-row chassis anchor visible",
             composeRule.onAllNodesWithTag("ui:component:TrackedHardwareProfilesCard", useUnmergedTree = true)
                 .fetchSemanticsNodes().isEmpty() &&
                 composeRule.onAllNodesWithTag("ui:slot:legend-row", useUnmergedTree = true)
-                    .fetchSemanticsNodes().isEmpty()
+                    .fetchSemanticsNodes().isNotEmpty()
         )
         auditWcag("Pro • Day 0 (Welcome)")
 
@@ -727,7 +734,10 @@ class TuesdayComposeSemanticUiTest {
         navigateIntent("tuesday://bulletins")
         assertAnyTagRendered("ui:component:BulletinsScreen")
 
-        // 1. Snooze 24h on NotchBulletinCard -> verify SNOOZED banner -> Resume
+        // 1. Tap Welcome row in BulletinListView -> opens NotchBulletinCard in DetailModalDialog -> Snooze 24h -> verify SNOOZED banner -> Resume
+        assertAnyTagRendered("ui:slot:bulletin-inbox-item")
+        composeRule.onAllNodesWithTag("ui:slot:bulletin-inbox-item", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
         assertAnyTagRendered("ui:action:primaryNotchAction")
         composeRule.onAllNodesWithTag("ui:action:primaryNotchAction", useUnmergedTree = true).onFirst().performClick()
         composeRule.waitForIdle()
@@ -738,7 +748,9 @@ class TuesdayComposeSemanticUiTest {
         composeRule.onNodeWithText("Resume →", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
 
-        // 2. Click "Ignore" -> opens BulletinPreferencesDialog -> audit WCAG -> Mute -> Unmute
+        // 2. Re-open Welcome row -> click "Ignore" -> opens BulletinPreferencesDialog -> audit WCAG -> Mute -> Unmute
+        composeRule.onAllNodesWithTag("ui:slot:bulletin-inbox-item", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
         assertAnyTagRendered("ui:action:secondaryNotchAction")
         composeRule.onAllNodesWithTag("ui:action:secondaryNotchAction", useUnmergedTree = true).onFirst().performClick()
         assertAnyTagRendered("ui:component:BulletinPreferencesDialog")
@@ -753,19 +765,23 @@ class TuesdayComposeSemanticUiTest {
         composeRule.onNodeWithText("Unmute →", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
 
-        // 3. Scroll down Bulletins LazyColumn to MatchedFeedsSection -> toggle mute & confirm guessed model
-        scrollLazyContainerTo(hasTestTag("ui:action:toggleMuteFeed"))
-        val muteButtons = composeRule.onAllNodesWithTag("ui:action:toggleMuteFeed", useUnmergedTree = true)
-        if (muteButtons.fetchSemanticsNodes().isNotEmpty()) {
-            muteButtons.onFirst().performClick()
+        // 3. Scroll down Bulletins LazyColumn to MatchedFeedsSection -> open feed detail modal -> toggle mute & confirm guessed model
+        scrollLazyContainerTo(hasTestTag("ui:slot:matched-feed-row"))
+        val feedRows = composeRule.onAllNodesWithTag("ui:slot:matched-feed-row", useUnmergedTree = true)
+        if (feedRows.fetchSemanticsNodes().isNotEmpty()) {
+            feedRows.onFirst().performClick()
             composeRule.waitForIdle()
-        }
-
-        scrollLazyContainerTo(hasTestTag("ui:action:confirmGuessedModel"))
-        val confirmGuessButtons = composeRule.onAllNodesWithTag("ui:action:confirmGuessedModel", useUnmergedTree = true)
-        if (confirmGuessButtons.fetchSemanticsNodes().isNotEmpty()) {
-            confirmGuessButtons.onFirst().performClick()
-            composeRule.waitForIdle()
+            val muteButtons = composeRule.onAllNodesWithTag("ui:action:toggleMuteFeed", useUnmergedTree = true)
+            if (muteButtons.fetchSemanticsNodes().isNotEmpty()) {
+                muteButtons.onFirst().performClick()
+                composeRule.waitForIdle()
+            } else {
+                val confirmGuessButtons = composeRule.onAllNodesWithTag("ui:action:confirmGuessedModel", useUnmergedTree = true)
+                if (confirmGuessButtons.fetchSemanticsNodes().isNotEmpty()) {
+                    confirmGuessButtons.onFirst().performClick()
+                    composeRule.waitForIdle()
+                }
+            }
         }
     }
 
@@ -841,17 +857,19 @@ class TuesdayComposeSemanticUiTest {
         assertAnyTagRendered("ui:component:AiDiscoveryPanel", "ui:slot:ai-discovery-panel")
         auditWcag("Wizard • AiDiscoveryPanel")
 
-        // Enroll via Confirm Match (or Best-Guess fallback) and verify return to Fleet
-        val confirmNodes = composeRule.onAllNodesWithTag("ui:action:enrollConfirmedDevice", useUnmergedTree = true)
-        if (confirmNodes.fetchSemanticsNodes().isNotEmpty()) {
-            val btn = confirmNodes.onFirst()
-            runCatching { btn.performScrollTo() }
-            btn.performClick()
-        } else {
-            val guessBtn = composeRule.onAllNodesWithTag("ui:action:enrollGuessedDevice", useUnmergedTree = true).onFirst()
-            runCatching { guessBtn.performScrollTo() }
-            guessBtn.performClick()
-        }
+        // Open top candidate detail modal sheet and enroll via Add to Inventory, then verify return to Fleet
+        assertAnyTagRendered("ui:component:CandidateResultsList")
+        assertAnyTagRendered("ui:component:CandidateResultItem")
+        val topCandidate = composeRule.onAllNodesWithTag("ui:component:CandidateResultItem", useUnmergedTree = true).onFirst()
+        runCatching { topCandidate.performScrollTo() }
+        topCandidate.performClick()
+        composeRule.waitForIdle()
+
+        assertAnyTagRendered("ui:action:addToInventoryFromModal")
+        val addModalBtn = composeRule.onNodeWithTag("ui:action:addToInventoryFromModal", useUnmergedTree = true)
+        runCatching { addModalBtn.performScrollTo() }
+        addModalBtn.performClick()
+        composeRule.waitForIdle()
         assertAnyTagRendered("ui:component:BottomNavigationBar")
 
         // 2. Direct Manual Enrollment with Gold Catalog clue binding (`enrollManualDevice`)
@@ -861,5 +879,17 @@ class TuesdayComposeSemanticUiTest {
         runCatching { manualBtn.performScrollTo() }
         manualBtn.performClick()
         assertAnyTagRendered("ui:component:BottomNavigationBar")
+    }
+
+    @Test
+    fun t09_wcagZeroSub24DpTargetViolationsGate() {
+        val violations = JvmComposeWcagSemanticsAuditor.target24DpViolations()
+        org.junit.Assert.assertTrue(
+            "Expected zero WCAG 2.2 SC 2.5.8 (<24dp) touch target violations across full semantic walk, found:\n" +
+                violations.joinToString("\n") {
+                    "- [${it.screenLabel}] ${it.nodeTag} (${it.speakableLabel}): ${it.widthDp}x${it.heightDp}dp"
+                },
+            violations.isEmpty()
+        )
     }
 }

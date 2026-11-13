@@ -46,7 +46,8 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            TuesdayAppTheme {
+            val brandFlavor by repository.brandFlavor.collectAsState()
+            TuesdayAppTheme(flavor = brandFlavor) {
                 val dest by pendingDestination.collectAsState()
                 AppNavigation(
                     repository = repository,

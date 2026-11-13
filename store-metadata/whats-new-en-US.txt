@@ -1,0 +1,5 @@
+• Connected by default to live production API (api.tuesday.sh) with production-ready clean UI defaults
+• Pro Tier 1 Annual & Monthly multi-site subscriptions via Google Play Billing 8.0
+• Redesigned My Net & Home Grid cards, C1–C8 hardware category faceplates, and Patch Tuesday bulletins
+• Added 3-mode Add Device wizard (Photo, Barcode/QR, Manual) with hardware clues search
+• Added Discord community link in Settings and WCAG 2.2 AA/AAA contrast & touch-target refinements

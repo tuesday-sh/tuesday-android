@@ -58,6 +58,7 @@ class TuesdayBillingManager(
         .enablePendingPurchases(
             PendingPurchasesParams.newBuilder()
                 .enableOneTimeProducts()
+                .enablePrepaidPlans()
                 .build()
         )
         .build()
@@ -119,7 +120,8 @@ class TuesdayBillingManager(
             .setProductList(productList)
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+        billingClient.queryProductDetailsAsync(params) { billingResult, queryProductDetailsResult ->
+            val productDetailsList = queryProductDetailsResult.productDetailsList
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
                 productDetailsMap.clear()
                 val mappedOffers = mutableListOf<SubscriptionPlanOffer>()
@@ -169,6 +171,8 @@ class TuesdayBillingManager(
                 .build()
             val flowParams = BillingFlowParams.newBuilder()
                 .setProductDetailsParamsList(listOf(productDetailsParams))
+                .setObfuscatedAccountId(repository.billingAccountIdentifier())
+                .setObfuscatedProfileId(repository.billingProfileSlug())
                 .build()
 
             val result = billingClient.launchBillingFlow(activity, flowParams)
@@ -260,6 +264,10 @@ class TuesdayBillingManager(
                 val active = purchases.firstOrNull { it.purchaseState == Purchase.PurchaseState.PURCHASED }
                 if (active != null) {
                     handlePurchase(active)
+                } else {
+                    scope.launch {
+                        repository.reconcileWhenPlayHasNoActivePurchase()
+                    }
                 }
             }
         }

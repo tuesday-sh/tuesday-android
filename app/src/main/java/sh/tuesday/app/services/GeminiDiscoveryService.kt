@@ -70,6 +70,15 @@ class GeminiDiscoveryService(private val context: Context) {
         initialMode: String = "photo_wizard"
     ): GeminiDiscoveryTurnResult = withContext(Dispatchers.IO) {
         turnCounter += 1
+        if (TuesdayRepository.isRobolectricJvm()) {
+            return@withContext fallbackHeuristic(
+                accumulatedIdentifiers = accumulatedIdentifiers,
+                userClueNotes = userClueNotes,
+                imageCount = bitmaps.size,
+                usedLiveApi = false,
+                fallbackErrorReason = "Robolectric JVM local heuristic"
+            )
+        }
         try {
             return@withContext callTuesdayServerAnalyzeApi(
                 bitmaps = bitmaps,
@@ -212,6 +221,7 @@ class GeminiDiscoveryService(private val context: Context) {
         enrollOnServer: Boolean = true,
         serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
     ): Boolean = withContext(Dispatchers.IO) {
+        if (TuesdayRepository.isRobolectricJvm()) return@withContext false
         try {
             val baseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL }.trimEnd('/')
             val idsArray = JSONArray()
@@ -275,6 +285,7 @@ class GeminiDiscoveryService(private val context: Context) {
         properties: Map<String, Any?> = emptyMap(),
         serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
     ): Boolean = withContext(Dispatchers.IO) {
+        if (TuesdayRepository.isRobolectricJvm()) return@withContext false
         try {
             val baseUrl = serverBaseUrl.ifBlank { DEFAULT_SERVER_BASE_URL }.trimEnd('/')
             val propsObj = JSONObject()
@@ -501,7 +512,7 @@ class GeminiDiscoveryService(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_SERVER_BASE_URL = "http://100.108.40.3:3000"
+        const val DEFAULT_SERVER_BASE_URL = "https://api.tuesday.sh"
         private const val PILOT_CLIENT_TOKEN = "tuesday-pilot-v1-public-client-token"
 
         fun connectionInterruptedResult(

@@ -1,6 +1,5 @@
 package sh.tuesday.app.ui.home
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -20,7 +18,10 @@ import androidx.compose.ui.unit.sp
 import sh.tuesday.app.models.AppBrandFlavor
 import sh.tuesday.app.models.TrustZone
 import sh.tuesday.app.services.TuesdayRepository
+import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.components.SelectableFilterChip
+import sh.tuesday.app.ui.components.TuesdayTextField
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -46,17 +47,7 @@ fun EditDeviceScreen(
     var draftName by remember(device.id) { mutableStateOf(device.name) }
     var draftShortLabel by remember(device.id) { mutableStateOf(device.shortLabel) }
     var draftRoom by remember(device.id) { mutableStateOf(device.roomLocation) }
-    var draftAssetTag by remember(device.id) { mutableStateOf(device.assetTag) }
     var draftZone by remember(device.id) { mutableStateOf(device.trustZone) }
-
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = palette.accent,
-        unfocusedBorderColor = palette.border,
-        focusedTextColor = palette.textPrimary,
-        unfocusedTextColor = palette.textPrimary,
-        focusedLabelColor = palette.accent,
-        unfocusedLabelColor = palette.textMuted
-    )
 
     Scaffold(
         containerColor = palette.bg,
@@ -97,59 +88,35 @@ fun EditDeviceScreen(
                 .uiComponent("EditDeviceScreen", "device=${device.id}"),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            OutlinedTextField(
+            TuesdayTextField(
                 value = draftName,
                 onValueChange = { draftName = it },
-                label = { Text("Device Name", fontSize = 11.sp) },
-                singleLine = true,
-                colors = fieldColors,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("edit-device-name")
+                label = "Device Name",
+                palette = palette,
+                modifier = Modifier.uiSlot("edit-device-name")
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = draftShortLabel,
-                    onValueChange = { draftShortLabel = it },
-                    label = { Text("Short Label", fontSize = 11.sp) },
-                    singleLine = true,
-                    colors = fieldColors,
-                    modifier = Modifier
-                        .weight(1f)
-                        .uiSlot("edit-device-short-label")
-                )
-                OutlinedTextField(
-                    value = draftAssetTag,
-                    onValueChange = { draftAssetTag = it },
-                    label = { Text("Asset Tag", fontSize = 11.sp) },
-                    singleLine = true,
-                    colors = fieldColors,
-                    modifier = Modifier
-                        .weight(1f)
-                        .uiSlot("edit-device-asset-tag")
-                )
-            }
+            TuesdayTextField(
+                value = draftShortLabel,
+                onValueChange = { draftShortLabel = it },
+                label = "Short Label",
+                palette = palette,
+                modifier = Modifier.uiSlot("edit-device-short-label")
+            )
 
-            OutlinedTextField(
+            TuesdayTextField(
                 value = draftRoom,
                 onValueChange = { draftRoom = it },
-                label = { Text("Room & Placement", fontSize = 11.sp) },
-                singleLine = true,
-                colors = fieldColors,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .uiSlot("edit-device-room")
+                label = "Room & Placement",
+                palette = palette,
+                modifier = Modifier.uiSlot("edit-device-room")
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = if (isStn) "NETWORK LANE" else "TRUST ZONE",
                     color = palette.textMuted,
-                    fontSize = 9.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
@@ -160,11 +127,14 @@ fun EditDeviceScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     TrustZone.entries.forEach { zone ->
-                        ZoneFilterPill(
+                        val zoneColor = TuesdayTheme.zoneColorFor(zone, isStn)
+                        SelectableFilterChip(
                             label = if (isStn) zone.stnLabel else "${zone.shortCode} ${zone.stnLabel}",
                             selected = draftZone == zone,
+                            onClick = { draftZone = zone },
                             palette = palette,
-                            onClick = { draftZone = zone }
+                            accentColor = zoneColor,
+                            leadingDotColor = zoneColor
                         )
                     }
                 }
@@ -178,10 +148,10 @@ fun EditDeviceScreen(
             ) {
                 OutlinedButton(
                     onClick = onNavigateBack,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = TuesdayDimens.HitTargetStandard)
                         .uiAction("cancelDeviceEdit")
                 ) {
                     Text("Cancel", color = palette.textPrimary, fontWeight = FontWeight.SemiBold)
@@ -194,16 +164,16 @@ fun EditDeviceScreen(
                             shortLabel = draftShortLabel,
                             roomLocation = draftRoom,
                             trustZone = draftZone,
-                            assetTag = draftAssetTag
+                            assetTag = device.assetTag
                         )
                         onNavigateBack()
                     },
                     enabled = draftName.isNotBlank(),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
                     colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = TuesdayDimens.HitTargetStandard)
                         .uiAction("saveDeviceEdit")
                 ) {
                     Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
