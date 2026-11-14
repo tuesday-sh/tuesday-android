@@ -3,7 +3,13 @@
 ## 1. Developer Account, Upload Keystore & Signing Metadata
 - **Google Play Developer Account**: `Packablock LLC` (Organization • Trader Verified)
 - **Developer Account ID**: `8438332328467147782`
+- **Public Store Support Contact (`edits.details` & Account Details)**:
+  - **Website**: `https://tuesday.sh`
+  - **Support Email**: `support@packablock.com`
+  - **Support Phone**: `+15092676601`
+  - **Address**: `300 Lenora St. #1349, Seattle, WA 98121`
 - **Account-Level Console Links** *(must be opened from the root `All apps` level, not inside an app)*:
+  - **Account Details (Phone & Address)**: `https://play.google.com/console/developers/8438332328467147782/accountdetails`
   - **License Testing**: `https://play.google.com/console/developers/8438332328467147782/licensetesting` (**Settings → License testing** in root left nav)
   - **Users & Permissions**: `https://play.google.com/console/developers/8438332328467147782/users-and-permissions`
 - **Internal Testing Opt-In URL**: `https://play.google.com/apps/internaltest/4701138853279482908`

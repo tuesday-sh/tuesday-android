@@ -336,6 +336,7 @@ class TuesdayRepository(context: Context) {
         _userNetworks.value = _userNetworks.value.map {
             if (it.id == _activeNetworkId.value) it.copy(devicesCount = clamped) else it
         }
+        persistNetworks()
     }
 
     fun selectNetwork(netId: String) {
@@ -344,6 +345,7 @@ class TuesdayRepository(context: Context) {
         _activeDeviceCount.value = target.devicesCount
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
+        persistNetworks()
     }
 
     fun renameActiveNetwork(newName: String) {
@@ -352,6 +354,7 @@ class TuesdayRepository(context: Context) {
         _userNetworks.value = _userNetworks.value.map {
             if (it.id == _activeNetworkId.value) it.copy(name = trimmed) else it
         }
+        persistNetworks()
     }
 
     fun createNetwork(name: String) {
@@ -512,6 +515,33 @@ class TuesdayRepository(context: Context) {
                 _hacsConfig.value = HacsConfig()
             }
         }
+        val rawNets = prefs.getString("user_networks_json", null)
+        if (!rawNets.isNullOrBlank()) {
+            try {
+                val decoded = json.decodeFromString<List<NetworkSite>>(rawNets)
+                if (decoded.isNotEmpty()) {
+                    _userNetworks.value = decoded
+                }
+            } catch (_: Exception) {
+                _userNetworks.value = defaultUserNetworks()
+            }
+        }
+        val savedNetId = prefs.getString("active_network_id", null)
+        if (!savedNetId.isNullOrBlank()) {
+            val found = _userNetworks.value.find { it.id == savedNetId }
+            if (found != null) {
+                _activeNetworkId.value = found.id
+                _activeDeviceCount.value = found.devicesCount
+            }
+        }
+    }
+
+    private fun persistNetworks() {
+        val rawNets = json.encodeToString(_userNetworks.value)
+        prefs.edit()
+            .putString("user_networks_json", rawNets)
+            .putString("active_network_id", _activeNetworkId.value)
+            .apply()
     }
 
     private fun persistConfig() {
@@ -604,7 +634,12 @@ class TuesdayRepository(context: Context) {
             attestationCount = 1
         )
         _rackDevices.value = listOf(finalRackDev) + _rackDevices.value
-        _activeDeviceCount.value = (_activeDeviceCount.value + 1).coerceAtMost(128)
+        val nextCount = (_activeDeviceCount.value + 1).coerceAtMost(128)
+        _activeDeviceCount.value = nextCount
+        _userNetworks.value = _userNetworks.value.map {
+            if (it.id == _activeNetworkId.value) it.copy(devicesCount = nextCount) else it
+        }
+        persistNetworks()
 
         syncDeviceCreateToServerAsync(finalRackDev, discoveredMetadata)
 
@@ -667,7 +702,7 @@ class TuesdayRepository(context: Context) {
 
     fun billingAccountIdentifier(): String = "device-$clientDeviceId"
 
-    fun billingProfileSlug(): String = "skyway-lab"
+    fun billingProfileSlug(): String = "net-default"
 
     fun upgradeToProTier1(
         productId: String = TuesdayBillingManager.SKU_PRO_TIER1_ANNUAL,
@@ -956,7 +991,7 @@ class TuesdayRepository(context: Context) {
     suspend fun syncPendingNotifications(
         notificationManager: TuesdayNotificationManager,
         forceResend: Boolean = false,
-        includeAllSites: Boolean = true
+        includeAllSites: Boolean = false
     ): Int = withContext(Dispatchers.IO) {
         if (isRobolectricJvm()) return@withContext 0
         try {
@@ -1080,7 +1115,7 @@ class TuesdayRepository(context: Context) {
                 }
             }
 
-            if (syncedDevicesFromNotifs.isNotEmpty() && _activeNetworkId.value != "net-demo") {
+            if (forceResend && syncedDevicesFromNotifs.isNotEmpty() && _activeNetworkId.value != "net-demo") {
                 val existingById = _rackDevices.value.associateBy { it.id }.toMutableMap()
                 for (d in syncedDevicesFromNotifs) {
                     existingById[d.id] = d
@@ -1223,6 +1258,7 @@ class TuesdayRepository(context: Context) {
                 if (backup.attestations.isNotEmpty()) {
                     _attestations.value = backup.attestations
                 }
+                persistNetworks()
                 true
             } else {
                 false
@@ -1258,8 +1294,7 @@ class TuesdayRepository(context: Context) {
             android.os.Build.FINGERPRINT.equals("robolectric", ignoreCase = true)
 
         fun defaultUserNetworks(): List<NetworkSite> = listOf(
-            NetworkSite(id = "net-default", name = "My Network", devicesCount = 0, role = "Primary Site"),
-            NetworkSite(id = "net-demo", name = "Demo Network", devicesCount = 12, role = "Evaluation Homelab (Demo Mode)")
+            NetworkSite(id = "net-default", name = "My Network", devicesCount = 0, role = "Primary Site")
         )
     }
 }

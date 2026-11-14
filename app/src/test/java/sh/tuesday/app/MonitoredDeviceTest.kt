@@ -592,7 +592,7 @@ class MonitoredDeviceTest {
         val encoded = json.encodeToString(NetworkInventoryBackup.serializer(), backup)
         val decoded = json.decodeFromString(NetworkInventoryBackup.serializer(), encoded)
         assertEquals("net-demo", decoded.activeNetworkId)
-        assertEquals(2, decoded.networks.size)
+        assertEquals(sampleNetworks.size, decoded.networks.size)
         assertEquals(3, decoded.devices.size)
         assertEquals(listOf("lg-esphome-iot"), decoded.mutedFeedSlugs)
     }

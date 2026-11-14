@@ -62,10 +62,12 @@ import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.bulletins.BulletinsScreen
 import sh.tuesday.app.ui.components.BulletinChecklistStep
+import sh.tuesday.app.ui.components.MonospaceBadge
+import sh.tuesday.app.ui.components.SurfaceListContainer
 import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.ui.components.TuesdayBottomSheet
+import sh.tuesday.app.ui.components.TuesdayListRow
 import sh.tuesday.app.ui.components.TuesdayModalCard
-import sh.tuesday.app.ui.components.SurfaceListDivider
 import sh.tuesday.app.ui.tabs.MiniCandleBar
 import sh.tuesday.app.ui.components.NotchBulletinCard
 import sh.tuesday.app.ui.components.WifiWarningOverlay
@@ -144,8 +146,8 @@ fun HomeScreen(
     var pendingTimelineModal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(notificationManager) {
-        if (notificationManager != null) {
-            repository.syncPendingNotifications(notificationManager, forceResend = false)
+        if (notificationManager != null && repository.activeDeviceCount.value > 0) {
+            repository.syncPendingNotifications(notificationManager, forceResend = false, includeAllSites = false)
         }
     }
 
@@ -871,15 +873,71 @@ fun HomeScreen(
         TuesdayModalCard(
             palette = palette,
             title = "Coming Soon",
+            subtitle = "Tuesday.sh (PRO) and SureThingNet (HOME) pair deep homelab telemetry with a calm household view so technical operators and families can share one inventory without the jargon.",
+            headerTrailing = {
+                MonospaceBadge(
+                    text = "PRO ↔ HOME",
+                    color = palette.accent
+                )
+            },
+            scrollable = true,
             onDismissRequest = { showProComingSoonModal = false }
         ) {
             SurfaceListDivider(palette)
-            Text(
-                text = "Multi-site inventory and family sharing",
-                color = palette.textMuted,
-                fontSize = 13.5.sp,
-                lineHeight = 19.sp
-            )
+
+            SurfaceListContainer(palette = palette) {
+                TuesdayListRow(
+                    palette = palette,
+                    title = "SureThingNet (HOME) Companion View",
+                    trailingContent = {
+                        MonospaceBadge(text = "v1.2", color = palette.accent)
+                    },
+                    subtitleContent = {
+                        Text(
+                            text = "Translates technical CVEs and PURLs into plain-English CPSC Safety Recalls, End-of-Life (EOL) replacement alerts, and guided Seasonal Home Check-Ups.",
+                            color = palette.textMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.5.sp
+                        )
+                    }
+                )
+                SurfaceListDivider(palette)
+                TuesdayListRow(
+                    palette = palette,
+                    title = "Family Bridge & Household Sharing",
+                    trailingContent = {
+                        MonospaceBadge(text = "v1.1", color = palette.accent)
+                    },
+                    subtitleContent = {
+                        Text(
+                            text = "Invite a partner or family member with a read-only household view so everyone knows when smart-home, kitchen, or nursery gear needs an update or recall check.",
+                            color = palette.textMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.5.sp
+                        )
+                    }
+                )
+                SurfaceListDivider(palette)
+                TuesdayListRow(
+                    palette = palette,
+                    title = "Multi-Site Homelab & Remote Care",
+                    onClick = {
+                        showProComingSoonModal = false
+                        showNetworkPicker = true
+                    },
+                    trailingContent = {
+                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
+                    },
+                    subtitleContent = {
+                        Text(
+                            text = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations and manage your primary rack alongside a parent's home or cabin Wi-Fi.",
+                            color = palette.textMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.5.sp
+                        )
+                    }
+                )
+            }
         }
     }
 }
