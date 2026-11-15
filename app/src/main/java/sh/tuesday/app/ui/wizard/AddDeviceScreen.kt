@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,7 +94,7 @@ fun AddDeviceScreen(
     initialAutoSearch: Boolean = false,
     onNavigateBack: () -> Unit
 ) {
-    var mode by remember(initialEnrollmentMode) { mutableStateOf(initialEnrollmentMode) }
+    var mode by rememberSaveable(initialEnrollmentMode) { mutableStateOf(initialEnrollmentMode) }
     val hacsConfig by repository.hacsConfig.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
@@ -130,15 +131,17 @@ fun AddDeviceScreen(
     var accumulatedIdentifiers by remember { mutableStateOf(ExtractedDeviceIdentifiers()) }
     var selectedClueItems by remember(initialCluesCsv) { mutableStateOf(listOf<GoldClueItem>()) }
     val userClueNotes = remember(selectedClueItems) { selectedClueItems.map { it.toServerClueString() } }
-    var clueInputText by remember(initialClueQuery) { mutableStateOf(initialClueQuery ?: "") }
+    var clueInputText by rememberSaveable(initialClueQuery) { mutableStateOf(initialClueQuery ?: "") }
 
     fun addClueItem(item: GoldClueItem) {
         if (selectedClueItems.none { it.id == item.id }) {
             selectedClueItems = selectedClueItems + item
         }
         item.model?.takeIf { it.isNotBlank() }?.let { accumulatedIdentifiers.modelNumber = it }
-        item.macAddress?.takeIf { it.isNotBlank() }?.let { accumulatedIdentifiers.macAddress = it }
-        item.upc?.takeIf { it.isNotBlank() }?.let { accumulatedIdentifiers.barcode = it }
+        if (item.kind == GoldClueKind.IDENTIFIER) {
+            item.macAddress?.takeIf { it.isNotBlank() }?.let { accumulatedIdentifiers.macAddress = it }
+            item.upc?.takeIf { it.isNotBlank() }?.let { accumulatedIdentifiers.barcode = it }
+        }
     }
 
     fun removeClueItem(item: GoldClueItem) {
@@ -153,10 +156,10 @@ fun AddDeviceScreen(
     var copyLogFeedback by remember { mutableStateOf<String?>(null) }
 
     // Manual State
-    var manualHostname by remember { mutableStateOf("") }
-    var manualOsDetails by remember { mutableStateOf("") }
+    var manualHostname by rememberSaveable { mutableStateOf("") }
+    var manualOsDetails by rememberSaveable { mutableStateOf("") }
     var manualPkgManager by remember { mutableStateOf(PackageManagerType.APT) }
-    var manualToken by remember { mutableStateOf("") }
+    var manualToken by rememberSaveable { mutableStateOf("") }
     var manualError by remember { mutableStateOf<String?>(null) }
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -184,7 +187,7 @@ fun AddDeviceScreen(
         capturedBitmaps = updatedBitmaps
         scope.launch {
             isAnalyzing = true
-            val res = discoveryService.analyzeDeviceProgressive(
+            val rawRes = discoveryService.analyzeDeviceProgressive(
                 bitmaps = updatedBitmaps,
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = userClueNotes,
@@ -197,6 +200,8 @@ fun AddDeviceScreen(
                 debugEnabled = showVisionDebug,
                 initialMode = if (currentCaptureSource == "synthetic_sample") "synthetic_sample" else "photo_wizard"
             )
+            val activeIndex = clueIndex ?: GoldClueSuggestionRepository.ensureLocalLoaded(context)
+            val res = activeIndex?.reconcileDiscoveryResult(rawRes) ?: rawRes
             accumulatedIdentifiers.merge(res.extractedIdentifiers)
             discoveryResult = res
             res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
@@ -248,7 +253,7 @@ fun AddDeviceScreen(
             // Escalation to Server / AI only when photos are attached or local Gold cache returned 0 matches
             isAnalyzing = true
             val effectiveNotes = cluesOverride.map { it.toServerClueString() }
-            val res = discoveryService.analyzeDeviceProgressive(
+            val rawRes = discoveryService.analyzeDeviceProgressive(
                 bitmaps = capturedBitmaps,
                 accumulatedIdentifiers = accumulatedIdentifiers,
                 userClueNotes = effectiveNotes,
@@ -260,6 +265,8 @@ fun AddDeviceScreen(
                 serverBaseUrl = hacsConfig.tuesdayApiBaseUrl,
                 debugEnabled = showVisionDebug
             )
+            val activeIndex = clueIndex ?: GoldClueSuggestionRepository.ensureLocalLoaded(context)
+            val res = activeIndex?.reconcileDiscoveryResult(rawRes) ?: rawRes
             accumulatedIdentifiers.merge(res.extractedIdentifiers)
             discoveryResult = res
             res.debugLogText?.takeIf { it.isNotBlank() }?.let { logEntry ->
@@ -1596,20 +1603,6 @@ fun AddDeviceScreen(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp
                                     )
-                                }
-                            }
-                        } else {
-                            // Discovered identifiers chips
-                            if (accumulatedIdentifiers.nonEmptyPairs().isNotEmpty()) {
-                                Text("DISCOVERED IDENTIFIERS", color = palette.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(accumulatedIdentifiers.nonEmptyPairs()) { pair ->
-                                        MonospaceBadge(
-                                            text = "${pair.first.rawValue}: ${pair.second}",
-                                            color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn),
-                                            borderAlpha = 0f
-                                        )
-                                    }
                                 }
                             }
                         }

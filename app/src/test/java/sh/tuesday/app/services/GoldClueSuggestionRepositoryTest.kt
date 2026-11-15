@@ -121,4 +121,109 @@ class GoldClueSuggestionRepositoryTest {
         )
         assertEquals(null, missRes)
     }
+
+    @Test
+    fun `matches printer device type, narrows HP to printers without thin clients, and resolves Brother MAC OUI and FCC ID`() {
+        val printerHits = index.querySuggestions("printer")
+        val printerType = printerHits.firstOrNull { it.kind == GoldClueKind.DEVICE_TYPE && it.typeId == "printer" }
+        assertNotNull("Expected Printer / Scanner device type clue", printerType)
+        assertEquals("C8", printerType!!.categoryCode)
+        assertTrue(printerHits.any { it.kind == GoldClueKind.MODEL && it.typeId == "printer" })
+
+        val brandPicksForPrinter = index.contextualQuickPicks(listOf(printerType))
+        assertTrue(brandPicksForPrinter.any { it.vendor == "Brother" })
+        assertTrue(brandPicksForPrinter.any { it.vendor == "HP" })
+
+        val hpBrand = brandPicksForPrinter.first { it.vendor == "HP" }
+        val hpPrinterPicks = index.contextualQuickPicks(listOf(printerType, hpBrand))
+        assertTrue(hpPrinterPicks.isNotEmpty())
+        assertTrue(hpPrinterPicks.all { it.typeId == "printer" && it.vendor == "HP" })
+        assertFalse(
+            hpPrinterPicks.any {
+                it.title.contains("t520", ignoreCase = true) ||
+                    it.title.contains("t620", ignoreCase = true) ||
+                    it.title.contains("elitedesk", ignoreCase = true)
+            }
+        )
+
+        val macHits = index.querySuggestions("00:80:77:11:22:33")
+        assertEquals("Brother", macHits.first().vendor)
+
+        val fccHits = index.querySuggestions("B3Q-HLL2350DW")
+        val fccIdentifier = fccHits.firstOrNull { it.kind == GoldClueKind.IDENTIFIER }
+        assertNotNull("Expected FCC ID identifier hit for Brother B3Q grantee", fccIdentifier)
+        assertEquals("Brother", fccIdentifier!!.vendor)
+        assertEquals("C8", fccIdentifier.categoryCode)
+    }
+
+    @Test
+    fun reconcilesUnalignedServerSharpMfpAndStripsSingleCandidateCenterPrefix() {
+        val unalignedTurn = sh.tuesday.app.models.GeminiDiscoveryTurnResult(
+            visualSummary = "Sharp MX-M453N multifunction printer",
+            extractedIdentifiers = sh.tuesday.app.models.ExtractedDeviceIdentifiers(modelNumber = "MX-M453N"),
+            candidates = listOf(
+                sh.tuesday.app.models.DeviceCandidateMatch(
+                    manufacturer = "Sharp",
+                    modelNumber = "MX-M453N",
+                    displayName = "[Center] Sharp MX-M453N Multifunction Printer",
+                    deviceCategory = "Multifunction Printer",
+                    confidencePercent = 95,
+                    reasoning = "Vision OCR read Sharp MX-M453N",
+                    suggestedHostname = "sharp-mx-m453n",
+                    suggestedOsDetails = "Sharp OSA",
+                    suggestedPackageManager = "firmware",
+                    goldAlignment = sh.tuesday.app.models.GoldAlignmentInfo(
+                        aligned = false,
+                        inferredPurl = "pkg:generic/sharp/mx-m453n",
+                        statusLabel = "UNALIGNED RAW MATCH"
+                    )
+                )
+            )
+        )
+
+        val reconciled = index.reconcileDiscoveryResult(unalignedTurn)
+        val top = reconciled.candidates.first()
+        assertEquals("Sharp MX-M453N Multifunction Printer", top.displayName)
+        assertTrue(top.goldAlignment!!.aligned)
+        assertEquals("GOLD ALIGNED", top.goldAlignment!!.statusLabel)
+    }
+
+    @Test
+    fun reconcileClearsFalseOutOfScopeAndRepairsHallucinatedDescriptionWhenGoldMatched() {
+        val taintedTurn = sh.tuesday.app.models.GeminiDiscoveryTurnResult(
+            visualSummary = "A small square brushed-silver Sharp MX-M453N module.",
+            isNetworkedDevice = false,
+            outOfScopeReason = "The Sharp MX-M453N is an infrared remote-control receiver/transmitter module with no Wi-Fi or Ethernet networking capability.",
+            extractedIdentifiers = sh.tuesday.app.models.ExtractedDeviceIdentifiers(),
+            candidates = listOf(
+                sh.tuesday.app.models.DeviceCandidateMatch(
+                    manufacturer = "Sharp",
+                    modelNumber = "MX-M453N",
+                    displayName = "[Center] Sharp MX-M453N IR remote module",
+                    deviceCategory = "IR Remote Module",
+                    confidencePercent = 92,
+                    reasoning = "Sharp MX-M453N appears to be an infrared remote module.",
+                    suggestedHostname = "sharp-mx-m453n",
+                    suggestedOsDetails = "Unknown",
+                    suggestedPackageManager = "none",
+                    goldAlignment = sh.tuesday.app.models.GoldAlignmentInfo(
+                        aligned = false,
+                        inferredPurl = "pkg:generic/sharp/mx-m453n",
+                        statusLabel = "UNALIGNED RAW MATCH"
+                    )
+                )
+            )
+        )
+
+        val reconciled = index.reconcileDiscoveryResult(taintedTurn)
+        assertTrue(reconciled.isNetworkedDevice)
+        assertEquals(null, reconciled.outOfScopeReason)
+        val top = reconciled.candidates.first()
+        assertTrue(top.goldAlignment!!.aligned)
+        assertEquals("GOLD ALIGNED", top.goldAlignment!!.statusLabel)
+        assertFalse(top.displayName.contains("IR remote", ignoreCase = true))
+        assertTrue(top.displayName.contains("Sharp MX-M453N", ignoreCase = true))
+        assertFalse(top.reasoning.contains("infrared", ignoreCase = true))
+        assertFalse(reconciled.visualSummary.contains("small square", ignoreCase = true))
+    }
 }

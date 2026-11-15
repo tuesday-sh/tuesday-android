@@ -8,6 +8,9 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import com.github.takahirom.roborazzi.captureScreenRoboImage
+import java.io.File
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -891,5 +894,142 @@ class TuesdayComposeSemanticUiTest {
                 },
             violations.isEmpty()
         )
+    }
+
+    @Test
+    fun t10_repositoryPersistsNavigationFlavorFiltersAndInventoryAcrossRestart() {
+        val repo1 = sh.tuesday.app.services.TuesdayRepository(composeRule.activity)
+        repo1.resetDemoData()
+
+        repo1.setSimulatedDeviceCount(12)
+        repo1.setBrandFlavor(sh.tuesday.app.models.AppBrandFlavor.SURETHING_HOME)
+        repo1.setActiveTabName("BULLETINS")
+        repo1.setActiveNavRoute("add_device?mode=manual")
+        repo1.setInspectedDeviceId("0192d9f0-0006-7000-8000-000000000106")
+        repo1.toggleIncludeOkDevices()
+        repo1.setZoneFilter(sh.tuesday.app.models.TrustZone.Z0_CORE)
+        repo1.setPortStateFilter(sh.tuesday.app.models.PortLifecycleState.CVE_KEV)
+        repo1.toggleMuteFeed("ubiquiti-advisories")
+        repo1.markDeviceUpdatesApplied("0192d9f0-0006-7000-8000-000000000106")
+
+        // Simulate fresh process restart with a new repository instance backed by the same SharedPreferences
+        val repo2 = sh.tuesday.app.services.TuesdayRepository(composeRule.activity)
+        assertEquals(sh.tuesday.app.models.AppBrandFlavor.SURETHING_HOME, repo2.brandFlavor.value)
+        assertEquals("BULLETINS", repo2.activeTabName.value)
+        assertEquals("add_device?mode=manual", repo2.activeNavRoute.value)
+        assertEquals("0192d9f0-0006-7000-8000-000000000106", repo2.inspectedDeviceId.value)
+        assertEquals(12, repo2.activeDeviceCount.value)
+        assertTrue(repo2.includeOkDevices.value)
+        assertEquals(sh.tuesday.app.models.TrustZone.Z0_CORE, repo2.selectedZoneFilter.value)
+        assertEquals(sh.tuesday.app.models.PortLifecycleState.CVE_KEV, repo2.selectedPortStateFilter.value)
+        assertTrue(repo2.mutedFeedSlugs.value.contains("ubiquiti-advisories"))
+        val remediatedDev = repo2.rackDevices.value.find { it.id == "0192d9f0-0006-7000-8000-000000000106" }
+        assertEquals(sh.tuesday.app.models.PortLifecycleState.OK, remediatedDev?.portState)
+
+        // Clean up back to defaults
+        repo2.setBrandFlavor(sh.tuesday.app.models.AppBrandFlavor.TUESDAY_PRO)
+        repo2.resetDemoData()
+    }
+
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    private fun captureFlowStep(flowDir: String, stepFileName: String) {
+        composeRule.waitForIdle()
+        val outFile = File("build/reports/flows/$flowDir/$stepFileName")
+        outFile.parentFile?.mkdirs()
+        captureScreenRoboImage(file = outFile)
+    }
+
+    @Test
+    fun t11_printerEnrollmentUserFlowVisualStoryboard() {
+        navigateIntent("tuesday://flavor/pro")
+        navigateIntent("tuesday://seed/3")
+
+        // Step 1: Add Device screen with CLUES picker expanded + SureThingNet Insights version copy
+        navigateIntent("tuesday://add-device")
+        composeRule.onNodeWithText("CLUES", substring = true, useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        assertTrue(
+            "Expected expanded GoldHardwareCluesPicker Insights body text",
+            composeRule.onAllNodesWithText(
+                "Clues are retrieved from SureThingNet Insights v",
+                substring = true,
+                useUnmergedTree = true
+            ).fetchSemanticsNodes().isNotEmpty()
+        )
+        captureFlowStep("printer", "01_add_device_clues_expanded.png")
+
+        // Step 2: Type "printer" -> pick Printer / Scanner -> click Brother -> expose Brother Printer Models
+        val clueInput = composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).onFirst()
+        clueInput.performClick()
+        clueInput.performTextInput("printer")
+        composeRule.waitForIdle()
+
+        waitUntilAnyTagExists("ui:action:pickGoldClue", timeoutMillis = 5_000L)
+        composeRule.onAllNodesWithTag("ui:action:pickGoldClue", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
+
+        scrollLazyContainerTo(hasText("Brother"))
+        composeRule.onAllNodesWithText("Brother", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
+
+        scrollLazyContainerTo(hasText("HL-L2350DW"))
+        assertTrue(
+            "Expected Brother HL-L2350DW quick-pick after selecting Printer / Scanner + Brother",
+            composeRule.onAllNodesWithText("HL-L2350DW", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        )
+        captureFlowStep("printer", "02_printer_brand_and_model_quick_picks.png")
+
+        // Step 3: Pick HL-L2350DW and Find Matches -> CandidateResultsList (and no DISCOVERED IDENTIFIERS strip)
+        composeRule.onAllNodesWithText("HL-L2350DW", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
+
+        val searchBtn = composeRule.onNodeWithTag("ui:action:searchDeviceCandidates", useUnmergedTree = true)
+        runCatching { searchBtn.performScrollTo() }
+        searchBtn.performClick()
+
+        waitUntilAnyTagExists("ui:component:CandidateResultsList", timeoutMillis = 15_000L)
+        waitUntilAnyTagExists("ui:component:CandidateResultItem", timeoutMillis = 15_000L)
+        assertTrue(
+            "Expected DISCOVERED IDENTIFIERS strip to remain removed",
+            composeRule.onAllNodesWithText("DISCOVERED IDENTIFIERS", substring = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isEmpty()
+        )
+        val topCandidate = composeRule.onAllNodesWithTag("ui:component:CandidateResultItem", useUnmergedTree = true).onFirst()
+        runCatching { topCandidate.performScrollTo() }
+        composeRule.waitForIdle()
+        captureFlowStep("printer", "03_printer_candidate_matches.png")
+
+        // Step 4: Tap top candidate row -> CandidateConfirmationModal with Add to Inventory
+        topCandidate.performClick()
+        waitUntilAnyTagExists("ui:action:addToInventoryFromModal", timeoutMillis = 5_000L)
+        captureFlowStep("printer", "04_printer_confirmation_modal.png")
+
+        // Step 5: Tap Add to Inventory -> enrolled printer visible in home inventory list
+        val addModalBtn = composeRule.onNodeWithTag("ui:action:addToInventoryFromModal", useUnmergedTree = true)
+        runCatching { addModalBtn.performScrollTo() }
+        addModalBtn.performClick()
+        waitUntilAnyTagExists("ui:component:BottomNavigationBar", timeoutMillis = 5_000L)
+
+        runCatching {
+            val showOkBtn = composeRule.onNodeWithTag("ui:action:toggleIncludeOk", useUnmergedTree = true)
+            showOkBtn.performScrollTo()
+            showOkBtn.performClick()
+            composeRule.waitForIdle()
+        }
+        val enrolledPrinterMatcher = hasText("hl-l2350dw", substring = true, ignoreCase = true)
+        scrollLazyContainerTo(enrolledPrinterMatcher)
+        runCatching {
+            composeRule.onAllNodes(enrolledPrinterMatcher, useUnmergedTree = true).onFirst().performScrollTo()
+        }
+        composeRule.waitForIdle()
+        assertTrue(
+            "Expected enrolled Brother HL-L2350DW printer in inventory list",
+            composeRule.onAllNodesWithText("hl-l2350dw", substring = true, ignoreCase = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        )
+        captureFlowStep("printer", "05_enrolled_printer_in_inventory.png")
+
+        // Reset back to clean default state
+        navigateIntent("tuesday://reset-demo")
     }
 }

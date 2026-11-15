@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -131,19 +132,31 @@ fun HomeScreen(
     val hacsConfig by repository.hacsConfig.collectAsState()
     val isWifiConnected by connectivity.isWifiConnected.collectAsState()
 
-    var activeTab by remember { mutableStateOf(MainNavTab.STATUS) }
-    var expandNetworkInSettings by remember { mutableStateOf(false) }
-    var expandPlanInSettings by remember { mutableStateOf(false) }
-    var expandRemindersInSettings by remember { mutableStateOf(false) }
-    var expandPreferencesInSettings by remember { mutableStateOf(false) }
-    var inspectedDevice by remember { mutableStateOf<RackPortDevice?>(null) }
-    var pendingBulletinId by remember { mutableStateOf<String?>(null) }
-    var showHacsSheet by remember { mutableStateOf(false) }
-    var showNetworkPicker by remember { mutableStateOf(false) }
-    var networkPickerInitialUpgradePrompt by remember { mutableStateOf(false) }
-    var showReferenceGuide by remember { mutableStateOf(false) }
-    var showProComingSoonModal by remember { mutableStateOf(false) }
-    var pendingTimelineModal by remember { mutableStateOf<String?>(null) }
+    val activeTabName by repository.activeTabName.collectAsState()
+    val activeTab = remember(activeTabName) {
+        runCatching { MainNavTab.valueOf(activeTabName) }.getOrDefault(MainNavTab.STATUS)
+    }
+    val setActiveTab: (MainNavTab) -> Unit = { tab ->
+        repository.setActiveTabName(tab.name)
+    }
+    var expandNetworkInSettings by rememberSaveable { mutableStateOf(false) }
+    var expandPlanInSettings by rememberSaveable { mutableStateOf(false) }
+    var expandRemindersInSettings by rememberSaveable { mutableStateOf(false) }
+    var expandPreferencesInSettings by rememberSaveable { mutableStateOf(false) }
+    val inspectedDeviceId by repository.inspectedDeviceId.collectAsState()
+    val inspectedDevice = remember(rackDevices, inspectedDeviceId) {
+        inspectedDeviceId?.let { id -> rackDevices.find { it.id.equals(id, ignoreCase = true) } }
+    }
+    val setInspectedDevice: (RackPortDevice?) -> Unit = { dev ->
+        repository.setInspectedDeviceId(dev?.id)
+    }
+    var pendingBulletinId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showHacsSheet by rememberSaveable { mutableStateOf(false) }
+    var showNetworkPicker by rememberSaveable { mutableStateOf(false) }
+    var networkPickerInitialUpgradePrompt by rememberSaveable { mutableStateOf(false) }
+    var showReferenceGuide by rememberSaveable { mutableStateOf(false) }
+    var showProComingSoonModal by rememberSaveable { mutableStateOf(false) }
+    var pendingTimelineModal by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(notificationManager) {
         if (notificationManager != null && repository.activeDeviceCount.value > 0) {
@@ -155,14 +168,14 @@ fun HomeScreen(
         when (pendingDestination) {
             is sh.tuesday.app.navigation.DeepLinkDestination.Tab -> {
                 when (pendingDestination.tab) {
-                    "status" -> activeTab = MainNavTab.STATUS
-                    "bulletins" -> activeTab = MainNavTab.BULLETINS
-                    "timeline" -> activeTab = MainNavTab.TIMELINE
-                    "checkup" -> activeTab = MainNavTab.CHECKUP
-                    "account" -> activeTab = MainNavTab.ACCOUNT
+                    "status" -> setActiveTab(MainNavTab.STATUS)
+                    "bulletins" -> setActiveTab(MainNavTab.BULLETINS)
+                    "timeline" -> setActiveTab(MainNavTab.TIMELINE)
+                    "checkup" -> setActiveTab(MainNavTab.CHECKUP)
+                    "account" -> setActiveTab(MainNavTab.ACCOUNT)
                     "account-dev" -> {
                         repository.toggleDeveloperMode(true)
-                        activeTab = MainNavTab.ACCOUNT
+                        setActiveTab(MainNavTab.ACCOUNT)
                     }
                 }
                 onConsumePendingDestination()
@@ -170,7 +183,7 @@ fun HomeScreen(
             is sh.tuesday.app.navigation.DeepLinkDestination.Device -> {
                 val dev = rackDevices.find { it.id.equals(pendingDestination.deviceId, ignoreCase = true) }
                 if (dev != null) {
-                    inspectedDevice = dev
+                    setInspectedDevice(dev)
                 }
                 onConsumePendingDestination()
             }
@@ -198,7 +211,7 @@ fun HomeScreen(
                 if (pendingDestination.source == "account") {
                     showNetworkPicker = false
                     expandPlanInSettings = true
-                    activeTab = MainNavTab.ACCOUNT
+                    setActiveTab(MainNavTab.ACCOUNT)
                 } else {
                     networkPickerInitialUpgradePrompt = true
                     showNetworkPicker = true
@@ -216,7 +229,7 @@ fun HomeScreen(
                 } else {
                     repository.setSimulatedDeviceCount(0)
                 }
-                activeTab = MainNavTab.STATUS
+                setActiveTab(MainNavTab.STATUS)
                 onConsumePendingDestination()
             }
             sh.tuesday.app.navigation.DeepLinkDestination.ToggleFlavor -> {
@@ -233,14 +246,14 @@ fun HomeScreen(
                 networkPickerInitialUpgradePrompt = false
                 showReferenceGuide = false
                 showProComingSoonModal = false
-                inspectedDevice = null
+                setInspectedDevice(null)
                 expandNetworkInSettings = false
                 expandPlanInSettings = false
                 expandRemindersInSettings = false
                 expandPreferencesInSettings = false
                 billingManager?.clearStatusMessage()
                 repository.resetDemoData()
-                activeTab = MainNavTab.STATUS
+                setActiveTab(MainNavTab.STATUS)
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.Preferences -> {
@@ -248,7 +261,7 @@ fun HomeScreen(
                 pendingDestination.showZoneFilterStrip?.let { repository.setShowZoneFilterStrip(it) }
                 if (pendingDestination.openSettings) {
                     expandPreferencesInSettings = true
-                    activeTab = MainNavTab.ACCOUNT
+                    setActiveTab(MainNavTab.ACCOUNT)
                 }
                 onConsumePendingDestination()
             }
@@ -272,7 +285,7 @@ fun HomeScreen(
                         forceResend = pendingDestination.forceResend
                     )
                 }
-                activeTab = MainNavTab.BULLETINS
+                setActiveTab(MainNavTab.BULLETINS)
                 onConsumePendingDestination()
             }
             sh.tuesday.app.navigation.DeepLinkDestination.TriggerMockPatchTuesday -> {
@@ -280,12 +293,12 @@ fun HomeScreen(
                 if (notificationManager != null) {
                     repository.triggerMockPatchTuesdayBulletin(notificationManager)
                 }
-                activeTab = MainNavTab.BULLETINS
+                setActiveTab(MainNavTab.BULLETINS)
                 onConsumePendingDestination()
             }
             is sh.tuesday.app.navigation.DeepLinkDestination.TimelineAction -> {
                 pendingTimelineModal = pendingDestination.modal ?: "none"
-                activeTab = MainNavTab.TIMELINE
+                setActiveTab(MainNavTab.TIMELINE)
                 onConsumePendingDestination()
             }
             null -> {}
@@ -502,7 +515,7 @@ fun HomeScreen(
                     val slotName = "nav-tab-${tab.name.lowercase()}"
                     NavigationBarItem(
                         selected = selected,
-                        onClick = { activeTab = tab },
+                        onClick = { setActiveTab(tab) },
                         modifier = Modifier.uiAction("switchTab"),
                         icon = {
                             BadgedBox(
@@ -600,12 +613,12 @@ fun HomeScreen(
                     onAddCategoryDevice = { cat ->
                         onNavigateToAddDevice(null, null, null, cat.defaultIntakeClue, false)
                     },
-                    onNavigateToBulletins = { activeTab = MainNavTab.BULLETINS },
-                    onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
+                    onNavigateToBulletins = { setActiveTab(MainNavTab.BULLETINS) },
+                    onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
                     onEnableReminders = {
                         onRequestNotificationPermission()
                         expandRemindersInSettings = true
-                        activeTab = MainNavTab.ACCOUNT
+                        setActiveTab(MainNavTab.ACCOUNT)
                     },
                     remindersEnabled = remindersEnabled,
                     dispatchSubscribed = dispatchSubscribed,
@@ -620,7 +633,7 @@ fun HomeScreen(
                     showZoneFilterStrip = showZoneFilterStrip,
                     onLoadDemoFleet = { repository.enableDemoMode() },
                     onInspectDevice = { devId ->
-                        visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
+                        visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                     },
                     networks = userNetworks,
                     activeNetworkId = activeNetwork.id,
@@ -635,17 +648,17 @@ fun HomeScreen(
                     onToggleMuteFeed = { repository.toggleMuteFeed(it) },
                     onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
                     onRejectModel = { repository.rejectProvisionalDeviceModel() },
-                    onOpenFeedsSettings = { activeTab = MainNavTab.ACCOUNT },
+                    onOpenFeedsSettings = { setActiveTab(MainNavTab.ACCOUNT) },
                     onInspectDevice = { devId ->
-                        visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
+                        visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                     },
                     onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
-                    onNavigateToAccount = { activeTab = MainNavTab.ACCOUNT },
-                    onNavigateToCheckUp = { activeTab = MainNavTab.CHECKUP },
+                    onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
+                    onNavigateToCheckUp = { setActiveTab(MainNavTab.CHECKUP) },
                     onEnableReminders = {
                         onRequestNotificationPermission()
                         expandRemindersInSettings = true
-                        activeTab = MainNavTab.ACCOUNT
+                        setActiveTab(MainNavTab.ACCOUNT)
                     },
                     remindersEnabled = remindersEnabled,
                     dispatchSubscribed = dispatchSubscribed,
@@ -669,7 +682,7 @@ fun HomeScreen(
                         onConsumeInitialModal = { pendingTimelineModal = null },
                         onOpenReferenceGuide = { showReferenceGuide = true },
                         onInspectDevice = { devId ->
-                            visibleDevices.find { it.id == devId }?.let { inspectedDevice = it }
+                            visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                         },
                         onRecordAttestation = { devId, type, date, note, sessId ->
                             repository.recordAttestation(devId, type, date, note, sessId)
@@ -732,7 +745,7 @@ fun HomeScreen(
                         tuesdayApiBaseUrl = hacsConfig.tuesdayApiBaseUrl,
                         onSetTuesdayApiBaseUrl = { repository.setTuesdayApiBaseUrl(it) },
                         onSetSimulatedDeviceCount = { repository.setSimulatedDeviceCount(it) },
-                        onSwitchToFleetTab = { activeTab = MainNavTab.STATUS },
+                        onSwitchToFleetTab = { setActiveTab(MainNavTab.STATUS) },
                         initialExpandNetwork = expandNetworkInSettings,
                         initialExpandPlan = expandPlanInSettings,
                         initialExpandReminders = expandRemindersInSettings,
@@ -778,7 +791,7 @@ fun HomeScreen(
     inspectedDevice?.let { device ->
         TuesdayBottomSheet(
             palette = palette,
-            onDismissRequest = { inspectedDevice = null }
+            onDismissRequest = { setInspectedDevice(null) }
         ) {
             DeviceInspectorBottomSheet(
                 device = device,
@@ -786,18 +799,18 @@ fun HomeScreen(
                 isStn = isStn,
                 onApplyPatch = {
                     repository.markDeviceUpdatesApplied(device.id)
-                    inspectedDevice = null
+                    setInspectedDevice(null)
                 },
                 onEditDevice = {
-                    inspectedDevice = null
+                    setInspectedDevice(null)
                     onNavigateToEditDevice(device.id)
                 },
                 onNavigateToBulletins = { bulletinId ->
                     pendingBulletinId = bulletinId
-                    inspectedDevice = null
-                    activeTab = MainNavTab.BULLETINS
+                    setInspectedDevice(null)
+                    setActiveTab(MainNavTab.BULLETINS)
                 },
-                onClose = { inspectedDevice = null }
+                onClose = { setInspectedDevice(null) }
             )
         }
     }
@@ -852,7 +865,7 @@ fun HomeScreen(
             },
             onOpenNetworkSettings = {
                 expandNetworkInSettings = true
-                activeTab = MainNavTab.ACCOUNT
+                setActiveTab(MainNavTab.ACCOUNT)
             },
             onDismiss = {
                 networkPickerInitialUpgradePrompt = false

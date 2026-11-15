@@ -12,6 +12,7 @@ cd "$PROJECT_DIR"
 if [ -d "/home/aaron/Android/jdk/jdk-21.0.13+9" ]; then
   export JAVA_HOME="/home/aaron/Android/jdk/jdk-21.0.13+9"
 fi
+export ANDROID_SERIAL="${ANDROID_SERIAL:-100.65.117.199:5555}"
 
 TIER="${1:-commit}"
 FILTER="${2:-}"

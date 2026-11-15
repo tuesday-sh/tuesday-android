@@ -135,34 +135,25 @@ fun GoldHardwareCluesPicker(
                     )
                 }
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (clueIndex != null) {
-                    Text(
-                        text = "SureThingNet Insights v${clueIndex.datalakeVersion}",
-                        color = TuesdayTheme.ledColorFor(sh.tuesday.app.models.PortLifecycleState.OK, palette.isStn),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Icon(
-                    imageVector = if (isCluesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (isCluesExpanded) "Collapse Clues" else "Expand Clues",
-                    tint = palette.textMuted,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            Icon(
+                imageVector = if (isCluesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (isCluesExpanded) "Collapse Clues" else "Expand Clues",
+                tint = palette.textMuted,
+                modifier = Modifier.size(18.dp)
+            )
         }
 
         if (isCluesExpanded) {
 
         Text(
-            text = "Choose context clues to help identify your device.",
+            text = if (clueIndex != null) {
+                "Choose context clues to help identify your device. Clues are retrieved from SureThingNet Insights v${clueIndex.datalakeVersion}."
+            } else {
+                "Choose context clues to help identify your device."
+            },
             color = palette.textMuted,
-            fontSize = 12.sp
+            fontSize = 12.sp,
+            lineHeight = 17.sp
         )
 
         // Optional 1-tap bridge if Manual Device Name matched a Gold SKU
@@ -216,7 +207,7 @@ fun GoldHardwareCluesPicker(
                 },
                 placeholder = {
                     Text(
-                        text = "Type router, switch, doorbell, Google, Linksys...",
+                        text = "Type router, switch, printer, doorbell, Google...",
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

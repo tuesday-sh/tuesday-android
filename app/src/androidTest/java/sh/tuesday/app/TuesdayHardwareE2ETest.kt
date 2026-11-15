@@ -59,10 +59,15 @@ class TuesdayHardwareE2ETest {
     val composeRule = createEmptyComposeRule()
 
     companion object {
+        private var savedPrefsSnapshot: Map<String, Any?> = emptyMap()
+
         @JvmStatic
         @BeforeClass
         fun setUpSuite() {
             ComposeWcagSemanticsAuditor.resetSession()
+            val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+            val prefs = targetContext.getSharedPreferences("tuesday_prefs_v1", android.content.Context.MODE_PRIVATE)
+            savedPrefsSnapshot = prefs.all.toMap()
         }
 
         @JvmStatic
@@ -70,6 +75,20 @@ class TuesdayHardwareE2ETest {
         fun tearDownSuite() {
             val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
             ComposeWcagSemanticsAuditor.writeSessionReport(targetContext)
+            val prefs = targetContext.getSharedPreferences("tuesday_prefs_v1", android.content.Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                clear()
+                savedPrefsSnapshot.forEach { (key, value) ->
+                    when (value) {
+                        is Boolean -> putBoolean(key, value)
+                        is Int -> putInt(key, value)
+                        is Long -> putLong(key, value)
+                        is Float -> putFloat(key, value)
+                        is String -> putString(key, value)
+                        is Set<*> -> putStringSet(key, value.filterIsInstance<String>().toSet())
+                    }
+                }
+            }.commit()
         }
     }
 
@@ -342,7 +361,10 @@ class TuesdayHardwareE2ETest {
         navigateIntent("tuesday://bulletins")
         assertAnyTagDisplayed("ui:component:BulletinsScreen")
 
-        // 1. Snooze 24h on NotchBulletinCard -> verify SNOOZED banner -> Resume
+        // 1. Tap Welcome row in BulletinListView -> opens NotchBulletinCard in DetailModalDialog -> Snooze 24h -> verify SNOOZED banner -> Resume
+        assertAnyTagDisplayed("ui:slot:bulletin-inbox-item")
+        composeRule.onAllNodesWithTag("ui:slot:bulletin-inbox-item", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
         assertAnyTagDisplayed("ui:action:primaryNotchAction")
         composeRule.onAllNodesWithTag("ui:action:primaryNotchAction", useUnmergedTree = true).onFirst().performClick()
         composeRule.waitForIdle()
@@ -353,7 +375,9 @@ class TuesdayHardwareE2ETest {
         composeRule.onNodeWithText("Resume →", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
 
-        // 2. Click "Ignore" -> opens BulletinPreferencesDialog -> audit WCAG -> Mute -> Unmute
+        // 2. Re-open Welcome row -> click "Ignore" -> opens BulletinPreferencesDialog -> audit WCAG -> Mute -> Unmute
+        composeRule.onAllNodesWithTag("ui:slot:bulletin-inbox-item", useUnmergedTree = true).onFirst().performClick()
+        composeRule.waitForIdle()
         assertAnyTagDisplayed("ui:action:secondaryNotchAction")
         composeRule.onAllNodesWithTag("ui:action:secondaryNotchAction", useUnmergedTree = true).onFirst().performClick()
         assertAnyTagDisplayed("ui:component:BulletinPreferencesDialog")
@@ -368,19 +392,23 @@ class TuesdayHardwareE2ETest {
         composeRule.onNodeWithText("Unmute →", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
 
-        // 3. Scroll down Bulletins LazyColumn to MatchedFeedsSection -> toggle mute & confirm guessed model
-        scrollLazyContainerTo(hasTestTag("ui:action:toggleMuteFeed"))
-        val muteButtons = composeRule.onAllNodesWithTag("ui:action:toggleMuteFeed", useUnmergedTree = true)
-        if (muteButtons.fetchSemanticsNodes().isNotEmpty()) {
-            muteButtons.onFirst().performClick()
+        // 3. Scroll down Bulletins LazyColumn to MatchedFeedsSection -> open feed detail modal -> toggle mute & confirm guessed model
+        scrollLazyContainerTo(hasTestTag("ui:slot:matched-feed-row"))
+        val feedRows = composeRule.onAllNodesWithTag("ui:slot:matched-feed-row", useUnmergedTree = true)
+        if (feedRows.fetchSemanticsNodes().isNotEmpty()) {
+            feedRows.onFirst().performClick()
             composeRule.waitForIdle()
-        }
-
-        scrollLazyContainerTo(hasTestTag("ui:action:confirmGuessedModel"))
-        val confirmGuessButtons = composeRule.onAllNodesWithTag("ui:action:confirmGuessedModel", useUnmergedTree = true)
-        if (confirmGuessButtons.fetchSemanticsNodes().isNotEmpty()) {
-            confirmGuessButtons.onFirst().performClick()
-            composeRule.waitForIdle()
+            val muteButtons = composeRule.onAllNodesWithTag("ui:action:toggleMuteFeed", useUnmergedTree = true)
+            if (muteButtons.fetchSemanticsNodes().isNotEmpty()) {
+                muteButtons.onFirst().performClick()
+                composeRule.waitForIdle()
+            } else {
+                val confirmGuessButtons = composeRule.onAllNodesWithTag("ui:action:confirmGuessedModel", useUnmergedTree = true)
+                if (confirmGuessButtons.fetchSemanticsNodes().isNotEmpty()) {
+                    confirmGuessButtons.onFirst().performClick()
+                    composeRule.waitForIdle()
+                }
+            }
         }
     }
 
@@ -459,17 +487,19 @@ class TuesdayHardwareE2ETest {
         assertAnyTagDisplayed("ui:component:AiDiscoveryPanel", "ui:slot:ai-discovery-panel")
         ComposeWcagSemanticsAuditor.auditActiveScreen(composeRule, context, "Wizard • AiDiscoveryPanel")
 
-        // Enroll via Confirm Match (or Best-Guess fallback) and verify return to Fleet
-        val confirmNodes = composeRule.onAllNodesWithTag("ui:action:enrollConfirmedDevice", useUnmergedTree = true)
-        if (confirmNodes.fetchSemanticsNodes().isNotEmpty()) {
-            val btn = confirmNodes.onFirst()
-            runCatching { btn.performScrollTo() }
-            btn.performClick()
-        } else {
-            val guessBtn = composeRule.onAllNodesWithTag("ui:action:enrollGuessedDevice", useUnmergedTree = true).onFirst()
-            runCatching { guessBtn.performScrollTo() }
-            guessBtn.performClick()
-        }
+        // Open top candidate detail modal sheet and enroll via Add to Inventory, then verify return to Fleet
+        assertAnyTagDisplayed("ui:component:CandidateResultsList")
+        assertAnyTagDisplayed("ui:component:CandidateResultItem")
+        val topCandidate = composeRule.onAllNodesWithTag("ui:component:CandidateResultItem", useUnmergedTree = true).onFirst()
+        runCatching { topCandidate.performScrollTo() }
+        topCandidate.performClick()
+        composeRule.waitForIdle()
+
+        assertAnyTagDisplayed("ui:action:addToInventoryFromModal")
+        val addModalBtn = composeRule.onNodeWithTag("ui:action:addToInventoryFromModal", useUnmergedTree = true)
+        runCatching { addModalBtn.performScrollTo() }
+        addModalBtn.performClick()
+        composeRule.waitForIdle()
         assertAnyTagDisplayed("ui:component:BottomNavigationBar")
 
         // 2. Direct Manual Enrollment with Gold Catalog clue binding (`enrollManualDevice`)

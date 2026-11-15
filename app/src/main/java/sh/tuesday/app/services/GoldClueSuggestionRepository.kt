@@ -382,10 +382,11 @@ class GoldClueIndexData(
         val startNs = System.nanoTime()
 
         // 1. Check exact UPC/GTIN barcode match first (from scanned barcodes or selected clues)
+        val explicitUpcClue = selected.lastOrNull { it.kind == GoldClueKind.IDENTIFIER && !it.upc.isNullOrBlank() }?.upc
         val candidateUpcs = buildList {
             accumulatedIdentifiers.barcode?.takeIf { it.isNotBlank() }?.let { add(it) }
             addAll(scannedBarcodes)
-            selected.mapNotNull { it.upc }.forEach { add(it) }
+            selected.filter { it.kind == GoldClueKind.IDENTIFIER }.mapNotNull { it.upc }.forEach { add(it) }
         }.map { raw ->
             val clean = raw.trim()
             if (clean.length == 13 && clean.startsWith("0") && clean.all { it.isDigit() }) {
@@ -458,7 +459,9 @@ class GoldClueIndexData(
 
         val typeLabelsById = types.associate { it.id to "${it.categoryCode} • ${it.label}" }
         val extracted = ExtractedDeviceIdentifiers(
-            barcode = accumulatedIdentifiers.barcode ?: matchedEntries.firstOrNull()?.upc?.ifBlank { null },
+            barcode = accumulatedIdentifiers.barcode?.takeIf { it.isNotBlank() }
+                ?: scannedBarcodes.firstOrNull()?.takeIf { it.isNotBlank() }
+                ?: explicitUpcClue,
             serialNumber = accumulatedIdentifiers.serialNumber,
             qrCode = accumulatedIdentifiers.qrCode,
             modelNumber = if (isExactSkuHit || matchedEntries.size == 1) matchedEntries.first().model else accumulatedIdentifiers.modelNumber,
@@ -542,6 +545,138 @@ class GoldClueIndexData(
             debugTrace = listOf("PINNED_GOLD_CACHE_HIT ($etag)"),
             debugLogText = debugText
         )
+    }
+
+    /**
+     * Reconciles server vision candidates against the client's pinned Gold Clue Index (`gold_clue_index.gci`)
+     * so newly added SKUs (e.g. Sharp MFPs) align immediately even when the remote server runs an older
+     * snapshot, and strips single-candidate spatial prefixes like `[Center] `.
+     */
+    fun reconcileDiscoveryResult(result: GeminiDiscoveryTurnResult): GeminiDiscoveryTurnResult {
+        if (result.candidates.isEmpty()) return result
+        val isSingleCandidate = result.candidates.size == 1
+        val spatialPrefixRegex = Regex("^\\[(?:Center|Foreground|Main|Middle)\\]\\s*", RegexOption.IGNORE_CASE)
+        val hallucinatedScopeRegex = Regex(
+            "\\b(ir remote|infrared|remote(?:-|\\s*)control|remote module|non-networked|receiver/transmitter|receiver module|transmitter module)\\b",
+            RegexOption.IGNORE_CASE
+        )
+
+        val updatedCandidates = result.candidates.map { cand ->
+            val cleanedDisplay = if (isSingleCandidate) {
+                cand.displayName.replace(spatialPrefixRegex, "").trim().ifEmpty { cand.displayName }
+            } else {
+                cand.displayName
+            }
+
+            val normVendor = normalizeAlnum(cand.manufacturer)
+            val matchedBrand = brands.firstOrNull { b ->
+                b.name.equals(cand.manufacturer, ignoreCase = true) ||
+                    normalizeAlnum(b.name) == normVendor ||
+                    (normVendor.isNotEmpty() && normVendor in b.normAliases)
+            }
+
+            val rawModel = cand.modelNumber.trim()
+            val candidateNormModels = buildList {
+                normalizeAlnum(rawModel).takeIf { it.length >= 2 }?.let { add(it) }
+                rawModel.split(Regex("[/,;()]+"))
+                    .map { normalizeAlnum(it) }
+                    .filter { it.length >= 3 }
+                    .forEach { add(it) }
+            }.distinct()
+
+            val matchedModel = models.firstOrNull { entry ->
+                val vendorMatch = entry.vendor.equals(cand.manufacturer, ignoreCase = true) ||
+                    (normVendor.isNotEmpty() && normalizeAlnum(entry.vendor) == normVendor) ||
+                    (matchedBrand != null && entry.vendor.equals(matchedBrand.name, ignoreCase = true))
+                vendorMatch && entry.normModel in candidateNormModels
+            } ?: candidateNormModels.firstOrNull { it.length >= 4 }?.let { primaryNorm ->
+                models.filter { it.normModel == primaryNorm }.takeIf { it.size == 1 }?.firstOrNull()
+            }
+
+            val newAlignment = when {
+                cand.goldAlignment?.aligned == true -> cand.goldAlignment
+                matchedModel != null -> {
+                    val modelSlug = matchedModel.model.lowercase().replace(Regex("[^a-z0-9.+-]+"), "-").trim('-')
+                    val vendorSlug = normalizeAlnum(matchedModel.vendor)
+                    val purl = "pkg:generic/$vendorSlug/$modelSlug"
+                    (cand.goldAlignment ?: GoldAlignmentInfo()).copy(
+                        aligned = true,
+                        matchedFeedSlug = cand.goldAlignment?.matchedFeedSlug ?: "pinned-gold-v$datalakeVersion",
+                        matchedFeedName = cand.goldAlignment?.matchedFeedName,
+                        inferredPurl = cand.goldAlignment?.inferredPurl?.ifBlank { purl } ?: purl,
+                        inBuiltInCatalog = true,
+                        inConfirmedCatalog = true,
+                        statusLabel = "GOLD ALIGNED",
+                        diagnosticNote = "Matched local Pinned Gold Clue Index v$datalakeVersion"
+                    )
+                }
+                matchedBrand != null && (cand.goldAlignment == null || cand.goldAlignment.statusLabel == "UNALIGNED RAW MATCH") -> {
+                    (cand.goldAlignment ?: GoldAlignmentInfo()).copy(
+                        aligned = false,
+                        matchedFeedSlug = cand.goldAlignment?.matchedFeedSlug ?: "vendor-${normalizeAlnum(matchedBrand.name)}",
+                        statusLabel = "UNALIGNED MODEL (VENDOR FEED ONLY)"
+                    )
+                }
+                else -> cand.goldAlignment
+            }
+
+            val isAlignedOrFeed = newAlignment?.aligned == true ||
+                newAlignment?.statusLabel.equals("UNALIGNED MODEL (VENDOR FEED ONLY)", ignoreCase = true)
+            val isTaintedDisplay = !result.isNetworkedDevice || cleanedDisplay.contains(hallucinatedScopeRegex)
+            val resolvedTypeLabel = matchedModel?.typeId?.let { tid -> types.firstOrNull { it.id == tid }?.label }
+            val resolvedDisplayName = if (isAlignedOrFeed && matchedModel != null && isTaintedDisplay) {
+                val baseTitle = "${matchedModel.vendor} ${matchedModel.model}".trim()
+                val suffix = resolvedTypeLabel?.let { " ($it)" } ?: ""
+                "$baseTitle$suffix"
+            } else {
+                cleanedDisplay
+            }
+            val resolvedCategory = if (isAlignedOrFeed && matchedModel != null &&
+                (!result.isNetworkedDevice || cand.deviceCategory.contains(hallucinatedScopeRegex))
+            ) {
+                resolvedTypeLabel ?: categoryLabelFor(matchedModel.categoryCode)
+            } else {
+                cand.deviceCategory
+            }
+            val resolvedReasoning = if (isAlignedOrFeed &&
+                (!result.isNetworkedDevice || cand.reasoning.contains(hallucinatedScopeRegex))
+            ) {
+                "Identified $resolvedDisplayName in SureThingNet Insights Gold Catalog."
+            } else {
+                cand.reasoning
+            }
+
+            cand.copy(
+                displayName = resolvedDisplayName,
+                deviceCategory = resolvedCategory,
+                reasoning = resolvedReasoning,
+                goldAlignment = newAlignment
+            )
+        }
+
+        val anyAlignedOrFeed = updatedCandidates.any {
+            val ga = it.goldAlignment
+            ga?.aligned == true || ga?.statusLabel.equals("UNALIGNED MODEL (VENDOR FEED ONLY)", ignoreCase = true)
+        }
+        return if (anyAlignedOrFeed) {
+            val topAligned = updatedCandidates.firstOrNull {
+                val ga = it.goldAlignment
+                ga?.aligned == true || ga?.statusLabel.equals("UNALIGNED MODEL (VENDOR FEED ONLY)", ignoreCase = true)
+            } ?: updatedCandidates.first()
+            val cleanedSummary = if (!result.isNetworkedDevice || result.visualSummary.contains(hallucinatedScopeRegex)) {
+                "Identified ${topAligned.displayName} in SureThingNet Insights Gold Catalog."
+            } else {
+                result.visualSummary
+            }
+            result.copy(
+                visualSummary = cleanedSummary,
+                isNetworkedDevice = true,
+                outOfScopeReason = null,
+                candidates = updatedCandidates
+            )
+        } else {
+            result.copy(candidates = updatedCandidates)
+        }
     }
 
     private fun categoryLabelFor(code: String): String = when (code) {

@@ -139,10 +139,13 @@ fun AppNavigation(
                         if (autoSearch) add("search=true")
                     }
                     val route = if (params.isEmpty()) "add_device" else "add_device?${params.joinToString("&")}"
+                    repository.setActiveNavRoute(route)
                     navController.navigate(route)
                 },
                 onNavigateToEditDevice = { deviceId ->
-                    navController.navigate("edit_device/${android.net.Uri.encode(deviceId)}")
+                    val route = "edit_device/${android.net.Uri.encode(deviceId)}"
+                    repository.setActiveNavRoute(route)
+                    navController.navigate(route)
                 },
                 pendingDestination = if (pendingDestination is DeepLinkDestination.AddDevice) null else pendingDestination,
                 onConsumePendingDestination = onConsumePendingDestination
@@ -192,6 +195,7 @@ fun AppNavigation(
                 initialCluesCsv = cluesArg,
                 initialAutoSearch = searchArg,
                 onNavigateBack = {
+                    repository.setActiveNavRoute("home")
                     navController.popBackStack()
                 }
             )
@@ -202,9 +206,24 @@ fun AppNavigation(
                 deviceId = deviceId,
                 repository = repository,
                 onNavigateBack = {
+                    repository.setActiveNavRoute("home")
                     navController.popBackStack()
                 }
             )
+        }
+    }
+
+    LaunchedEffect(navController) {
+        if (pendingDestination == null) {
+            val savedRoute = repository.activeNavRoute.value
+            if (savedRoute != "home" && navController.currentDestination?.route == "home") {
+                runCatching { navController.navigate(savedRoute) }
+            }
+        }
+        navController.currentBackStackEntryFlow.collect { entry ->
+            if (entry.destination.route == "home") {
+                repository.setActiveNavRoute("home")
+            }
         }
     }
 
@@ -218,10 +237,12 @@ fun AppNavigation(
                 if (pendingDestination.autoSearch) add("search=true")
             }
             val route = if (params.isEmpty()) "add_device" else "add_device?${params.joinToString("&")}"
+            repository.setActiveNavRoute(route)
             navController.popBackStack("home", inclusive = false)
             navController.navigate(route)
             onConsumePendingDestination()
         } else if (pendingDestination != null) {
+            repository.setActiveNavRoute("home")
             navController.popBackStack("home", inclusive = false)
         }
     }

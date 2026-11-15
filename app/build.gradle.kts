@@ -43,6 +43,9 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             manifestPlaceholders["appLabel"] = "Tuesday (Dev)"
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
         }
         release {
             isMinifyEnabled = true
@@ -94,6 +97,7 @@ android {
             all {
                 it.timeout.set(Duration.ofSeconds(90))
                 it.maxHeapSize = "2048m"
+                it.systemProperty("roborazzi.test.record", "true")
                 it.testLogging {
                     events("started", "passed", "skipped", "failed")
                     showStandardStreams = true
@@ -120,7 +124,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Image loading with Coil
@@ -147,6 +151,8 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test:core-ktx:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.39.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.39.0")
 
     // Instrumented Hardware E2E, Compose UI & WCAG Accessibility Testing
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

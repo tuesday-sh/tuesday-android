@@ -71,7 +71,7 @@ enum class StnHardwareCategory(
     C3_AP("C3", 3, "L1/2", "Wireless AP", "Wi-Fi Access Point", "Wi-Fi AP", "Radio-frequency access point translating wireless airwaves into wired Ethernet.", "U6-Pro, U7-Pro, Netgear AP, Eero"),
     C4_SERVER("C4", 4, "L4–7", "Compute / Server", "Home Server & Storage", "Server", "Storage (NAS), local DNS, container virtualization, and homelab workloads.", "TrueNAS, Unraid, Proxmox VE, Synology"),
     C5_CAMERA("C5", 5, "L7", "Vision / Camera", "Smart Camera", "Camera", "Surveillance video, real-time RTSP/WebRTC streams, and perimeter sensing.", "UniFi Protect G5, Owlet Cam, Reolink"),
-    C6_IOT("C6", 6, "L7", "Smart Home / IoT", "Smart Home Hub", "Smart IoT", "Home automation controllers, sensor bridges, and constrained smart peripherals.", "Home Assistant, Hubitat, Hue, Ecobee"),
+    C6_IOT("C6", 6, "L7", "Smart Home / IoT", "Smart Home Hub", "Smart IoT", "Home automation controllers, networked printers, and constrained smart peripherals.", "Home Assistant, Hubitat, Hue, Ecobee, Printers"),
     C7_CLIENT("C7", 7, "L7", "Workstation / Client", "Personal Computer / Phone", "Client", "Primary trusted user devices carrying user identities, keys, and productivity data.", "MacBook Pro, ThinkPad, Linux PC, iPad"),
     C8_GUEST("C8", 8, "L8", "Guest / Human (L8)", "Guest / Visitor Device", "Guest L8", "Isolated perimeter for ephemeral human visitors, guest Wi-Fi, and user policy.", "Guest Portal, Visitor Laptop, Cast Client");
 

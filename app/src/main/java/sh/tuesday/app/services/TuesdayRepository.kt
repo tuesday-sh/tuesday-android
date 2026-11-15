@@ -88,6 +88,17 @@ class TuesdayRepository(context: Context) {
     private val _isDiagnosticsEnabled = MutableStateFlow(false)
     val isDiagnosticsEnabled: StateFlow<Boolean> = _isDiagnosticsEnabled.asStateFlow()
 
+    private val _activeTabName = MutableStateFlow(prefs.getString("active_tab_name", "STATUS") ?: "STATUS")
+    val activeTabName: StateFlow<String> = _activeTabName.asStateFlow()
+
+    private val _activeNavRoute = MutableStateFlow(prefs.getString("active_nav_route", "home") ?: "home")
+    val activeNavRoute: StateFlow<String> = _activeNavRoute.asStateFlow()
+
+    private val _inspectedDeviceId = MutableStateFlow<String?>(
+        prefs.getString("inspected_device_id", null)?.takeIf { it.isNotBlank() }
+    )
+    val inspectedDeviceId: StateFlow<String?> = _inspectedDeviceId.asStateFlow()
+
     private val _userSignature = MutableStateFlow(
         prefs.getString("user_signature", null) ?: "Aaron Bronow (sig_4b9a8c)"
     )
@@ -211,6 +222,7 @@ class TuesdayRepository(context: Context) {
                 )
             } else dev
         }
+        persistInventoryState()
         return attestation
     }
 
@@ -277,28 +289,59 @@ class TuesdayRepository(context: Context) {
         loadConfig()
     }
 
+    fun setActiveTabName(tabName: String) {
+        if (tabName.isBlank()) return
+        _activeTabName.value = tabName
+        prefs.edit().putString("active_tab_name", tabName).apply()
+    }
+
+    fun setActiveNavRoute(route: String) {
+        val clean = route.ifBlank { "home" }
+        _activeNavRoute.value = clean
+        prefs.edit().putString("active_nav_route", clean).apply()
+    }
+
+    fun setInspectedDeviceId(deviceId: String?) {
+        val clean = deviceId?.takeIf { it.isNotBlank() }
+        _inspectedDeviceId.value = clean
+        prefs.edit().apply {
+            if (clean != null) putString("inspected_device_id", clean) else remove("inspected_device_id")
+        }.apply()
+    }
+
     fun toggleBrandFlavor() {
-        _brandFlavor.value = if (_brandFlavor.value == AppBrandFlavor.TUESDAY_PRO) {
+        val next = if (_brandFlavor.value == AppBrandFlavor.TUESDAY_PRO) {
             AppBrandFlavor.SURETHING_HOME
         } else {
             AppBrandFlavor.TUESDAY_PRO
         }
+        _brandFlavor.value = next
+        prefs.edit().putString("brand_flavor", next.name).apply()
     }
 
     fun setBrandFlavor(flavor: AppBrandFlavor) {
         _brandFlavor.value = flavor
+        prefs.edit().putString("brand_flavor", flavor.name).apply()
     }
 
     fun toggleIncludeOkDevices() {
-        _includeOkDevices.value = !_includeOkDevices.value
+        val next = !_includeOkDevices.value
+        _includeOkDevices.value = next
+        prefs.edit().putBoolean("include_ok_devices", next).apply()
     }
 
     fun setZoneFilter(zone: TrustZone?) {
         _selectedZoneFilter.value = zone
+        prefs.edit().apply {
+            if (zone != null) putString("selected_zone_filter", zone.name) else remove("selected_zone_filter")
+        }.apply()
     }
 
     fun setPortStateFilter(state: PortLifecycleState?) {
         _selectedPortStateFilter.value = state
+        prefs.edit().apply {
+            if (state != null) putString("selected_port_state_filter", state.name) else remove("selected_port_state_filter")
+        }.apply()
     }
 
     fun toggleDeveloperMode(enabled: Boolean) {
@@ -323,6 +366,10 @@ class TuesdayRepository(context: Context) {
         _activeDeviceCount.value = clamped
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
+        prefs.edit()
+            .remove("selected_zone_filter")
+            .remove("selected_port_state_filter")
+            .apply()
         if (clamped == 0) {
             _bulletinDismissed.value = false
             _bulletinSnoozed.value = false
@@ -337,6 +384,7 @@ class TuesdayRepository(context: Context) {
             if (it.id == _activeNetworkId.value) it.copy(devicesCount = clamped) else it
         }
         persistNetworks()
+        persistInventoryState()
     }
 
     fun selectNetwork(netId: String) {
@@ -345,6 +393,10 @@ class TuesdayRepository(context: Context) {
         _activeDeviceCount.value = target.devicesCount
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
+        prefs.edit()
+            .remove("selected_zone_filter")
+            .remove("selected_port_state_filter")
+            .apply()
         persistNetworks()
     }
 
@@ -380,6 +432,7 @@ class TuesdayRepository(context: Context) {
             true
         }
         _mutedFeedSlugs.value = current
+        prefs.edit().putStringSet("muted_feed_slugs", current.toSet()).apply()
         emitTelemetryEventAsync(
             eventName = "bulletin.feed_mute_toggled",
             targetEntityType = "CanonicalFeed",
@@ -444,6 +497,7 @@ class TuesdayRepository(context: Context) {
         prefs.edit().putBoolean("pref_show_state_filter_strip", enabled).apply()
         if (!enabled) {
             _selectedPortStateFilter.value = null
+            prefs.edit().remove("selected_port_state_filter").apply()
         }
     }
 
@@ -452,6 +506,7 @@ class TuesdayRepository(context: Context) {
         prefs.edit().putBoolean("pref_show_zone_filter_strip", enabled).apply()
         if (!enabled) {
             _selectedZoneFilter.value = null
+            prefs.edit().remove("selected_zone_filter").apply()
         }
     }
 
@@ -471,6 +526,7 @@ class TuesdayRepository(context: Context) {
                 )
             } else dev
         }
+        persistInventoryState()
         targetDeviceId?.let { devId ->
             syncDevicePatchToServerAsync(
                 deviceId = devId,
@@ -492,6 +548,7 @@ class TuesdayRepository(context: Context) {
                 )
             } else dev
         }
+        persistInventoryState()
         targetDeviceId?.let { devId ->
             syncDevicePatchToServerAsync(
                 deviceId = devId,
@@ -507,6 +564,46 @@ class TuesdayRepository(context: Context) {
         _isDeveloperMode.value = prefs.getBoolean("is_developer_mode", false)
         _isVisionDebugEnabled.value = prefs.getBoolean("is_vision_debug_enabled", false)
         _isDiagnosticsEnabled.value = prefs.getBoolean("is_diagnostics_enabled", false)
+        prefs.getString("brand_flavor", null)?.let { rawFlavor ->
+            runCatching { AppBrandFlavor.valueOf(rawFlavor) }.getOrNull()?.let {
+                _brandFlavor.value = it
+            }
+        }
+        _activeTabName.value = prefs.getString("active_tab_name", "STATUS") ?: "STATUS"
+        _activeNavRoute.value = prefs.getString("active_nav_route", "home") ?: "home"
+        _inspectedDeviceId.value = prefs.getString("inspected_device_id", null)?.takeIf { it.isNotBlank() }
+        _includeOkDevices.value = prefs.getBoolean("include_ok_devices", false)
+        _selectedZoneFilter.value = prefs.getString("selected_zone_filter", null)?.let { rawZone ->
+            runCatching { TrustZone.valueOf(rawZone) }.getOrNull()
+        }
+        _selectedPortStateFilter.value = prefs.getString("selected_port_state_filter", null)?.let { rawState ->
+            runCatching { PortLifecycleState.valueOf(rawState) }.getOrNull()
+        }
+        prefs.getStringSet("muted_feed_slugs", null)?.let { savedMuted ->
+            _mutedFeedSlugs.value = savedMuted.toSet()
+        }
+        val rawRack = prefs.getString("rack_devices_json", null)
+        if (!rawRack.isNullOrBlank()) {
+            try {
+                val decoded = json.decodeFromString<List<RackPortDevice>>(rawRack)
+                if (decoded.isNotEmpty()) {
+                    _rackDevices.value = decoded
+                }
+            } catch (_: Exception) {
+                _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
+            }
+        }
+        val rawAtts = prefs.getString("attestations_json", null)
+        if (!rawAtts.isNullOrBlank()) {
+            try {
+                val decoded = json.decodeFromString<List<DeviceAttestation>>(rawAtts)
+                if (decoded.isNotEmpty()) {
+                    _attestations.value = decoded
+                }
+            } catch (_: Exception) {
+                _attestations.value = initialDefaultAttestations()
+            }
+        }
         val raw = prefs.getString("hacs_config", null)
         if (raw != null) {
             try {
@@ -534,6 +631,13 @@ class TuesdayRepository(context: Context) {
                 _activeDeviceCount.value = found.devicesCount
             }
         }
+    }
+
+    private fun persistInventoryState() {
+        prefs.edit()
+            .putString("rack_devices_json", json.encodeToString(_rackDevices.value))
+            .putString("attestations_json", json.encodeToString(_attestations.value))
+            .apply()
     }
 
     private fun persistNetworks() {
@@ -640,6 +744,7 @@ class TuesdayRepository(context: Context) {
             if (it.id == _activeNetworkId.value) it.copy(devicesCount = nextCount) else it
         }
         persistNetworks()
+        persistInventoryState()
 
         syncDeviceCreateToServerAsync(finalRackDev, discoveredMetadata)
 
@@ -655,6 +760,7 @@ class TuesdayRepository(context: Context) {
                 )
             } else it
         }
+        persistInventoryState()
         syncDevicePatchToServerAsync(
             deviceId = deviceId,
             payload = JSONObject().apply {
@@ -685,6 +791,7 @@ class TuesdayRepository(context: Context) {
                 next
             } else dev
         }
+        persistInventoryState()
         updated?.let { next ->
             syncDevicePatchToServerAsync(
                 deviceId = deviceId,
@@ -956,6 +1063,7 @@ class TuesdayRepository(context: Context) {
     private fun inferRackCategory(meta: DiscoveredDeviceMetadata?): StnHardwareCategory {
         val combined = "${meta?.deviceCategory.orEmpty()} ${meta?.modelNumber.orEmpty()} ${meta?.manufacturer.orEmpty()}".lowercase()
         return when {
+            combined.contains("printer") || combined.contains("scanner") || combined.contains("laserjet") || combined.contains("officejet") || combined.contains("ecotank") || combined.contains("imageclass") || combined.contains("hl-l") || combined.contains("mfc-l") || combined.contains("brother") || combined.contains("epson") || combined.contains("lexmark") || combined.contains("bambu") -> StnHardwareCategory.C6_IOT
             combined.contains("router") || combined.contains("gateway") || combined.contains("modem") || combined.contains("docsis") || combined.contains("ucg") || combined.contains("uxg") || combined.contains("mb8600") -> StnHardwareCategory.C1_GATEWAY
             combined.contains("switch") || combined.contains("2960") || combined.contains("usw") -> StnHardwareCategory.C2_SWITCH
             combined.contains("wireless") || combined.contains("access point") || combined.contains("u6-") || combined.contains("u7-") -> StnHardwareCategory.C3_AP
@@ -1127,6 +1235,7 @@ class TuesdayRepository(context: Context) {
                 if (_activeDeviceCount.value < syncedDevicesFromNotifs.size) {
                     _activeDeviceCount.value = (syncedDevicesFromNotifs.size + 4).coerceAtMost(128)
                 }
+                persistInventoryState()
             }
 
             shownCount
@@ -1186,11 +1295,15 @@ class TuesdayRepository(context: Context) {
 
     fun resetDemoData() {
         _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
+        _attestations.value = initialDefaultAttestations()
         _mutedFeedSlugs.value = setOf("lg-esphome-iot")
         _includeOkDevices.value = false
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
         _activeDeviceCount.value = 0
+        _activeTabName.value = "STATUS"
+        _activeNavRoute.value = "home"
+        _inspectedDeviceId.value = null
         _bulletinDismissed.value = false
         _bulletinSnoozed.value = false
         _bulletinMuted.value = false
@@ -1217,6 +1330,15 @@ class TuesdayRepository(context: Context) {
             .putBoolean("is_vision_debug_enabled", false)
             .putBoolean("is_diagnostics_enabled", false)
             .putString("entitlement_tier", "free")
+            .remove("rack_devices_json")
+            .remove("attestations_json")
+            .remove("muted_feed_slugs")
+            .remove("include_ok_devices")
+            .remove("selected_zone_filter")
+            .remove("selected_port_state_filter")
+            .remove("active_tab_name")
+            .remove("active_nav_route")
+            .remove("inspected_device_id")
             .apply()
         persistConfig()
     }
@@ -1254,11 +1376,13 @@ class TuesdayRepository(context: Context) {
                 }
                 if (backup.mutedFeedSlugs.isNotEmpty()) {
                     _mutedFeedSlugs.value = backup.mutedFeedSlugs.toSet()
+                    prefs.edit().putStringSet("muted_feed_slugs", _mutedFeedSlugs.value.toSet()).apply()
                 }
                 if (backup.attestations.isNotEmpty()) {
                     _attestations.value = backup.attestations
                 }
                 persistNetworks()
+                persistInventoryState()
                 true
             } else {
                 false
@@ -1287,6 +1411,7 @@ class TuesdayRepository(context: Context) {
         _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
         _attestations.value = initialDefaultAttestations()
         _activeDeviceCount.value = 12
+        persistInventoryState()
     }
 
     companion object {
