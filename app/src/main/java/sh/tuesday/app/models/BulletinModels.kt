@@ -894,6 +894,32 @@ object BulletinsAndInventoryEngine {
         )
     }
 
+    /**
+     * Infers the initial [PortLifecycleState] for a newly enrolled or evaluated device
+     * based on active Gold bulletins matching its canonical PURLs.
+     */
+    fun inferInitialPortStateForPurls(
+        purls: List<String>,
+        isGuessed: Boolean,
+        bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
+    ): PortLifecycleState {
+        if (isGuessed) return PortLifecycleState.GUESSED
+        val cleanPurls = purls
+            .map { it.substringBefore("@").removeSuffix("/*").trim().lowercase() }
+            .filter { it.isNotEmpty() }
+        if (cleanPurls.isEmpty()) return PortLifecycleState.OK
+        val matched = bulletins.filter { b ->
+            val cleanBp = b.purlBase.lowercase()
+            cleanBp.isNotEmpty() && cleanPurls.any { cleanDp ->
+                cleanBp.startsWith(cleanDp) || cleanDp.startsWith(cleanBp)
+            }
+        }
+        if (matched.isEmpty()) return PortLifecycleState.OK
+        if (matched.any { it.bulletinType.equals("eol", ignoreCase = true) }) return PortLifecycleState.EOL
+        if (matched.any { it.isHighSev }) return PortLifecycleState.CVE_KEV
+        return PortLifecycleState.UPDATE
+    }
+
     fun countBulletinsForDevice(
         device: RackPortDevice,
         bulletins: List<CuratedBulletinItem> = defaultGoldBulletins()
@@ -1221,7 +1247,7 @@ object BulletinsAndInventoryEngine {
             slug = "cpsc-safety",
             proName = "CPSC Consumer Safety & Power Recalls",
             stnName = "CPSC Home, Nursery & Battery Safety Recalls",
-            purlPrefixes = listOf("pkg:generic/owlet/", "pkg:generic/anker/", "pkg:generic/ecoflow/", "pkg:generic/baseus/", "pkg:generic/jackery/", "pkg:generic/ugreen/", "pkg:generic/mophie/")
+            purlPrefixes = listOf("pkg:generic/owlet/", "pkg:generic/anker/", "pkg:generic/ecoflow/", "pkg:generic/baseus/", "pkg:generic/jackery/", "pkg:generic/ugreen/", "pkg:generic/mophie/", "pkg:generic/lexmark/ms725dvn", "pkg:generic/lexmark/mx725adve", "pkg:generic/bambu-lab/a1")
         ),
         CanonicalFeedItem(
             id = "f-03",
@@ -1284,7 +1310,7 @@ object BulletinsAndInventoryEngine {
             slug = "smart-home-zigbee-matter-iot",
             proName = "Home Assistant OS, Raspberry Pi, SMLIGHT & Matter Hubs",
             stnName = "Smart Home Hub, Lighting, Audio & Camera Updates",
-            purlPrefixes = listOf("pkg:generic/home-assistant/", "pkg:generic/raspberry-pi/", "pkg:generic/smlight/", "pkg:generic/sonoff/", "pkg:generic/philips-hue/", "pkg:generic/lutron/", "pkg:generic/sonos/", "pkg:generic/reolink/", "pkg:generic/wyze/", "pkg:generic/shelly/", "pkg:generic/aqara/", "pkg:generic/brother/", "pkg:generic/samsung-galaxy/", "pkg:generic/google-pixel/")
+            purlPrefixes = listOf("pkg:generic/home-assistant/", "pkg:generic/raspberry-pi/", "pkg:generic/smlight/", "pkg:generic/sonoff/", "pkg:generic/philips-hue/", "pkg:generic/lutron/", "pkg:generic/sonos/", "pkg:generic/reolink/", "pkg:generic/wyze/", "pkg:generic/shelly/", "pkg:generic/aqara/", "pkg:generic/samsung-galaxy/", "pkg:generic/google-pixel/")
         ),
         CanonicalFeedItem(
             id = "f-11",
@@ -1292,6 +1318,34 @@ object BulletinsAndInventoryEngine {
             proName = "US ISP Broadband, DOCSIS 3.1 & Fiber ONT Provisioning",
             stnName = "Internet Provider Modem & Gateway Auto-Updates",
             purlPrefixes = listOf("pkg:generic/xfinity/", "pkg:generic/technicolor/", "pkg:generic/at-t/", "pkg:generic/verizon/", "pkg:generic/spectrum/", "pkg:generic/t-mobile/", "pkg:generic/spacex-starlink/", "pkg:generic/starlink/", "pkg:generic/arris/", "pkg:generic/motorola/", "pkg:generic/hitron/", "pkg:generic/calix/", "pkg:generic/nokia/", "pkg:generic/nokia-fiber/", "pkg:generic/arcadyan-astoria/")
+        ),
+        CanonicalFeedItem(
+            id = "f-13",
+            slug = "network-printer-firmware-psirt",
+            proName = "Network Printer & MFP Firmware / PSIRT Advisories",
+            stnName = "Brother, HP, Epson, Canon & 3D Printer Updates",
+            purlPrefixes = listOf(
+                "pkg:generic/brother/",
+                "pkg:generic/epson/",
+                "pkg:generic/canon/",
+                "pkg:generic/lexmark/",
+                "pkg:generic/xerox/",
+                "pkg:generic/ricoh/",
+                "pkg:generic/konica-minolta/",
+                "pkg:generic/kyocera/",
+                "pkg:generic/sharp/",
+                "pkg:generic/zebra/",
+                "pkg:generic/rollo/",
+                "pkg:generic/bambu-lab/",
+                "pkg:generic/prusa/",
+                "pkg:generic/creality/",
+                "pkg:generic/hp/laserjet",
+                "pkg:generic/hp/color-laserjet",
+                "pkg:generic/hp/officejet",
+                "pkg:generic/hp/envy",
+                "pkg:generic/hp/deskjet",
+                "pkg:generic/hp/smart-tank"
+            )
         )
     )
 
@@ -1521,6 +1575,146 @@ object BulletinsAndInventoryEngine {
             aiProBullet = "1 DOCSIS Modem Lifecycle Notice: Motorola MB8600 / MB7621 ISP-provisioned update.",
             aiStnBullet = "1 Cable Modem Notice (Motorola): Updates are managed automatically by your internet provider.",
             publishedAt = "4h ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CPSC-25090-lexmark-ms725",
+            canonicalFeedSlug = "cpsc-safety",
+            bulletinType = "recall",
+            isHighSev = true,
+            purlBase = "pkg:generic/lexmark/ms725dvn",
+            proTitle = "CPSC Recall #25-090: Lexmark MS725dvn / MX725adve Fire Hazard",
+            proBody = "An internal metal support part can dislodge, contact internal wiring, and pose a fire hazard. Immediately unplug affected Lexmark MS725dvn and MX725adve enterprise laser printers and contact Lexmark for a free on-site service repair.",
+            stnTitle = "Safety Recall: Lexmark Printer Fire Hazard (#25-090)",
+            stnBody = "Affected Lexmark MS725dvn and MX725adve laser printers have a safety recall for an internal metal bracket that can overheat or spark. Unplug the printer immediately and schedule a free Lexmark repair visit.",
+            aiProBullet = "1 CPSC Safety Recall (Lexmark MS725dvn / MX725adve): Fire hazard — unplug and schedule repair.",
+            aiStnBullet = "Safety Recall: Unplug affected Lexmark MS725/MX725 printers immediately (#25-090).",
+            publishedAt = "5d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CPSC-24264-bambu-a1",
+            canonicalFeedSlug = "cpsc-safety",
+            bulletinType = "recall",
+            isHighSev = true,
+            purlBase = "pkg:generic/bambu-lab/a1",
+            proTitle = "CPSC Recall #24-264: Bambu Lab A1 3D Printer Heatbed Cable Fire & Shock Hazard",
+            proBody = "Bambu Lab A1 heatbed power cables can become damaged near the printer base, posing electric shock and fire hazards. Stop using un-remediated original A1 units and install the revised strain-relieved heatbed assembly.",
+            stnTitle = "Safety Recall: Bambu Lab A1 3D Printer Heatbed Cable (#24-264)",
+            stnBody = "Earlier Bambu Lab A1 3D printers are recalled due to a heatbed cable that can bend, fray, and overheat. Stop printing on un-repaired units and verify your heatbed cable replacement or voucher status with Bambu Lab.",
+            aiProBullet = "1 CPSC Safety Recall (Bambu Lab A1): Heatbed cable shock & fire hazard — verify replacement.",
+            aiStnBullet = "Safety Recall: Verify Bambu Lab A1 heatbed cable fix before printing (#24-264).",
+            publishedAt = "6d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2024-51978-brother-passbroke",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cisa_kev",
+            isHighSev = true,
+            purlBase = "pkg:generic/brother",
+            proTitle = "Brother Network Printer Default Password Generation & HTTP/IPP Exposure (CVE-2024-51978)",
+            proBody = "Serial-derived default administrator passwords (CVE-2024-51978) and unauthenticated HTTP/IPP endpoints affect hundreds of Brother HL-L, MFC-L, and DCP-L models. Update firmware, rotate the Web Based Management admin password immediately, and restrict IPP/HTTP to local trusted subnets.",
+            stnTitle = "Brother Printer Security Fix: Update Firmware & Change Admin Password",
+            stnBody = "A known vulnerability lets attackers guess factory default admin passwords on many Brother Wi-Fi printers from the serial number. Open your printer menu or Brother app to install the latest firmware and set a custom admin password.",
+            aiProBullet = "1 High-Severity PSIRT Advisory (Brother Printers): Rotate serial-derived admin password & patch.",
+            aiStnBullet = "Security Fix (Brother Printer): Update firmware and set a custom printer password.",
+            publishedAt = "2d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2023-1707-hp-laserjet-officejet",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/hp/laserjet",
+            proTitle = "HP LaserJet FutureSmart & Pro IPsec / Port 9100 Information Disclosure (CVE-2023-1707)",
+            proBody = "HP Enterprise LaserJet, Managed MFP, and Pro printers running unpatched FutureSmart firmware with IPsec enabled may expose sensitive memory over IPP/9100. Apply the latest HP Security Bulletin firmware and disable unencrypted JetDirect port 9100 where unused.",
+            stnTitle = "HP LaserJet Update: Patch Network Printing & Memory Leak Flaw",
+            stnBody = "HP issued a firmware security update for LaserJet printers to protect print jobs and network credentials over Wi-Fi and Ethernet. Run HP Smart or the Embedded Web Server updater to install the latest firmware.",
+            aiProBullet = "1 PSIRT CVE Advisory (HP LaserJet): Patch FutureSmart / Pro IPsec disclosure & restrict TCP/9100.",
+            aiStnBullet = "Security Update (HP LaserJet): Install latest printer firmware via HP Smart or web menu.",
+            publishedAt = "3d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2022-3942-hp-officejet-envy",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/hp/officejet",
+            proTitle = "HP OfficeJet Pro & Inkjet LLMNR Buffer Overflow & RCE (CVE-2022-3942)",
+            proBody = "A Link-Local Multicast Name Resolution (LLMNR) buffer overflow affects HP OfficeJet Pro and LaserJet Pro models, enabling LAN-adjacent remote code execution. Upgrade printer firmware and disable LLMNR / WSD if only IPP/AirPrint is needed.",
+            stnTitle = "HP OfficeJet Security Update: Patch Wi-Fi Discovery Vulnerability",
+            stnBody = "A critical flaw in how HP OfficeJet printers handle local network name lookups could let a compromised device on the same Wi-Fi run code on the printer. Enable automatic updates in the HP printer menu to apply the fix.",
+            aiProBullet = "1 High-Severity CVE (HP OfficeJet Pro): Patch LLMNR buffer overflow & disable legacy discovery.",
+            aiStnBullet = "Security Fix (HP OfficeJet): Update printer firmware to block Wi-Fi network attacks.",
+            publishedAt = "4d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2023-6229-canon-imageclass",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cisa_kev",
+            isHighSev = true,
+            purlBase = "pkg:generic/canon",
+            proTitle = "Canon imageCLASS / imageRUNNER CPCA Buffer Overflow RCE (CVE-2023-6229)",
+            proBody = "Stack/heap buffer overflows in Canon CPCA network printing protocol (CVE-2023-6229 / CVE-2023-6230) allow unauthenticated LAN RCE or DoS on imageCLASS, i-SENSYS, and imageRUNNER ADVANCE devices. Update firmware, enable Remote UI PIN lock, and block internet exposure.",
+            stnTitle = "Canon Printer Security Alert: Update Firmware & Lock Remote UI",
+            stnBody = "Canon fixed serious vulnerabilities in imageCLASS and office laser printers that could allow an attacker on the network to take control of the printer. Install the latest Canon firmware update and turn on a Remote UI System Manager PIN.",
+            aiProBullet = "1 High-Severity PSIRT Advisory (Canon Printers): Patch CPCA RCE & enforce Remote UI PIN.",
+            aiStnBullet = "Security Alert (Canon Printer): Update firmware and set a Remote UI PIN.",
+            publishedAt = "3d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2023-27518-epson-webconfig",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/epson",
+            proTitle = "Epson EcoTank & WorkForce Web Config Authentication & CSRF Bypass (CVE-2023-27518)",
+            proBody = "Improper password policy and CSRF protections in Epson Web Config allow unauthorized configuration changes on EcoTank and WorkForce Pro networked printers. Update firmware via Epson Software Updater and enforce a unique Administrator Password in Web Config.",
+            stnTitle = "Epson Printer Security Check: Set Admin Password & Update Firmware",
+            stnBody = "Some Epson EcoTank and WorkForce printers let anyone on your home Wi-Fi open the printer web page without a password or hijack settings. Install the latest Epson firmware update and set an Administrator Password in Web Config.",
+            aiProBullet = "1 PSIRT Advisory (Epson Printers): Enforce Web Config admin password & apply firmware patch.",
+            aiStnBullet = "Security Check (Epson Printer): Update firmware and add a printer admin password.",
+            publishedAt = "5d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2024-39620-sharp-mx-bp-osa",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/sharp",
+            proTitle = "Sharp MX / BP Series MFP Web Server Path Traversal & Default Admin Lockout (CVE-2024-39620)",
+            proBody = "Sharp MX and BP enterprise MFPs can expose configuration files or SMB/LDAP bind credentials if the embedded web server is unpatched or left with factory default admin credentials. Apply Sharp security patches, change the System Administrator password, and enable HTTPS-only Web UI.",
+            stnTitle = "Sharp MFP Security Update: Patch Web Admin & Rotate Default Password",
+            stnBody = "Sharp MX and BP office copiers/printers need a firmware security update and a custom System Administrator password so stored scan destinations and network credentials stay protected.",
+            aiProBullet = "1 High-Severity CVE (Sharp MX/BP MFP): Patch Web UI traversal & rotate default admin credentials.",
+            aiStnBullet = "Security Update (Sharp MFP): Install latest copier firmware and change default admin password.",
+            publishedAt = "2d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "CVE-2024-12511-xerox-connectkey",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "cve",
+            isHighSev = true,
+            purlBase = "pkg:generic/xerox",
+            proTitle = "Xerox VersaLink & AltaLink LDAP Pass-Back & ConnectKey RCE Advisory (CVE-2024-12511)",
+            proBody = "Unpatched Xerox VersaLink, AltaLink, and WorkCentre ConnectKey MFPs remain frequent internal lateral-movement targets via LDAP pass-back and web service injection. Apply the latest ConnectKey Service Pack and bind Scan-to-Folder / LDAP using dedicated least-privilege accounts.",
+            stnTitle = "Xerox Printer Security Advisory: Update ConnectKey & Lock Scan Settings",
+            stnBody = "Xerox VersaLink and AltaLink printers store network login details for Scan-to-Email and Scan-to-Folder. Update to the latest Xerox firmware and ensure default admin passwords have been replaced.",
+            aiProBullet = "1 PSIRT CVE Advisory (Xerox ConnectKey): Patch RCE & isolate LDAP/SMB scan credentials.",
+            aiStnBullet = "Security Update (Xerox Printer): Update ConnectKey software and protect scan passwords.",
+            publishedAt = "3d ago"
+        ),
+        CuratedBulletinItem(
+            externalId = "REL-office-mfp-zebra-3d-2026-11",
+            canonicalFeedSlug = "network-printer-firmware-psirt",
+            bulletinType = "release",
+            isHighSev = false,
+            purlBase = "pkg:generic/ricoh",
+            proTitle = "Ricoh IM C Series & Office MFP TLS 1.3 Maintenance Release (3.14)",
+            proBody = "Routine Ricoh Always Current Technology firmware maintenance update deprecating legacy TLS 1.0/1.1 transport ciphers and refreshing IPP-over-TLS root CA bundles.",
+            stnTitle = "Printer Maintenance Update: Ricoh Security & TLS Refresh",
+            stnBody = "A routine printer software update is available for Ricoh office printers to keep encrypted scanning and wireless printing working smoothly with modern computers and phones.",
+            aiProBullet = "1 Firmware Release (Ricoh IM C): Maintenance update enforcing TLS 1.3 and refreshed CA roots.",
+            aiStnBullet = "1 Printer Update (Ricoh): Routine maintenance for secure printing and scanning.",
+            publishedAt = "6d ago"
         )
     )
 }

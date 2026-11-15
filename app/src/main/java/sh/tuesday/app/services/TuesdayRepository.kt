@@ -511,10 +511,8 @@ class TuesdayRepository(context: Context) {
     }
 
     fun confirmProvisionalDeviceModel(chosenModel: String) {
-        var targetDeviceId: String? = null
         _rackDevices.value = _rackDevices.value.map { dev ->
             if (dev.confidenceTier == DeviceConfidenceTier.PROVISIONAL_GUESS) {
-                targetDeviceId = dev.id
                 dev.copy(
                     confidenceTier = DeviceConfidenceTier.CONFIRMED,
                     portState = PortLifecycleState.CVE_KEV,
@@ -527,21 +525,11 @@ class TuesdayRepository(context: Context) {
             } else dev
         }
         persistInventoryState()
-        targetDeviceId?.let { devId ->
-            syncDevicePatchToServerAsync(
-                deviceId = devId,
-                payload = JSONObject().apply {
-                    put("confirmed_candidate_model", chosenModel)
-                }
-            )
-        }
     }
 
     fun rejectProvisionalDeviceModel() {
-        var targetDeviceId: String? = null
         _rackDevices.value = _rackDevices.value.map { dev ->
             if (dev.confidenceTier == DeviceConfidenceTier.PROVISIONAL_GUESS) {
-                targetDeviceId = dev.id
                 dev.copy(
                     confidenceTier = DeviceConfidenceTier.OPAQUE_UNKNOWN,
                     excludedPurlPrefixes = dev.excludedPurlPrefixes + "pkg:generic/ecobee/*"
@@ -549,15 +537,6 @@ class TuesdayRepository(context: Context) {
             } else dev
         }
         persistInventoryState()
-        targetDeviceId?.let { devId ->
-            syncDevicePatchToServerAsync(
-                deviceId = devId,
-                payload = JSONObject().apply {
-                    put("confidence_tier", "opaque_unknown")
-                    put("add_excluded_purl_prefix", "pkg:generic/ecobee/*")
-                }
-            )
-        }
     }
 
     private fun loadConfig() {
@@ -683,15 +662,29 @@ class TuesdayRepository(context: Context) {
         val isGuessed = inventoryState == InventoryConfidenceState.INCOMPLETE_OR_GUESSED
         val canonicalPurls = buildCanonicalPurls(hostname, discoveredMetadata)
         val inferredCategory = inferRackCategory(discoveredMetadata)
+        val mfg = discoveredMetadata?.manufacturer?.trim().orEmpty()
+        val mdl = discoveredMetadata?.modelNumber?.trim().orEmpty()
+        val vendorAndModel = when {
+            mfg.isNotEmpty() && mdl.isNotEmpty() && !mdl.startsWith(mfg, ignoreCase = true) -> "$mfg $mdl"
+            mdl.isNotEmpty() -> mdl
+            mfg.isNotEmpty() -> mfg
+            else -> ""
+        }
+        val resolvedName = if (hostname.isBlank() || hostname.equals("device.local", ignoreCase = true) || hostname.equals("unidentified-device.local", ignoreCase = true)) {
+            vendorAndModel.ifBlank { hostname.ifBlank { "Network Device" } }
+        } else {
+            hostname.trim()
+        }
+        val resolvedShortLabel = mdl.ifBlank { resolvedName }.take(14)
         val newRackDev = RackPortDevice(
             id = newDeviceId,
             portIndex = nextPort,
             category = inferredCategory,
-            portState = if (isGuessed) PortLifecycleState.GUESSED else PortLifecycleState.OK,
+            portState = BulletinsAndInventoryEngine.inferInitialPortStateForPurls(canonicalPurls, isGuessed),
             trustZone = TrustZone.Z3_IOT,
             assetTag = "STN-NEW-$nextPort",
-            shortLabel = hostname.take(10),
-            name = hostname,
+            shortLabel = resolvedShortLabel,
+            name = resolvedName,
             roomLocation = "Newly Enrolled",
             version = if (isGuessed) "unverified" else "2026.10.1",
             targetVersion = "2026.10.1",
@@ -720,7 +713,7 @@ class TuesdayRepository(context: Context) {
         val initialAttestation = DeviceAttestation(
             id = attId,
             deviceId = newDeviceId,
-            deviceLabel = hostname.take(10),
+            deviceLabel = resolvedShortLabel,
             type = AttestationType.PRESENCE_AUDIT,
             presenceState = DevicePresenceState.ACTIVE,
             timestampMs = now,
@@ -746,8 +739,6 @@ class TuesdayRepository(context: Context) {
         persistNetworks()
         persistInventoryState()
 
-        syncDeviceCreateToServerAsync(finalRackDev, discoveredMetadata)
-
         _isSyncing.value = false
     }
 
@@ -761,12 +752,6 @@ class TuesdayRepository(context: Context) {
             } else it
         }
         persistInventoryState()
-        syncDevicePatchToServerAsync(
-            deviceId = deviceId,
-            payload = JSONObject().apply {
-                put("mark_remediated", true)
-            }
-        )
     }
 
     fun updateDeviceDetails(
@@ -792,19 +777,21 @@ class TuesdayRepository(context: Context) {
             } else dev
         }
         persistInventoryState()
-        updated?.let { next ->
-            syncDevicePatchToServerAsync(
-                deviceId = deviceId,
-                payload = JSONObject().apply {
-                    put("name", next.name)
-                    put("short_label", next.shortLabel)
-                    put("room_location", next.roomLocation)
-                    put("trust_zone", next.trustZone.key)
-                    put("asset_tag", next.assetTag)
-                }
-            )
-        }
         return updated
+    }
+
+    fun deleteDevice(deviceId: String): Boolean {
+        if (_rackDevices.value.none { it.id == deviceId }) return false
+        _rackDevices.value = _rackDevices.value.filterNot { it.id == deviceId }
+        _attestations.value = _attestations.value.filterNot { it.deviceId == deviceId }
+        val nextCount = _rackDevices.value.size.coerceAtMost(128)
+        _activeDeviceCount.value = nextCount
+        _userNetworks.value = _userNetworks.value.map {
+            if (it.id == _activeNetworkId.value) it.copy(devicesCount = nextCount) else it
+        }
+        persistNetworks()
+        persistInventoryState()
+        return true
     }
 
     fun billingAccountIdentifier(): String = "device-$clientDeviceId"
@@ -939,42 +926,6 @@ class TuesdayRepository(context: Context) {
         _entitlementTier.value
     }
 
-    private fun syncDeviceCreateToServerAsync(dev: RackPortDevice, meta: DiscoveredDeviceMetadata?) {
-        if (isRobolectricJvm()) return
-        ioScope.launch {
-            try {
-                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
-                val payload = JSONObject().apply {
-                    put("id", dev.id)
-                    put("port_index", dev.portIndex)
-                    put("category_code", dev.category.code)
-                    put("trust_zone", dev.trustZone.key)
-                    put("port_state", dev.portState.key)
-                    put("confidence_tier", dev.confidenceTier.name.lowercase())
-                    put("asset_tag", dev.assetTag)
-                    put("short_label", dev.shortLabel)
-                    put("name", dev.name)
-                    put("vendor", meta?.manufacturer ?: "Generic")
-                    put("model_number", meta?.modelNumber ?: dev.shortLabel)
-                    put("room_location", dev.roomLocation)
-                    put("version", dev.version)
-                    put("target_version", dev.targetVersion ?: dev.version)
-                    put("purls", JSONArray(dev.purls))
-                }
-                val req = Request.Builder()
-                    .url("$baseUrl/api/v1/inventory")
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
-                    .addHeader("X-Tuesday-Client-Platform", "android")
-                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
-                    .build()
-                httpClient.newCall(req).execute().close()
-            } catch (e: Exception) {
-                Log.w("TuesdayRepoSync", "Inventory create queued offline: ${e.message}")
-            }
-        }
-    }
-
     fun emitTelemetryEventAsync(
         eventName: String,
         targetEntityType: String? = null,
@@ -1012,25 +963,6 @@ class TuesdayRepository(context: Context) {
         }
     }
 
-    private fun syncDevicePatchToServerAsync(deviceId: String, payload: JSONObject) {
-        if (isRobolectricJvm()) return
-        ioScope.launch {
-            try {
-                val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
-                val req = Request.Builder()
-                    .url("$baseUrl/api/v1/inventory/$deviceId")
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("X-Tuesday-Device-ID", clientDeviceId)
-                    .addHeader("X-Tuesday-Client-Platform", "android")
-                    .patch(payload.toString().toRequestBody("application/json".toMediaType()))
-                    .build()
-                httpClient.newCall(req).execute().close()
-            } catch (e: Exception) {
-                Log.w("TuesdayRepoSync", "Inventory patch queued offline: ${e.message}")
-            }
-        }
-    }
-
     private fun buildCanonicalPurls(hostname: String, meta: DiscoveredDeviceMetadata?): List<String> {
         val rawVendor = meta?.manufacturer?.trim().orEmpty()
         val rawModel = meta?.modelNumber?.trim().orEmpty()
@@ -1049,7 +981,16 @@ class TuesdayRepository(context: Context) {
 
         val parts = rawModel.split(Regex("\\s*[/|,]\\s*")).map { it.trim() }.filter { it.isNotEmpty() }
         val purls = parts.mapNotNull { part ->
-            val slug = part.replace("+", "-plus").lowercase().replace(Regex("[^a-z0-9.-]+"), "-").trim('-')
+            val strippedPart = when {
+                rawVendor.isNotEmpty() && part.startsWith("$rawVendor ", ignoreCase = true) ->
+                    part.drop(rawVendor.length).trim()
+                vendorSlug.isNotEmpty() && part.startsWith("$vendorSlug ", ignoreCase = true) ->
+                    part.drop(vendorSlug.length).trim()
+                vendorSlug.isNotEmpty() && part.startsWith("$vendorSlug-", ignoreCase = true) ->
+                    part.drop(vendorSlug.length + 1).trim()
+                else -> part
+            }.ifBlank { part }
+            val slug = strippedPart.replace("+", "-plus").lowercase().replace(Regex("[^a-z0-9.-]+"), "-").trim('-')
             if (slug.isNotEmpty()) "pkg:generic/$vendorSlug/$slug@1.0.0" else null
         }.distinct().toMutableList()
 
@@ -1063,7 +1004,16 @@ class TuesdayRepository(context: Context) {
     private fun inferRackCategory(meta: DiscoveredDeviceMetadata?): StnHardwareCategory {
         val combined = "${meta?.deviceCategory.orEmpty()} ${meta?.modelNumber.orEmpty()} ${meta?.manufacturer.orEmpty()}".lowercase()
         return when {
-            combined.contains("printer") || combined.contains("scanner") || combined.contains("laserjet") || combined.contains("officejet") || combined.contains("ecotank") || combined.contains("imageclass") || combined.contains("hl-l") || combined.contains("mfc-l") || combined.contains("brother") || combined.contains("epson") || combined.contains("lexmark") || combined.contains("bambu") -> StnHardwareCategory.C6_IOT
+            combined.contains("printer") || combined.contains("scanner") || combined.contains("laserjet") ||
+                combined.contains("officejet") || combined.contains("ecotank") || combined.contains("imageclass") ||
+                combined.contains("imagerunner") || combined.contains("pixma") || combined.contains("maxify") ||
+                combined.contains("hl-l") || combined.contains("mfc-l") || combined.contains("brother") ||
+                combined.contains("epson") || combined.contains("lexmark") || combined.contains("bambu") ||
+                combined.contains("canon") || combined.contains("xerox") || combined.contains("ricoh") ||
+                combined.contains("konica") || combined.contains("kyocera") || combined.contains("sharp") ||
+                combined.contains("zebra") || combined.contains("rollo") || combined.contains("prusa") ||
+                combined.contains("creality") || combined.contains("versalink") || combined.contains("altalink") ||
+                combined.contains("bizhub") || combined.contains("ecosys") || combined.contains("mx-") -> StnHardwareCategory.C6_IOT
             combined.contains("router") || combined.contains("gateway") || combined.contains("modem") || combined.contains("docsis") || combined.contains("ucg") || combined.contains("uxg") || combined.contains("mb8600") -> StnHardwareCategory.C1_GATEWAY
             combined.contains("switch") || combined.contains("2960") || combined.contains("usw") -> StnHardwareCategory.C2_SWITCH
             combined.contains("wireless") || combined.contains("access point") || combined.contains("u6-") || combined.contains("u7-") -> StnHardwareCategory.C3_AP

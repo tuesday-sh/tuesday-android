@@ -196,7 +196,12 @@ fun AppNavigation(
                 initialAutoSearch = searchArg,
                 onNavigateBack = {
                     repository.setActiveNavRoute("home")
-                    navController.popBackStack()
+                    if (!navController.popBackStack("home", inclusive = false)) {
+                        navController.navigate("home") {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    }
                 }
             )
         }
@@ -207,7 +212,12 @@ fun AppNavigation(
                 repository = repository,
                 onNavigateBack = {
                     repository.setActiveNavRoute("home")
-                    navController.popBackStack()
+                    if (!navController.popBackStack("home", inclusive = false)) {
+                        navController.navigate("home") {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    }
                 }
             )
         }

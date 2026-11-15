@@ -218,7 +218,7 @@ class GeminiDiscoveryService(private val context: Context) {
         initialMode: String = "photo_wizard",
         finalMode: String = "photo_wizard",
         candidateModels: List<String> = emptyList(),
-        enrollOnServer: Boolean = true,
+        enrollOnServer: Boolean = false,
         serverBaseUrl: String = DEFAULT_SERVER_BASE_URL
     ): Boolean = withContext(Dispatchers.IO) {
         if (TuesdayRepository.isRobolectricJvm()) return@withContext false
@@ -443,15 +443,20 @@ class GeminiDiscoveryService(private val context: Context) {
                 )
             } else null
 
+            val mfg = c.optString("manufacturer", "Generic Vendor")
+            val mdl = c.optString("modelNumber", "Generic Model")
+            val disp = c.optString("displayName", "$mfg $mdl".trim()).ifBlank { "Network Hardware" }
+            val rawHost = c.optString("suggestedHostname", "")
+            val resolvedHost = if (rawHost.isBlank() || rawHost.equals("device.local", ignoreCase = true)) disp else rawHost
             candidatesList.add(
                 DeviceCandidateMatch(
-                    manufacturer = c.optString("manufacturer", "Generic Vendor"),
-                    modelNumber = c.optString("modelNumber", "Generic Model"),
-                    displayName = c.optString("displayName", "Network Hardware"),
+                    manufacturer = mfg,
+                    modelNumber = mdl,
+                    displayName = disp,
                     deviceCategory = c.optString("deviceCategory", "Router"),
                     confidencePercent = c.optInt("confidencePercent", 70),
                     reasoning = c.optString("reasoning", ""),
-                    suggestedHostname = c.optString("suggestedHostname", "device.local"),
+                    suggestedHostname = resolvedHost,
                     suggestedOsDetails = osDetailsStr,
                     suggestedPackageManager = c.optString("suggestedPackageManager", "firmware"),
                     goldAlignment = goldAlignment

@@ -226,4 +226,99 @@ class GoldClueSuggestionRepositoryTest {
         assertFalse(top.reasoning.contains("infrared", ignoreCase = true))
         assertFalse(reconciled.visualSummary.contains("small square", ignoreCase = true))
     }
+
+    @Test
+    fun expandedNetworkedPrintersResolveInClueIndexAndUsbOnlyPrintersStayUnaligned() {
+        val gciFile = listOf(
+            java.io.File("src/main/assets/gold_clue_index.gci"),
+            java.io.File("app/src/main/assets/gold_clue_index.gci")
+        ).first { it.exists() }
+        val index = gciFile.inputStream().use { GoldClueIndexData.parseGzipStream(it) }
+
+        val expectedBrands = listOf(
+            "Xerox", "Ricoh", "Konica Minolta", "Kyocera",
+            "Zebra", "Rollo", "Prusa", "Creality"
+        )
+        expectedBrands.forEach { brand ->
+            assertTrue(
+                "Expected brand $brand in Gold Clue Index",
+                index.brands.any { it.name.equals(brand, ignoreCase = true) }
+            )
+            val hits = index.querySuggestions(rawQuery = brand, selected = emptyList())
+            assertTrue(
+                "Expected querySuggestions hit for brand $brand",
+                hits.any { it.kind == GoldClueKind.BRAND && it.title.equals(brand, ignoreCase = true) }
+            )
+        }
+
+        val expectedModels = listOf(
+            "Xerox" to "VersaLink C405dn",
+            "Ricoh" to "IM C3000",
+            "Konica Minolta" to "bizhub C360i",
+            "Kyocera" to "ECOSYS M2540dw",
+            "Zebra" to "ZD421"
+        )
+        expectedModels.forEach { (vendor, model) ->
+            val normTarget = GoldClueIndexData.normalizeAlnum(model)
+            val entry = index.models.firstOrNull {
+                it.vendor.equals(vendor, ignoreCase = true) && it.normModel == normTarget
+            }
+            assertNotNull("Expected $vendor $model in Gold Clue Index", entry)
+            assertEquals("Expected $vendor $model typeId=printer", "printer", entry!!.typeId)
+        }
+
+        assertEquals("Xerox", index.ouiMap["0000AA"])
+        assertEquals("Zebra", index.ouiMap["00074D"])
+        assertEquals("Xerox", index.querySuggestions(rawQuery = "00:00:AA:11:22:33", selected = emptyList()).first().vendor)
+        assertEquals("Zebra", index.querySuggestions(rawQuery = "00:07:4D:11:22:33", selected = emptyList()).first().vendor)
+        assertEquals("Xerox", index.fccGrantees["DO5"]?.vendor)
+        assertEquals("Zebra", index.fccGrantees["UZ7"]?.vendor)
+
+        val fccXeroxHits = index.querySuggestions(rawQuery = "DO5-VL405", selected = emptyList())
+        assertTrue(
+            "Expected FCC grantee suggestion for DO5-VL405",
+            fccXeroxHits.any { it.vendor.equals("Xerox", ignoreCase = true) || it.title.contains("DO5", ignoreCase = true) }
+        )
+        val fccZebraHits = index.querySuggestions(rawQuery = "UZ7-ZD421", selected = emptyList())
+        assertTrue(
+            "Expected FCC grantee suggestion for UZ7-ZD421",
+            fccZebraHits.any { it.vendor.equals("Zebra", ignoreCase = true) || it.title.contains("UZ7", ignoreCase = true) }
+        )
+
+        val usbCases = listOf(
+            Triple("Brother", "HL-L2400D", "Brother HL-L2400D is a USB-only mono laser printer."),
+            Triple("HP", "LaserJet Pro M404d", "HP LaserJet Pro M404d is a USB-only duplex laser printer.")
+        )
+        usbCases.forEach { (vendor, model, reason) ->
+            val usbTurn = sh.tuesday.app.models.GeminiDiscoveryTurnResult(
+                visualSummary = "$vendor $model desktop laser printer with USB-B port.",
+                extractedIdentifiers = sh.tuesday.app.models.ExtractedDeviceIdentifiers(modelNumber = model),
+                candidates = listOf(
+                    sh.tuesday.app.models.DeviceCandidateMatch(
+                        manufacturer = vendor,
+                        modelNumber = model,
+                        displayName = "$vendor $model",
+                        deviceCategory = "Printer",
+                        confidencePercent = 94,
+                        reasoning = reason,
+                        suggestedHostname = "usb-printer",
+                        suggestedOsDetails = "Embedded Printer",
+                        suggestedPackageManager = "firmware",
+                        goldAlignment = sh.tuesday.app.models.GoldAlignmentInfo(
+                            aligned = false,
+                            statusLabel = "UNALIGNED RAW MATCH"
+                        )
+                    )
+                ),
+                isNetworkedDevice = false,
+                outOfScopeReason = reason
+            )
+
+            val reconciled = index.reconcileDiscoveryResult(usbTurn)
+            assertFalse("USB-only $vendor $model must keep isNetworkedDevice=false", reconciled.isNetworkedDevice)
+            assertEquals(reason, reconciled.outOfScopeReason)
+            assertFalse(reconciled.candidates.first().goldAlignment!!.aligned)
+            assertEquals("UNALIGNED RAW MATCH", reconciled.candidates.first().goldAlignment!!.statusLabel)
+        }
+    }
 }

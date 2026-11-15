@@ -1788,8 +1788,12 @@ fun AddDeviceScreen(
                                                 candidateModels = result.candidates.map { it.modelNumber },
                                                 serverBaseUrl = hacsConfig.tuesdayApiBaseUrl
                                             )
+                                            val cleanDisplayName = candidate.displayName
+                                                .replace(Regex("^\\[[A-Za-z0-9 _-]+\\]\\s*"), "")
+                                                .trim()
+                                                .ifBlank { "${candidate.manufacturer} $resolvedModel".trim() }
                                             repository.enrollDevice(
-                                                hostname = candidate.suggestedHostname,
+                                                hostname = cleanDisplayName,
                                                 osDetails = candidate.suggestedOsDetails,
                                                 packageManager = candidate.resolvedPackageManager,
                                                 agentToken = "",

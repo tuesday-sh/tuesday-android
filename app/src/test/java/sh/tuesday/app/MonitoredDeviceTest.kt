@@ -596,4 +596,76 @@ class MonitoredDeviceTest {
         assertEquals(3, decoded.devices.size)
         assertEquals(listOf("lg-esphome-iot"), decoded.mutedFeedSlugs)
     }
+
+    @Test
+    fun testNetworkedPrinterAdvisoriesRecallsAndInitialPortState() {
+        val printerPurls = listOf(
+            "Brother HL-L2350DW" to listOf("pkg:generic/brother/hl-l2350dw@1.0.0"),
+            "Sharp MX-M453N" to listOf("pkg:generic/sharp/mx-m453n@1.0.0"),
+            "HP LaserJet Pro 4001dw" to listOf("pkg:generic/hp/laserjet-pro-4001dw@1.0.0"),
+            "Xerox VersaLink C405dn" to listOf("pkg:generic/xerox/versalink-c405dn@1.0.0"),
+            "Bambu Lab A1" to listOf("pkg:generic/bambu-lab/a1@1.0.0")
+        )
+
+        val enrolledPrinters = printerPurls.mapIndexed { idx, (modelName, purls) ->
+            val inferred = BulletinsAndInventoryEngine.inferInitialPortStateForPurls(
+                purls = purls,
+                isGuessed = false
+            )
+            assertEquals("Expected CVE_KEV initial state for $modelName", PortLifecycleState.CVE_KEV, inferred)
+            RackPortDevice(
+                id = "prt-$idx",
+                portIndex = idx + 1,
+                category = StnHardwareCategory.C6_IOT,
+                portState = inferred,
+                trustZone = TrustZone.Z3_IOT,
+                shortLabel = modelName.take(10),
+                name = modelName,
+                roomLocation = "Office",
+                version = "1.0.0",
+                lifecycleTier = "Active",
+                purls = purls,
+                confidenceTier = DeviceConfidenceTier.CONFIRMED,
+                presenceState = DevicePresenceState.ACTIVE,
+                isRetired = false
+            )
+        }
+
+        // Verify routine release state and guessed override
+        assertEquals(
+            PortLifecycleState.UPDATE,
+            BulletinsAndInventoryEngine.inferInitialPortStateForPurls(
+                purls = listOf("pkg:generic/ricoh/im-c3000@3.10"),
+                isGuessed = false
+            )
+        )
+        assertEquals(
+            PortLifecycleState.GUESSED,
+            BulletinsAndInventoryEngine.inferInitialPortStateForPurls(
+                purls = listOf("pkg:generic/brother/hl-l2350dw@1.0.0"),
+                isGuessed = true
+            )
+        )
+
+        enrolledPrinters.forEach { printer ->
+            val matched = BulletinsAndInventoryEngine.findBulletinsForDevice(printer)
+            assertTrue("Expected at least 1 bulletin for ${printer.name}", matched.isNotEmpty())
+        }
+
+        val assembled = BulletinsAndInventoryEngine.assembleBulletins(
+            flavor = AppBrandFlavor.TUESDAY_PRO,
+            devices = enrolledPrinters,
+            mutedFeedSlugs = emptySet()
+        )
+        val matchedFeedSlugs = assembled.matchedFeeds.map { it.slug }.toSet()
+        assertTrue(matchedFeedSlugs.contains("network-printer-firmware-psirt"))
+        assertTrue(matchedFeedSlugs.contains("cpsc-safety"))
+
+        val inboxIds = assembled.inbox.map { it.externalId }.toSet()
+        assertTrue(inboxIds.contains("CVE-2024-51978-brother-passbroke"))
+        assertTrue(inboxIds.contains("CVE-2024-39620-sharp-mx-bp-osa"))
+        assertTrue(inboxIds.contains("CVE-2023-1707-hp-laserjet-officejet"))
+        assertTrue(inboxIds.contains("CVE-2024-12511-xerox-connectkey"))
+        assertTrue(inboxIds.contains("CPSC-24264-bambu-a1"))
+    }
 }

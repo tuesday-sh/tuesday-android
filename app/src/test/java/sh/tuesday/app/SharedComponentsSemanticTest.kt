@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -282,5 +283,47 @@ class SharedComponentsSemanticTest {
             composeRule.onNodeWithText("Join our Discord Community", useUnmergedTree = true).assertIsDisplayed()
             composeRule.onNodeWithText(DISCORD_INVITE_URL, substring = true, useUnmergedTree = true).assertIsDisplayed()
         }
+    }
+
+    @Test
+    fun editDeviceScreenDeletesDeviceAfterConfirmation() {
+        val app = RuntimeEnvironment.getApplication()
+        val repository = TuesdayRepository(app)
+        repository.setSimulatedDeviceCount(12)
+        val targetDevice = repository.rackDevices.value.first()
+        var navigateBackCount = 0
+
+        composeRule.setContent {
+            TuesdayAppTheme(flavor = AppBrandFlavor.TUESDAY_PRO) {
+                EditDeviceScreen(
+                    deviceId = targetDevice.id,
+                    repository = repository,
+                    onNavigateBack = { navigateBackCount++ }
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag("ui:action:requestDeleteDevice", useUnmergedTree = true)
+            .performScrollTo()
+            .performClick()
+        composeRule.waitForIdle()
+
+        composeRule
+            .onNodeWithTag("ui:action:confirmDeleteDevice", useUnmergedTree = true)
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(
+            "Expected EditDeviceScreen to navigate back exactly once after delete",
+            1,
+            navigateBackCount
+        )
+        assertTrue(
+            "Expected deleted device to be removed from local repository",
+            repository.rackDevices.value.none { it.id == targetDevice.id }
+        )
     }
 }

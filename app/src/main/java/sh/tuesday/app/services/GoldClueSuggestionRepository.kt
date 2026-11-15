@@ -593,7 +593,17 @@ class GoldClueIndexData(
                 models.filter { it.normModel == primaryNorm }.takeIf { it.size == 1 }?.firstOrNull()
             }
 
+            val isUsbOnly = isUsbOnlyPrinterModel(cand.manufacturer, rawModel)
             val newAlignment = when {
+                isUsbOnly -> (cand.goldAlignment ?: GoldAlignmentInfo()).copy(
+                    aligned = false,
+                    matchedFeedSlug = null,
+                    matchedFeedName = null,
+                    matchedPurlPrefix = null,
+                    inBuiltInCatalog = false,
+                    inConfirmedCatalog = false,
+                    statusLabel = "UNALIGNED RAW MATCH"
+                )
                 cand.goldAlignment?.aligned == true -> cand.goldAlignment
                 matchedModel != null -> {
                     val modelSlug = matchedModel.model.lowercase().replace(Regex("[^a-z0-9.+-]+"), "-").trim('-')
@@ -610,7 +620,7 @@ class GoldClueIndexData(
                         diagnosticNote = "Matched local Pinned Gold Clue Index v$datalakeVersion"
                     )
                 }
-                matchedBrand != null && (cand.goldAlignment == null || cand.goldAlignment.statusLabel == "UNALIGNED RAW MATCH") -> {
+                result.isNetworkedDevice && matchedBrand != null && (cand.goldAlignment == null || cand.goldAlignment.statusLabel == "UNALIGNED RAW MATCH") -> {
                     (cand.goldAlignment ?: GoldAlignmentInfo()).copy(
                         aligned = false,
                         matchedFeedSlug = cand.goldAlignment?.matchedFeedSlug ?: "vendor-${normalizeAlnum(matchedBrand.name)}",
@@ -654,11 +664,13 @@ class GoldClueIndexData(
             )
         }
 
+        val anyAligned = updatedCandidates.any { it.goldAlignment?.aligned == true }
         val anyAlignedOrFeed = updatedCandidates.any {
             val ga = it.goldAlignment
             ga?.aligned == true || ga?.statusLabel.equals("UNALIGNED MODEL (VENDOR FEED ONLY)", ignoreCase = true)
         }
-        return if (anyAlignedOrFeed) {
+        val shouldOverrideScope = anyAligned || (result.isNetworkedDevice && anyAlignedOrFeed)
+        return if (shouldOverrideScope) {
             val topAligned = updatedCandidates.firstOrNull {
                 val ga = it.goldAlignment
                 ga?.aligned == true || ga?.statusLabel.equals("UNALIGNED MODEL (VENDOR FEED ONLY)", ignoreCase = true)
@@ -677,6 +689,39 @@ class GoldClueIndexData(
         } else {
             result.copy(candidates = updatedCandidates)
         }
+    }
+
+    private fun isUsbOnlyPrinterModel(vendor: String, model: String): Boolean {
+        val m = model.trim()
+        if (m.isEmpty()) return false
+        val v = vendor.trim().lowercase()
+        val combined = "$v ${m.lowercase()}"
+
+        if ((v.contains("brother") || m.contains("HL-", ignoreCase = true) || m.contains("DCP-", ignoreCase = true) || m.contains("MFC-", ignoreCase = true)) &&
+            USB_ONLY_BROTHER_REGEX.containsMatchIn(m)
+        ) {
+            return true
+        }
+
+        if ((v.contains("hp") || v.contains("hewlett") || combined.contains("laserjet")) &&
+            (USB_ONLY_HP_D_REGEX.containsMatchIn(m) || USB_ONLY_HP_PLAIN_REGEX.containsMatchIn(m))
+        ) {
+            return true
+        }
+
+        if ((v.contains("canon") || combined.contains("pixma") || combined.contains("lbp6030")) &&
+            (USB_ONLY_CANON_LBP_REGEX.containsMatchIn(m) || USB_ONLY_CANON_PIXMA_REGEX.containsMatchIn(m))
+        ) {
+            return true
+        }
+
+        if ((v.contains("rollo") || m.contains("X1038", ignoreCase = true)) &&
+            USB_ONLY_ROLLO_REGEX.containsMatchIn(m)
+        ) {
+            return true
+        }
+
+        return false
     }
 
     private fun categoryLabelFor(code: String): String = when (code) {
@@ -722,6 +767,31 @@ class GoldClueIndexData(
     )
 
     companion object {
+        private val USB_ONLY_BROTHER_REGEX = Regex(
+            """(?:^|[^A-Za-z0-9])(?:HL|DCP|MFC)-[A-Za-z0-9]+D(?![WwNn])(?:$|[^A-Za-z0-9])""",
+            RegexOption.IGNORE_CASE
+        )
+        private val USB_ONLY_HP_D_REGEX = Regex(
+            """(?:^|[^A-Za-z0-9])(?:LaserJet\s+(?:Pro\s+)?)?M\d{3,4}d(?![WwNnEe])(?:$|[^A-Za-z0-9])""",
+            RegexOption.IGNORE_CASE
+        )
+        private val USB_ONLY_HP_PLAIN_REGEX = Regex(
+            """(?:^|[^A-Za-z0-9])LaserJet\s+(?:M110|M111|M140|M209|P1102|1018|1020)(?![WwNnEe])(?:$|[^A-Za-z0-9])""",
+            RegexOption.IGNORE_CASE
+        )
+        private val USB_ONLY_CANON_LBP_REGEX = Regex(
+            """(?:^|[^A-Za-z0-9])(?:imageCLASS\s+)?LBP6030(?![WwNn])(?:$|[^A-Za-z0-9])""",
+            RegexOption.IGNORE_CASE
+        )
+        private val USB_ONLY_CANON_PIXMA_REGEX = Regex(
+            """(?:^|[^A-Za-z0-9])PIXMA\s*(?:TS202|TS302|iP2820|MG25\d{2})(?:$|[^A-Za-z0-9])""",
+            RegexOption.IGNORE_CASE
+        )
+        private val USB_ONLY_ROLLO_REGEX = Regex(
+            """(?:^|[^A-Za-z0-9])X1038(?:$|[^A-Za-z0-9])""",
+            RegexOption.IGNORE_CASE
+        )
+
         fun normalizeAlnum(value: String): String =
             value.lowercase().replace(Regex("[^a-z0-9]"), "")
 

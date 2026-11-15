@@ -1,5 +1,5 @@
-• Connected by default to live production API (api.tuesday.sh) with production-ready clean UI defaults
-• Pro Tier 1 Annual & Monthly multi-site subscriptions via Google Play Billing 8.0
-• Redesigned My Net & Home Grid cards, C1–C8 hardware category faceplates, and Patch Tuesday bulletins
-• Added 3-mode Add Device wizard (Photo, Barcode/QR, Manual) with hardware clues search
-• Added Discord community link in Settings and WCAG 2.2 AA/AAA contrast & touch-target refinements
+• Expanded US networked printer, MFP & 3D printer discovery (15 brands) with USB-only exclusion
+• Added curated printer security advisories (Brother, HP, Canon, Epson, Sharp, Xerox, Ricoh) & CPSC recalls (Lexmark, Bambu Lab)
+• Clean brand & model naming on enrollment and immediate advisory state matching
+• Added local Delete Device action with confirmation in Edit Device
+• Pro Tier 1 subscriptions via Google Play Billing 8.0 & live api.tuesday.sh routing
