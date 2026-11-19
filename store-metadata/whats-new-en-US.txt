@@ -1,6 +1,6 @@
-Welcome to Tuesday.sh v1.0.0!
-• Track home & homelab hardware across categories C1–C8 with local-first storage
-• Identify routers, switches, NAS, IoT & networked printers via photo, barcode, or quick clues
-• Stay ahead of CISA KEV security advisories, CPSC hardware recalls & End-of-Life notices
-• View hardware lifecycle timelines and manage devices with clean Edit & Delete controls
-• Optional Pro Tier 1 subscription for unlimited network locations & cross-site sync
+Welcome to Tuesday.sh!
+• Keep track of your home and homelab gear in one simple, private inventory
+• Add routers, switches, NAS boxes, smart home devices, and printers by snapping a photo, scanning a barcode, or picking quick clues
+• Get timely alerts for security updates, hardware recalls, and gear nearing end of support
+• See your hardware's lifespan at a glance with visual timelines
+• Upgrade to Tuesday.sh Pro anytime to track multiple homes or locations
