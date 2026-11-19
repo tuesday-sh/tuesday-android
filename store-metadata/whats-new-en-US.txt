@@ -1,5 +1,6 @@
-• Expanded US networked printer, MFP & 3D printer discovery (15 brands) with USB-only exclusion
-• Added curated printer security advisories (Brother, HP, Canon, Epson, Sharp, Xerox, Ricoh) & CPSC recalls (Lexmark, Bambu Lab)
-• Clean brand & model naming on enrollment and immediate advisory state matching
-• Added local Delete Device action with confirmation in Edit Device
-• Pro Tier 1 subscriptions via Google Play Billing 8.0 & live api.tuesday.sh routing
+Welcome to Tuesday.sh v1.0.0!
+• Track home & homelab hardware across categories C1–C8 with local-first storage
+• Identify routers, switches, NAS, IoT & networked printers via photo, barcode, or quick clues
+• Stay ahead of CISA KEV security advisories, CPSC hardware recalls & End-of-Life notices
+• View hardware lifecycle timelines and manage devices with clean Edit & Delete controls
+• Optional Pro Tier 1 subscription for unlimited network locations & cross-site sync

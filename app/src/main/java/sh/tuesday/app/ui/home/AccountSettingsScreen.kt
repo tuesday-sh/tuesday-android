@@ -313,6 +313,19 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                 }
             )
 
+            LegalAndSupportCard(
+                palette = palette,
+                onOpenUrl = { url ->
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        )
+                    }
+                }
+            )
+
             val section = activeSection
             if (section != null) {
                 TuesdayModalCard(
@@ -428,6 +441,19 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                             )
                                         }
                                     }
+
+                                    SubscriptionLegalDisclosure(
+                                        palette = palette,
+                                        onOpenUrl = { url ->
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    )
                                 } else {
                                     Row(
                                         modifier = Modifier
@@ -1006,7 +1032,92 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
 }
 
 internal const val DISCORD_INVITE_URL = "https://discord.gg/2KEYJARecD"
+internal const val PRIVACY_POLICY_URL = "https://tuesday.sh/privacy"
+internal const val TERMS_OF_SERVICE_URL = "https://tuesday.sh/terms"
+internal const val SUPPORT_URL = "https://tuesday.sh/support"
 private val DiscordBlurple = Color(0xFF5865F2)
+
+@Composable
+internal fun LegalAndSupportCard(
+    palette: BrandPalette,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SurfaceListContainer(
+        palette = palette,
+        modifier = modifier.uiSlot("legal-support-card")
+    ) {
+        SettingsMenuRow(
+            palette = palette,
+            title = "Privacy Policy",
+            subtitle = "Zero-photo-retention & local-first storage",
+            onClick = { onOpenUrl(PRIVACY_POLICY_URL) }
+        )
+        SurfaceListDivider(palette)
+        SettingsMenuRow(
+            palette = palette,
+            title = "Terms of Service",
+            subtitle = "tuesday.sh/terms",
+            onClick = { onOpenUrl(TERMS_OF_SERVICE_URL) }
+        )
+        SurfaceListDivider(palette)
+        SettingsMenuRow(
+            palette = palette,
+            title = "Support & Help",
+            subtitle = "tuesday.sh/support • support@packablock.com",
+            onClick = { onOpenUrl(SUPPORT_URL) }
+        )
+    }
+}
+
+@Composable
+internal fun SubscriptionLegalDisclosure(
+    palette: BrandPalette,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "Subscriptions auto-renew via Google Play unless canceled at least 24 hours before the end of the current period. Manage or cancel anytime in Google Play → Subscriptions.",
+            color = palette.textMuted,
+            fontSize = 11.sp,
+            lineHeight = 15.sp
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Privacy Policy",
+                color = palette.accentText,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .clickable { onOpenUrl(PRIVACY_POLICY_URL) }
+                    .padding(vertical = 4.dp)
+            )
+            Text(
+                text = "•",
+                color = palette.textMuted,
+                fontSize = 11.5.sp
+            )
+            Text(
+                text = "Terms of Service",
+                color = palette.accentText,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .clickable { onOpenUrl(TERMS_OF_SERVICE_URL) }
+                    .padding(vertical = 4.dp)
+            )
+        }
+    }
+}
 
 @Composable
 internal fun DiscordCommunityCard(

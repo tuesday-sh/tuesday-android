@@ -1032,4 +1032,67 @@ class TuesdayComposeSemanticUiTest {
         // Reset back to clean default state
         navigateIntent("tuesday://reset-demo")
     }
+
+    @Test
+    fun t12_playStoreReadinessLegalAndFreshScreenshots() {
+        navigateIntent("tuesday://flavor/pro")
+        navigateIntent("tuesday://seed/12")
+        waitUntilAnyTagExists("ui:component:InventoryCard")
+
+        // 1. Fresh Home (My Net) screenshot with C1-C8 faceplate + 12-device demo fleet
+        captureFlowStep("store", "tuesday-screenshot-1-home.png")
+
+        // 2. Fresh Bulletins screenshot
+        navigateIntent("tuesday://bulletins")
+        waitUntilAnyTagExists("ui:component:BulletinsScreen")
+        composeRule.waitForIdle()
+        captureFlowStep("store", "tuesday-screenshot-2-bulletins.png")
+
+        // 3. Fresh Timeline screenshot
+        navigateIntent("tuesday://timeline")
+        waitUntilAnyTagExists("ui:component:SwimlaneTimelineScreen")
+        composeRule.waitForIdle()
+        captureFlowStep("store", "tuesday-screenshot-3-timeline.png")
+
+        // 4. Verify Settings -> Legal & Support card + Plan auto-renewal disclosure
+        navigateIntent("tuesday://account")
+        waitUntilAnyTagExists("ui:component:AccountSettingsCard")
+        composeRule.waitForIdle()
+        assertTrue(
+            "Expected Privacy Policy link in Settings Legal & Support card",
+            composeRule.onAllNodesWithText("Privacy Policy", substring = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        )
+        assertTrue(
+            "Expected Terms of Service link in Settings Legal & Support card",
+            composeRule.onAllNodesWithText("Terms of Service", substring = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        )
+        assertTrue(
+            "Expected Support & Help link in Settings Legal & Support card",
+            composeRule.onAllNodesWithText("Support & Help", substring = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        )
+
+        // Open Plan & Subscription modal and verify Google Play auto-renewal disclosure
+        composeRule.onAllNodesWithText("Plan & Subscription", substring = true, useUnmergedTree = true)
+            .onFirst().performClick()
+        composeRule.waitForIdle()
+        assertTrue(
+            "Expected Google Play auto-renewal disclosure in Plan & Subscription modal",
+            composeRule.onAllNodesWithText("Subscriptions auto-renew via Google Play", substring = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        )
+
+        // 5. Fresh Add Device screenshot (clues expanded + printer/MFP discovery)
+        navigateIntent("tuesday://add-device?clues=Printer%20%2F%20MFP")
+        waitUntilAnyTagExists("ui:component:AddDeviceWizard")
+        runCatching {
+            composeRule.onNodeWithTag("ui:action:toggleClueAccordion", useUnmergedTree = true).performClick()
+        }
+        composeRule.waitForIdle()
+        captureFlowStep("store", "tuesday-screenshot-4-add-device.png")
+
+        navigateIntent("tuesday://reset-demo")
+    }
 }

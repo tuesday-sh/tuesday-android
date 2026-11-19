@@ -28,7 +28,7 @@
 ### Data Collection & Security Overview
 - **Does your app collect or share any of the required user data types?** `Yes`
 - **Is all of the user data collected by your app encrypted in transit?** `Yes` (HTTPS TLS 1.3 via `https://api.tuesday.sh`)
-- **Do you provide a way for users to request that their data is deleted?** `Yes` (In-app node/site reset & `https://tuesday.sh/privacy`)
+- **Do you provide a way for users to request that their data is deleted?** `Yes` (Local-only device inventory with in-app **Delete Device** in Edit Device, full local reset, and `https://tuesday.sh/privacy`)
 
 ### Specific Data Types
 
@@ -55,8 +55,9 @@
 
 ## 4. Google Play App Review Instructions (Copy/Paste into Play Console -> App Content -> App Access)
 
-> **No login or physical network hardware is required to test all features of Tuesday.sh:**
-> 1. Launch the app. On the initial **Welcome to Tuesday.sh** card (or inside the **Rack** tab), tap **"Explore 12-Device Demo Lab"**.
-> 2. This immediately populates the **24-Port Managed Switch Grid** with 12 realistic homelab and smart-home devices across Trust Zones `Z0`–`Z4` (`UDM-Pro`, `USW-Pro-24`, `Synology DS923+`, `Home Assistant Yellow`, `LG OLED`, `Owlet Cam 2`, etc.).
-> 3. Tap any lit port in the 24-Port Switch Grid to inspect its detail sheet, PURL software inventory, and security posture.
-> 4. Tap the **Bulletins** tab at the bottom to view matched CISA KEV, CPSC Recall, and End-of-Life (EOL) advisories, toggle the **Confirmed vs. Guessed** filter, or test the **+ Add Node** camera/manual hardware discovery sheet.
+> **No account sign-in or physical network hardware is required to test all features of Tuesday.sh:**
+> 1. Launch the app. On the **My Net** home screen, tap **"Enable Demo Mode (add example devices)"** to load a realistic 12-device home/homelab sandbox across hardware categories `C1`–`C8` (Router/Gateway, Switch, Wireless AP, Compute/NAS, Camera, IoT, etc.).
+> 2. Tap any category tile in the **C1–C8 Hardware Category Strip** to expand its device gallery, or tap any device row in **Inventory** to open its inspection sheet with firmware/security posture, PURL software details, and **Edit** (including local **Delete Device** with confirmation).
+> 3. Tap **"+ Add Device"** to test hardware discovery without needing a physical camera: use the **Clues** quick-pick chips (e.g., `Printer / MFP` or `Router / Gateway`), **Upload File**, **Scan Barcode / QR**, or **Manual** entry. Camera permission is completely optional—denying it falls back cleanly to upload/clue entry.
+> 4. Tap the **Bulletins** tab to inspect matched CISA KEV security advisories, CPSC hardware recalls, and End-of-Life (EOL) notices, mark checklist steps complete, or snooze/ignore items.
+> 5. Tap the **Timeline** tab to view hardware lifecycle/support candlesticks, and tap **Settings** to inspect **Network Profile**, **Plan & Subscription** (Google Play Billing v8 `pro_tier_1` monthly/annual offers with Privacy Policy & Terms links), **Preferences**, **Reminders**, **Feeds**, and **Legal & Support** (`https://tuesday.sh/privacy`, `https://tuesday.sh/terms`, `https://tuesday.sh/support`).

@@ -23,9 +23,9 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
-# Keep all data / model / API DTO classes intact
+# Keep all data / models / API DTO classes intact
 -keep class sh.tuesday.app.data.** { *; }
--keep class sh.tuesday.app.model.** { *; }
+-keep class sh.tuesday.app.models.** { *; }
 -keep class sh.tuesday.app.services.** { *; }
 
 # OkHttp3 & Coroutines

@@ -154,6 +154,7 @@ fun AddDeviceScreen(
     var lastSavedCorpusFolder by remember { mutableStateOf<String?>(null) }
     var debugLogHistory by remember { mutableStateOf(listOf<String>()) }
     var copyLogFeedback by remember { mutableStateOf<String?>(null) }
+    var cameraPermissionNotice by remember { mutableStateOf<String?>(null) }
 
     // Manual State
     var manualHostname by rememberSaveable { mutableStateOf("") }
@@ -444,7 +445,10 @@ fun AddDeviceScreen(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
+            cameraPermissionNotice = null
             launchCameraWithUri()
+        } else {
+            cameraPermissionNotice = "Camera access is optional. You can still upload a photo from your library, scan a barcode, or enter brand/model clues below."
         }
     }
 
@@ -1060,6 +1064,15 @@ fun AddDeviceScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Upload File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
+                    }
+                    cameraPermissionNotice?.let { notice ->
+                        Text(
+                            text = notice,
+                            color = palette.textMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
                 }
                 EnrollmentMode.BARCODE_SCAN -> {

@@ -1,5 +1,7 @@
 package sh.tuesday.app.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -427,6 +430,20 @@ fun Tier1UpgradeModalDialog(
                 Text("Not Now", color = palette.textMuted, fontSize = 12.5.sp)
             }
         }
+
+        val upgradeContext = LocalContext.current
+        SubscriptionLegalDisclosure(
+            palette = palette,
+            onOpenUrl = { url ->
+                runCatching {
+                    upgradeContext.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    )
+                }
+            }
+        )
     }
 }
 
