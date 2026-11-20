@@ -139,8 +139,19 @@ jobs:
           chmod +x ./gradlew
           ./gradlew bundleRelease --no-daemon
 
+      - name: Determine Google Play Auth Mode
+        id: play-auth-mode
+        env:
+          PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$PLAY_STORE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "use_explicit_json=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "use_explicit_json=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Authenticate to GCP via Workload Identity Federation (Keyless Play Deploy)
-        if: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON == '' }}
+        if: steps.play-auth-mode.outputs.use_explicit_json == 'false'
         id: gcp-auth
         uses: google-github-actions/auth@v2
         with:
@@ -149,7 +160,7 @@ jobs:
           create_credentials_file: true
 
       - name: Upload to Google Play Internal Track (WIF Keyless)
-        if: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON == '' }}
+        if: steps.play-auth-mode.outputs.use_explicit_json == 'false'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJson: ${{ steps.gcp-auth.outputs.credentials_file_path }}
@@ -159,7 +170,7 @@ jobs:
           status: completed
 
       - name: Upload to Google Play Internal Track (Explicit JSON Secret Fallback)
-        if: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON != '' }}
+        if: steps.play-auth-mode.outputs.use_explicit_json == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
