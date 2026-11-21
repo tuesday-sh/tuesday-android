@@ -639,38 +639,50 @@ fun HomeScreen(
                     activeNetworkId = activeNetwork.id,
                     onSelectNetwork = { repository.selectNetwork(it) }
                 )
-                MainNavTab.BULLETINS -> BulletinsScreen(
-                    initialBulletinId = pendingBulletinId,
-                    onConsumeInitialBulletin = { pendingBulletinId = null },
-                    flavor = brandFlavor,
-                    palette = palette,
-                    payload = bulletinsPayload,
-                    onToggleMuteFeed = { repository.toggleMuteFeed(it) },
-                    onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
-                    onRejectModel = { repository.rejectProvisionalDeviceModel() },
-                    onOpenFeedsSettings = { setActiveTab(MainNavTab.ACCOUNT) },
-                    onInspectDevice = { devId ->
-                        visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
-                    },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
-                    onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
-                    onNavigateToCheckUp = { setActiveTab(MainNavTab.CHECKUP) },
-                    onEnableReminders = {
-                        onRequestNotificationPermission()
-                        expandRemindersInSettings = true
-                        setActiveTab(MainNavTab.ACCOUNT)
-                    },
-                    remindersEnabled = remindersEnabled,
-                    dispatchSubscribed = dispatchSubscribed,
-                    onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
-                    activeDeviceCount = visibleDevices.size,
-                    bulletinDismissed = bulletinDismissed,
-                    onSetBulletinDismissed = { repository.setBulletinDismissed(it) },
-                    bulletinSnoozed = bulletinSnoozed,
-                    onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
-                    bulletinMuted = bulletinMuted,
-                    onSetBulletinMuted = { repository.setBulletinMuted(it) }
-                )
+                MainNavTab.BULLETINS -> {
+                    var serverNotifications by remember { mutableStateOf<List<SiteNotificationItem>>(emptyList()) }
+                    val notifScope = rememberCoroutineScope()
+                    LaunchedEffect(Unit) {
+                        repository.fetchNotificationFeed()?.let { serverNotifications = it.notifications }
+                    }
+                    BulletinsScreen(
+                        initialBulletinId = pendingBulletinId,
+                        onConsumeInitialBulletin = { pendingBulletinId = null },
+                        flavor = brandFlavor,
+                        palette = palette,
+                        payload = bulletinsPayload,
+                        onToggleMuteFeed = { repository.toggleMuteFeed(it) },
+                        onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
+                        onRejectModel = { repository.rejectProvisionalDeviceModel() },
+                        onOpenFeedsSettings = { setActiveTab(MainNavTab.ACCOUNT) },
+                        onInspectDevice = { devId ->
+                            visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
+                        },
+                        onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
+                        onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
+                        onNavigateToCheckUp = { setActiveTab(MainNavTab.CHECKUP) },
+                        onEnableReminders = {
+                            onRequestNotificationPermission()
+                            expandRemindersInSettings = true
+                            setActiveTab(MainNavTab.ACCOUNT)
+                        },
+                        remindersEnabled = remindersEnabled,
+                        dispatchSubscribed = dispatchSubscribed,
+                        onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
+                        activeDeviceCount = visibleDevices.size,
+                        bulletinDismissed = bulletinDismissed,
+                        onSetBulletinDismissed = { repository.setBulletinDismissed(it) },
+                        bulletinSnoozed = bulletinSnoozed,
+                        onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
+                        bulletinMuted = bulletinMuted,
+                        onSetBulletinMuted = { repository.setBulletinMuted(it) },
+                        serverNotifications = serverNotifications,
+                        onNotificationAction = { notifId, action ->
+                            serverNotifications = serverNotifications.filterNot { it.id == notifId }
+                            notifScope.launch { repository.updateNotificationState(notifId, action) }
+                        }
+                    )
+                }
                 MainNavTab.TIMELINE -> {
                     val attestations by repository.attestations.collectAsState()
                     TimelineScreen(
