@@ -26,6 +26,7 @@ import sh.tuesday.app.services.SubscriptionPlanOffer
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
+import sh.tuesday.app.ui.uiComponent
 import kotlin.math.min
 
 /**
@@ -281,6 +282,7 @@ fun CondensedCandlestickCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .uiComponent("CondensedCandlestickCard")
             .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
             .background(palette.bg)
             .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))

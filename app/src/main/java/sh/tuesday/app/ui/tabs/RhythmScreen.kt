@@ -179,7 +179,11 @@ fun RhythmScreen(
                         val hasAction = rhythm.action != null
                         val topperShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
                         val accentColor = if (hasAction) accentColorForRhythm(rhythm.id) else palette.textMuted
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .uiSlot("checkup-rhythm-section", rhythm.id)
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

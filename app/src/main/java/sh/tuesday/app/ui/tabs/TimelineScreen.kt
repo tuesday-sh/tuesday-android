@@ -144,6 +144,7 @@ fun TimelineScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(0.34f)
+                .uiSlot("timeline-swimlane-canvas")
                 .background(palette.chassisRecessed)
         ) {
             if (currentCandles.isEmpty()) {
@@ -210,6 +211,7 @@ fun TimelineScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
+                            modifier = Modifier.uiSlot("timeline-range-strip"),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -222,7 +224,8 @@ fun TimelineScreen(
                                     label = label,
                                     selected = zoomWidthDp == wDp,
                                     onClick = { zoomWidthDp = wDp },
-                                    palette = palette
+                                    palette = palette,
+                                    modifier = Modifier.uiAction("setTimelineRange")
                                 )
                             }
                         }
@@ -260,6 +263,7 @@ fun TimelineScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .uiSlot("timeline-6state-legend")
                             .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                             .background(palette.elevated)
                             .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
@@ -370,6 +374,7 @@ fun TimelineScreen(
                                     Box(
                                         modifier = Modifier
                                             .heightIn(min = 28.dp)
+                                            .uiAction("openLifecycleAttestation")
                                             .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                                             .background(palette.accent.copy(alpha = 0.15f))
                                             .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
@@ -483,6 +488,7 @@ private fun LifecycleAttestationSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .uiComponent("LifecycleAttestationModal")
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .navigationBarsPadding(),
@@ -606,6 +612,7 @@ private fun LifecycleAttestationSheet(
                     modifier = Modifier
                         .weight(2f)
                         .heightIn(min = TuesdayDimens.HitTargetStandard)
+                        .uiAction("saveLifecycleAttestation")
                         .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                         .background(palette.accent)
                         .clickable {
@@ -687,6 +694,7 @@ private fun BatchAuditModal(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .uiComponent("BatchAuditModal")
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .navigationBarsPadding(),
@@ -800,6 +808,7 @@ private fun BatchAuditModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = TuesdayDimens.HitTargetStandard)
+                    .uiAction("completeBatchCheckIn")
                     .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                     .background(if (selectedCount > 0) palette.accent else palette.elevated)
                     .clickable(enabled = selectedCount > 0) {

@@ -166,6 +166,7 @@ fun HacsSettingsSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("hacs-coming-soon-notice")
                     .clip(cardShape)
                     .background(palette.elevated)
                     .border(1.dp, palette.border, cardShape)
@@ -195,6 +196,7 @@ fun HacsSettingsSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .uiSlot("local-backup-panel")
                     .clip(cardShape)
                     .background(palette.elevated)
                     .border(1.dp, palette.border, cardShape)
@@ -280,6 +282,7 @@ fun HacsSettingsSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = TuesdayDimens.HitTargetCompact)
+                        .uiAction("copyBackupToClipboard")
                         .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                         .background(palette.bg)
                         .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))

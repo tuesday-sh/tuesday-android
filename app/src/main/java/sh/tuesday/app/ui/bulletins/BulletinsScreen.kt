@@ -95,69 +95,71 @@ fun BulletinsScreen(
             palette = palette,
             onDismissRequest = { expandedModal = null }
         ) {
-            when (modal) {
-                is ExpandedBulletinModal.Inbox -> {
-                    InboxItemNotchCard(
-                        palette = palette,
-                        item = modal.item,
-                        onClick = {
-                            expandedModal = null
-                            onInspectDevice(modal.item.externalId)
-                        },
-                        onConfirmModel = onConfirmModel,
-                        onRejectModel = onRejectModel,
-                        isCompleted = modal.isCompleted
-                    )
-                }
-                is ExpandedBulletinModal.Welcome -> {
-                    WelcomeNotchBulletinCard(
-                        palette = palette,
-                        isCompleted = modal.isCompleted,
-                        step1Done = step1Done,
-                        step2Done = step2Done,
-                        step3Done = step3Done,
-                        allStepsDone = allStepsDone,
-                        onNavigateToAddDevice = {
-                            expandedModal = null
-                            onNavigateToAddDevice()
-                        },
-                        onEnableReminders = onEnableReminders,
-                        onSetDispatchSubscribed = onSetDispatchSubscribed,
-                        onNavigateToCheckUp = {
-                            expandedModal = null
-                            onNavigateToCheckUp()
-                        },
-                        onSetBulletinDismissed = { dismissed ->
-                            if (dismissed) expandedModal = null
-                            onSetBulletinDismissed(dismissed)
-                        },
-                        onSetBulletinSnoozed = { snoozed ->
-                            if (snoozed) expandedModal = null
-                            onSetBulletinSnoozed(snoozed)
-                        },
-                        onShowIgnoreDialog = {
-                            expandedModal = null
-                            showIgnoreDialog = true
-                        }
-                    )
-                }
-                is ExpandedBulletinModal.Feed -> {
-                    MatchedFeedCard(
-                        palette = palette,
-                        feed = modal.feed,
-                        onToggleMuteFeed = { slug ->
-                            expandedModal = null
-                            onToggleMuteFeed(slug)
-                        },
-                        onConfirmModel = { model ->
-                            expandedModal = null
-                            onConfirmModel(model)
-                        },
-                        onRejectModel = {
-                            expandedModal = null
-                            onRejectModel()
-                        }
-                    )
+            Box(modifier = Modifier.uiComponent("BulletinDetailModal")) {
+                when (modal) {
+                    is ExpandedBulletinModal.Inbox -> {
+                        InboxItemNotchCard(
+                            palette = palette,
+                            item = modal.item,
+                            onClick = {
+                                expandedModal = null
+                                onInspectDevice(modal.item.externalId)
+                            },
+                            onConfirmModel = onConfirmModel,
+                            onRejectModel = onRejectModel,
+                            isCompleted = modal.isCompleted
+                        )
+                    }
+                    is ExpandedBulletinModal.Welcome -> {
+                        WelcomeNotchBulletinCard(
+                            palette = palette,
+                            isCompleted = modal.isCompleted,
+                            step1Done = step1Done,
+                            step2Done = step2Done,
+                            step3Done = step3Done,
+                            allStepsDone = allStepsDone,
+                            onNavigateToAddDevice = {
+                                expandedModal = null
+                                onNavigateToAddDevice()
+                            },
+                            onEnableReminders = onEnableReminders,
+                            onSetDispatchSubscribed = onSetDispatchSubscribed,
+                            onNavigateToCheckUp = {
+                                expandedModal = null
+                                onNavigateToCheckUp()
+                            },
+                            onSetBulletinDismissed = { dismissed ->
+                                if (dismissed) expandedModal = null
+                                onSetBulletinDismissed(dismissed)
+                            },
+                            onSetBulletinSnoozed = { snoozed ->
+                                if (snoozed) expandedModal = null
+                                onSetBulletinSnoozed(snoozed)
+                            },
+                            onShowIgnoreDialog = {
+                                expandedModal = null
+                                showIgnoreDialog = true
+                            }
+                        )
+                    }
+                    is ExpandedBulletinModal.Feed -> {
+                        MatchedFeedCard(
+                            palette = palette,
+                            feed = modal.feed,
+                            onToggleMuteFeed = { slug ->
+                                expandedModal = null
+                                onToggleMuteFeed(slug)
+                            },
+                            onConfirmModel = { model ->
+                                expandedModal = null
+                                onConfirmModel(model)
+                            },
+                            onRejectModel = {
+                                expandedModal = null
+                                onRejectModel()
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -303,6 +305,7 @@ fun BulletinsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .uiSlot("matched-feeds-empty-banner")
                         .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                         .background(palette.surface)
                         .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
@@ -349,14 +352,16 @@ fun BulletinsScreen(
 
             if (isComplete || payload.completedBulletins.isNotEmpty()) {
                 item(key = "completed-listview") {
-                    BulletinListView(
-                        palette = palette,
-                        items = payload.completedBulletins,
-                        isCompleted = true,
-                        showWelcomeRow = isComplete,
-                        onSelectWelcome = { expandedModal = ExpandedBulletinModal.Welcome(isCompleted = true) },
-                        onSelectBulletin = { item -> expandedModal = ExpandedBulletinModal.Inbox(item, isCompleted = true) }
-                    )
+                    Box(modifier = Modifier.uiSlot("completed-bulletins-section")) {
+                        BulletinListView(
+                            palette = palette,
+                            items = payload.completedBulletins,
+                            isCompleted = true,
+                            showWelcomeRow = isComplete,
+                            onSelectWelcome = { expandedModal = ExpandedBulletinModal.Welcome(isCompleted = true) },
+                            onSelectBulletin = { item -> expandedModal = ExpandedBulletinModal.Inbox(item, isCompleted = true) }
+                        )
+                    }
                 }
             }
         }
@@ -376,7 +381,7 @@ private fun RhythmSnoozeOrMuteBanner(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .uiSlot("bulletin-inbox-item", slotMeta)
+            .uiSlot("bulletin-rhythm-status-banner", slotMeta)
             .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
             .background(palette.surface.copy(alpha = 0.9f))
             .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
@@ -409,6 +414,7 @@ private fun RhythmSnoozeOrMuteBanner(
             Box(
                 modifier = Modifier
                     .heightIn(min = 28.dp)
+                    .uiAction("resumeRhythmBulletin")
                     .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                     .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
                     .clickable(onClick = onAction)

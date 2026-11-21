@@ -25,6 +25,7 @@ import sh.tuesday.app.ui.components.DetailModalDialog
 import sh.tuesday.app.ui.components.MonospaceBadge
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
+import sh.tuesday.app.ui.uiSlot
 
 @Composable
 fun ReferenceGuideModalDialog(
@@ -77,64 +78,71 @@ fun ReferenceGuideModalDialog(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = "SureThingNet Standard Categories (Scale C)",
-                    color = palette.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(
-                    text = "The 8 semantic hardware categories (C1 → C8) that govern our faceplate port strip, inventory classification, and progressive disclosure model.",
-                    color = palette.textMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 16.5.sp
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiSlot("reference-guide-categories"),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "SureThingNet Standard Categories (Scale C)",
+                        color = palette.textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = "The 8 semantic hardware categories (C1 → C8) that govern our faceplate port strip, inventory classification, and progressive disclosure model.",
+                        color = palette.textMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.5.sp
+                    )
 
-                StnHardwareCategory.entries.chunked(2).forEach { pair ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        pair.forEach { cat ->
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
-                                    .background(palette.elevated)
-                                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
-                                    .padding(9.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                    StnHardwareCategory.entries.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            pair.forEach { cat ->
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .background(palette.elevated)
+                                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                        .padding(9.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isStn) cat.stnLabel else cat.proLabel,
+                                            color = palette.textPrimary,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        MonospaceBadge(
+                                            text = "${cat.code}•${cat.osiLayer}",
+                                            color = palette.accentText,
+                                            borderAlpha = 0f
+                                        )
+                                    }
                                     Text(
-                                        text = if (isStn) cat.stnLabel else cat.proLabel,
-                                        color = palette.textPrimary,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.weight(1f)
+                                        text = cat.description,
+                                        color = palette.textMuted,
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.5.sp
                                     )
-                                    MonospaceBadge(
-                                        text = "${cat.code}•${cat.osiLayer}",
+                                    Text(
+                                        text = cat.examples,
                                         color = palette.accentText,
-                                        borderAlpha = 0f
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
                                     )
                                 }
-                                Text(
-                                    text = cat.description,
-                                    color = palette.textMuted,
-                                    fontSize = 11.sp,
-                                    lineHeight = 14.5.sp
-                                )
-                                Text(
-                                    text = cat.examples,
-                                    color = palette.accentText,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
                             }
                         }
                     }
@@ -161,7 +169,8 @@ fun ReferenceGuideModalDialog(
                         Triple("S5", "OS, Kernel & Runtime", "System Software — Host OS & containers"),
                         Triple("S6", "Packages & Services", "Apps & Features — Exposed ports & PURLs")
                     ),
-                    palette = palette
+                    palette = palette,
+                    modifier = Modifier.uiSlot("reference-guide-scale-s")
                 )
 
                 OrdinalScaleCard(
@@ -176,7 +185,8 @@ fun ReferenceGuideModalDialog(
                         Triple("Z4", "Guest (VLAN 99)", "Guest Wi-Fi — Client-isolated visitor access"),
                         Triple("Z5", "Internet Uplink (WAN)", "Internet Doorway — Public ISP modem & WAN")
                     ),
-                    palette = palette
+                    palette = palette,
+                    modifier = Modifier.uiSlot("reference-guide-scale-z")
                 )
 
                 OrdinalScaleCard(
@@ -189,17 +199,11 @@ fun ReferenceGuideModalDialog(
                         Triple("R3", "Seasonal Safety, Passwords & Drift Audit", "Seasonal Checkup — Every 90 days drift audit"),
                         Triple("R4", "Annual Gear Review", "Yearly Lifespan Check — Warranty & EOL")
                     ),
-                    palette = palette
+                    palette = palette,
+                    modifier = Modifier.uiSlot("reference-guide-scale-r")
                 )
 
                 HorizontalDivider(color = palette.border)
-                Text(
-                    text = "🌐 The OSI 7+1 Layer Reference Model (L1–L8)",
-                    color = palette.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-
                 val osiLayers = listOf(
                     Triple("LAYER 8", "The Human Layer (Users • Admins • Policy)", "Human approval workflows, advisory mute overrides, and quarterly audit accountability."),
                     Triple("LAYER 7", "Application (HTTP • DNS • RTSP • MQTT)", "Smart cameras (C5), IoT bridges (C6), Home Assistant, and application CVEs."),
@@ -210,40 +214,53 @@ fun ReferenceGuideModalDialog(
                     Triple("LAYER 2", "Data Link (MAC Frames • Switches • 802.1Q)", "Switch Backbone (C2) and the 16×8 LED matrix chassis (Ports 1–128)."),
                     Triple("LAYER 1", "Physical (Cat6 Copper • Fiber SFP+ • RF)", "Wireless Access Points (C3) and physical RJ45 switch jacks.")
                 )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .uiSlot("reference-guide-osi-layers"),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "🌐 The OSI 7+1 Layer Reference Model (L1–L8)",
+                        color = palette.textPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
 
-                osiLayers.forEachIndexed { idx, (badge, title, desc) ->
-                    val isHuman = idx == 0
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
-                            .background(if (isHuman) TuesdayTheme.LedEolAmber.copy(alpha = 0.1f) else palette.elevated)
-                            .border(
-                                1.dp,
-                                if (isHuman) TuesdayTheme.LedEolAmber else palette.border,
-                                RoundedCornerShape(TuesdayDimens.RadiusControl)
+                    osiLayers.forEachIndexed { idx, (badge, title, desc) ->
+                        val isHuman = idx == 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+                                .background(if (isHuman) TuesdayTheme.LedEolAmber.copy(alpha = 0.1f) else palette.elevated)
+                                .border(
+                                    1.dp,
+                                    if (isHuman) TuesdayTheme.LedEolAmber else palette.border,
+                                    RoundedCornerShape(TuesdayDimens.RadiusControl)
+                                )
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            MonospaceBadge(
+                                text = badge,
+                                color = if (isHuman) TuesdayTheme.LedEolAmber else palette.accentText
                             )
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        MonospaceBadge(
-                            text = badge,
-                            color = if (isHuman) TuesdayTheme.LedEolAmber else palette.accentText
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = title,
-                                color = palette.textPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = desc,
-                                color = palette.textMuted,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = title,
+                                    color = palette.textPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = desc,
+                                    color = palette.textMuted,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -267,10 +284,11 @@ private fun OrdinalScaleCard(
     title: String,
     description: String,
     rows: List<Triple<String, String, String>>,
-    palette: BrandPalette
+    palette: BrandPalette,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
             .background(palette.elevated)

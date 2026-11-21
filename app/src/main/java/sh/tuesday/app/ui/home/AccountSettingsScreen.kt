@@ -145,11 +145,13 @@ private fun SettingsMenuRow(
     palette: BrandPalette,
     title: String,
     subtitle: String? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     TuesdayListRow(
         palette = palette,
         title = title,
+        modifier = modifier,
         onClick = onClick,
         subtitleContent = if (!subtitle.isNullOrBlank()) {
             {
@@ -915,7 +917,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         switchModifier = if (def.key == "monthly_rhythm") {
                                             Modifier.uiAction("toggleMonthlyReminders")
                                         } else {
-                                            Modifier
+                                            Modifier.uiAction("toggleReminderCategory")
                                         }
                                     )
                                 }
@@ -930,6 +932,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .uiSlot("feeds-guardrail-notice")
                                         .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
                                         .background(cveRed.copy(alpha = 0.08f))
                                         .border(1.dp, cveRed.copy(alpha = 0.3f), RoundedCornerShape(TuesdayDimens.RadiusControl))
@@ -1051,6 +1054,7 @@ internal fun LegalAndSupportCard(
             palette = palette,
             title = "Privacy Policy",
             subtitle = "Zero-photo-retention & local-first storage",
+            modifier = Modifier.uiAction("openPrivacyPolicy"),
             onClick = { onOpenUrl(PRIVACY_POLICY_URL) }
         )
         SurfaceListDivider(palette)
@@ -1058,6 +1062,7 @@ internal fun LegalAndSupportCard(
             palette = palette,
             title = "Terms of Service",
             subtitle = "tuesday.sh/terms",
+            modifier = Modifier.uiAction("openTermsOfService"),
             onClick = { onOpenUrl(TERMS_OF_SERVICE_URL) }
         )
         SurfaceListDivider(palette)
