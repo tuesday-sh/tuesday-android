@@ -49,9 +49,11 @@ import sh.tuesday.app.theme.TuesdayTheme
 import sh.tuesday.app.ui.components.CondensedCandlestickCard
 import sh.tuesday.app.ui.components.CondensedMiniCandleBar
 import sh.tuesday.app.ui.components.HelpIconButton
+import sh.tuesday.app.ui.components.ListSectionLayoutStyle
 import sh.tuesday.app.ui.components.MonospaceBadge
 import sh.tuesday.app.ui.components.SelectableFilterChip
 import sh.tuesday.app.ui.components.TuesdayBottomSheet
+import sh.tuesday.app.ui.components.TuesdayListSection
 import sh.tuesday.app.ui.components.TuesdayTextField
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
@@ -317,28 +319,44 @@ fun TimelineScreen(
                 }
             }
 
-            if (currentCandles.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
-                            .background(palette.surface)
-                            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No hardware devices tracked in your inventory yet.",
-                            color = palette.textMuted,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            } else {
-                items(currentCandles, key = { "${it.layer}-${it.id}" }) { candle ->
-                    val currentYearPrefix = remember { java.time.LocalDate.now().year.toString() }
+            item(key = "hardware-lifecycles-section") {
+                val currentYearPrefix = remember { java.time.LocalDate.now().year.toString() }
+                TuesdayListSection(
+                    palette = palette,
+                    items = currentCandles,
+                    itemKey = { "${it.layer}-${it.id}" },
+                    modifier = Modifier.uiComponent("HardwareLifecyclesSection"),
+                    layoutStyle = ListSectionLayoutStyle.CARD_STACK,
+                    itemSpacing = 12.dp,
+                    sectionSpacing = 10.dp,
+                    title = if (isStn) "Device Lifespan & Supported Versions" else "Hardware Lifecycles",
+                    headerTrailing = if (currentCandles.isNotEmpty()) {
+                        {
+                            Box(
+                                modifier = Modifier
+                                    .heightIn(min = 28.dp)
+                                    .uiAction("openBatchAuditModal")
+                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                    .background(palette.accent.copy(alpha = 0.14f))
+                                    .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                                    .clickable { showBatchAuditModal = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Batch Check-In",
+                                    color = palette.accentText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    emptyMessage = "No hardware devices tracked in your inventory yet."
+                ) { candle ->
                     val statusSummary = remember(candle, attestations, currentYearPrefix) {
                         TimelineStatusEvaluator.evaluateCandleStatus(
                             candle = candle,

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import sh.tuesday.app.theme.BrandPalette
 
@@ -25,6 +26,7 @@ fun SectionHeading(
         style = SectionHeadingStyle,
         maxLines = 1,
         softWrap = false,
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
     )
 }

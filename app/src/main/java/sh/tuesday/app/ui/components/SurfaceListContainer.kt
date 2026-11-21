@@ -19,11 +19,13 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayDimens
+import sh.tuesday.app.ui.uiSlot
 
 @Composable
 fun SurfaceListContainer(
@@ -274,4 +277,125 @@ fun TuesdayBottomSheet(
         contentColor = palette.textPrimary,
         content = content
     )
+}
+
+enum class ListSectionLayoutStyle {
+    CARD_STACK,
+    SURFACE_GROUPED
+}
+
+@Composable
+fun TuesdayListEmptyBanner(
+    message: String,
+    palette: BrandPalette,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
+            .padding(14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = message,
+            color = palette.textMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+/**
+ * Unified section primitive backing DeviceListSection, HardwareLifecyclesSection,
+ * and MatchedFeedsSection across Home, Timeline, and Bulletins.
+ */
+@Composable
+fun <T> TuesdayListSection(
+    palette: BrandPalette,
+    items: List<T>,
+    itemKey: (T) -> Any,
+    modifier: Modifier = Modifier,
+    layoutStyle: ListSectionLayoutStyle = ListSectionLayoutStyle.CARD_STACK,
+    itemSpacing: Dp = 8.dp,
+    sectionSpacing: Dp = 8.dp,
+    title: String? = null,
+    headerTrailing: (@Composable RowScope.() -> Unit)? = null,
+    emptyMessage: String? = null,
+    emptyModifier: Modifier = Modifier,
+    emptyContent: (@Composable () -> Unit)? = null,
+    footerContent: (@Composable () -> Unit)? = null,
+    itemContent: @Composable (T) -> Unit
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(sectionSpacing)
+    ) {
+        if (title != null || headerTrailing != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .uiSlot("list-section-header"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (title != null) {
+                    SectionHeading(
+                        text = title,
+                        palette = palette,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                if (headerTrailing != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = headerTrailing
+                    )
+                }
+            }
+        }
+
+        if (items.isEmpty()) {
+            when {
+                emptyContent != null -> emptyContent()
+                emptyMessage != null -> TuesdayListEmptyBanner(
+                    message = emptyMessage,
+                    palette = palette,
+                    modifier = emptyModifier
+                )
+            }
+        } else if (layoutStyle == ListSectionLayoutStyle.SURFACE_GROUPED) {
+            SurfaceListContainer(palette = palette) {
+                items.forEachIndexed { index, item ->
+                    key(itemKey(item)) {
+                        itemContent(item)
+                    }
+                    if (index < items.lastIndex) {
+                        SurfaceListDivider(palette)
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(itemSpacing)
+            ) {
+                items.forEach { item ->
+                    key(itemKey(item)) {
+                        itemContent(item)
+                    }
+                }
+            }
+        }
+
+        if (footerContent != null) {
+            footerContent()
+        }
+    }
 }

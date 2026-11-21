@@ -31,12 +31,14 @@ import sh.tuesday.app.ui.components.BulletinPreferencesDialog
 import sh.tuesday.app.ui.components.CandidateDisambiguationStrip
 import sh.tuesday.app.ui.components.DetailModalDialog
 import sh.tuesday.app.ui.components.InboxItemNotchCard
+import sh.tuesday.app.ui.components.ListSectionLayoutStyle
 import sh.tuesday.app.ui.components.MonospaceBadge
 import sh.tuesday.app.ui.components.NotchBulletinCard
 import sh.tuesday.app.ui.components.SectionHeading
 import sh.tuesday.app.ui.components.StatusListRow
 import sh.tuesday.app.ui.components.SurfaceListContainer
 import sh.tuesday.app.ui.components.SurfaceListDivider
+import sh.tuesday.app.ui.components.TuesdayListSection
 import sh.tuesday.app.ui.uiAction
 import sh.tuesday.app.ui.uiComponent
 import sh.tuesday.app.ui.uiSlot
@@ -267,67 +269,43 @@ fun BulletinsScreen(
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
+        item(key = "matched-feeds-section") {
+            TuesdayListSection(
+                palette = palette,
+                items = payload.matchedFeeds,
+                itemKey = { it.slug },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SectionHeading(
-                    text = "Matched Feeds",
-                    palette = palette
-                )
-                Box(
-                    modifier = Modifier
-                        .size(TuesdayDimens.HitTargetCompact)
-                        .uiAction("openFeedsSettings")
-                        .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                        .background(palette.elevated)
-                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                        .clickable { onOpenFeedsSettings() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Feeds settings",
-                        tint = palette.textPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
-
-        if (payload.matchedFeeds.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .uiSlot("matched-feeds-empty-banner")
-                        .clip(RoundedCornerShape(TuesdayDimens.RadiusControl))
-                        .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusControl))
-                        .padding(14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Add devices to your inventory to get feeds",
-                        color = palette.textMuted,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        if (payload.matchedFeeds.isNotEmpty()) {
-            item(key = "matched-feeds-listview") {
-                MatchedFeedsListView(
+                    .padding(top = 12.dp)
+                    .uiComponent("MatchedFeedsSection"),
+                layoutStyle = ListSectionLayoutStyle.SURFACE_GROUPED,
+                sectionSpacing = 8.dp,
+                title = "Matched Feeds",
+                headerTrailing = {
+                    Box(
+                        modifier = Modifier
+                            .size(TuesdayDimens.HitTargetCompact)
+                            .uiAction("openFeedsSettings")
+                            .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                            .background(palette.elevated)
+                            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                            .clickable { onOpenFeedsSettings() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Feeds settings",
+                            tint = palette.textPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                },
+                emptyMessage = "Add devices to your inventory to get feeds",
+                emptyModifier = Modifier.uiSlot("matched-feeds-empty-banner")
+            ) { feed ->
+                MatchedFeedListRow(
                     palette = palette,
-                    feeds = payload.matchedFeeds,
-                    onSelectFeed = { feed -> expandedModal = ExpandedBulletinModal.Feed(feed) }
+                    feed = feed,
+                    onClick = { expandedModal = ExpandedBulletinModal.Feed(feed) }
                 )
             }
         }
@@ -652,29 +630,6 @@ private fun BulletinListRow(
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MatchedFeedsListView(
-    palette: BrandPalette,
-    feeds: List<MatchedFeedView>,
-    onSelectFeed: (MatchedFeedView) -> Unit
-) {
-    SurfaceListContainer(
-        palette = palette,
-        modifier = Modifier.uiComponent("MatchedFeedsSection")
-    ) {
-        feeds.forEachIndexed { index, feed ->
-            MatchedFeedListRow(
-                palette = palette,
-                feed = feed,
-                onClick = { onSelectFeed(feed) }
-            )
-            if (index < feeds.lastIndex) {
-                SurfaceListDivider(palette)
             }
         }
     }
