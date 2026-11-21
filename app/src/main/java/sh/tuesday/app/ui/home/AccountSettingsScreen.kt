@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import sh.tuesday.app.BuildConfig
 import sh.tuesday.app.R
 import sh.tuesday.app.domain.EntitlementGatePolicy
 import sh.tuesday.app.models.ApiEndpointPreset
@@ -327,6 +328,23 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     }
                 }
             )
+
+            // App Version & Build Footer
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp, bottom = 6.dp)
+                    .uiSlot("app-version-footer"),
+                contentAlignment = Alignment.Center
+            ) {
+                val appTitle = if (isStn) "SureThingNet" else "Tuesday.sh"
+                Text(
+                    text = "$appTitle v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = palette.textMuted.copy(alpha = 0.75f)
+                )
+            }
 
             val section = activeSection
             if (section != null) {
