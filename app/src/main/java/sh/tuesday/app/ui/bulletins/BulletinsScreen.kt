@@ -69,7 +69,9 @@ fun BulletinsScreen(
     bulletinMuted: Boolean = false,
     onSetBulletinMuted: (Boolean) -> Unit = {},
     initialBulletinId: String? = null,
-    onConsumeInitialBulletin: () -> Unit = {}
+    onConsumeInitialBulletin: () -> Unit = {},
+    serverNotifications: List<SiteNotificationItem> = emptyList(),
+    onNotificationAction: (Int, String) -> Unit = { _, _ -> }
 ) {
     var showIgnoreDialog by remember { mutableStateOf(false) }
     var expandedModal by remember { mutableStateOf<ExpandedBulletinModal?>(null) }
@@ -203,6 +205,89 @@ fun BulletinsScreen(
                         .size(0.dp)
                         .uiSlot("ai-summary-card")
                 )
+            }
+        }
+
+        val activeServerNotifs = serverNotifications.filter { it.isUnresolved }
+        if (activeServerNotifs.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionHeading(text = "Active Notifications & Reminders", palette = palette)
+                    activeServerNotifs.forEach { notif ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(palette.bgSurface)
+                                .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = notif.title,
+                                    color = palette.textPrimary,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = notif.surfaces.joinToString(" · ").uppercase(),
+                                    color = palette.accent,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = notif.body,
+                                color = palette.textSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "Snooze",
+                                    color = palette.textSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                                        .clickable { onNotificationAction(notif.id, "snoozed") }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                                Text(
+                                    text = "Complete",
+                                    color = palette.accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, palette.accent, RoundedCornerShape(6.dp))
+                                        .clickable { onNotificationAction(notif.id, "completed") }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                                Text(
+                                    text = "Dismiss",
+                                    color = palette.textMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { onNotificationAction(notif.id, "dismissed") }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
