@@ -62,7 +62,11 @@ class ConnectivityMonitor(private val context: Context) {
                      caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
 
         if (rawHasWifi) {
-            val info: WifiInfo? = wifiManager?.connectionInfo
+            val info: WifiInfo? = try {
+                wifiManager?.connectionInfo
+            } catch (_: SecurityException) {
+                null
+            }
             val ssid = info?.ssid?.replace("\"", "")
             if (!ssid.isNullOrBlank() && ssid != "<unknown ssid>") {
                 _currentSsid.value = ssid
