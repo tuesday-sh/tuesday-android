@@ -218,7 +218,7 @@ fun BulletinsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(palette.bgSurface)
+                                .background(palette.surface)
                                 .border(1.dp, palette.border, RoundedCornerShape(12.dp))
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -247,14 +247,14 @@ fun BulletinsScreen(
                             }
                             Text(
                                 text = notif.body,
-                                color = palette.textSecondary,
+                                color = palette.textMuted,
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
                                     text = "Snooze",
-                                    color = palette.textSecondary,
+                                    color = palette.textMuted,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier

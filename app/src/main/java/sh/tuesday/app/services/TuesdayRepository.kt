@@ -1352,7 +1352,7 @@ class TuesdayRepository(context: Context) {
         status: String = "unresolved"
     ): SiteNotificationFeedResponse? = withContext(Dispatchers.IO) {
         try {
-            val baseUrl = effectiveApiBaseUrl().trimEnd('/')
+            val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
             val params = mutableListOf("status=$status")
             if (!surface.isNullOrBlank()) params.add("surface=$surface")
             if (!since.isNullOrBlank()) params.add("since=$since")
@@ -1423,7 +1423,7 @@ class TuesdayRepository(context: Context) {
         snoozeMinutes: Int? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val baseUrl = effectiveApiBaseUrl().trimEnd('/')
+            val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
             val payload = JSONObject().apply {
                 put("action_type", actionType)
                 if (snoozeMinutes != null) put("snooze_minutes", snoozeMinutes)
