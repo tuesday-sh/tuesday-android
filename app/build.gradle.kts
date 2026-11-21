@@ -137,6 +137,9 @@ dependencies {
     // Google Play Billing v8 (In-App Subscriptions & Entitlement Verification)
     implementation("com.android.billingclient:billing:8.0.0")
 
+    // Firebase Cloud Messaging (FCM HTTP v1 push reception)
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
+
     // Networking & Serialization
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
