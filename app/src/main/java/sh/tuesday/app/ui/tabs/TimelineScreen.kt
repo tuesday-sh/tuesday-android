@@ -330,31 +330,7 @@ fun TimelineScreen(
                     itemSpacing = 12.dp,
                     sectionSpacing = 10.dp,
                     title = if (isStn) "Device Lifespan & Supported Versions" else "Hardware Lifecycles",
-                    headerTrailing = if (currentCandles.isNotEmpty()) {
-                        {
-                            Box(
-                                modifier = Modifier
-                                    .heightIn(min = 28.dp)
-                                    .uiAction("openBatchAuditModal")
-                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                                    .background(palette.accent.copy(alpha = 0.14f))
-                                    .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                                    .clickable { showBatchAuditModal = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Batch Check-In",
-                                    color = palette.accentText,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    } else {
-                        null
-                    },
+                    headerTrailing = null,
                     emptyMessage = "No hardware devices tracked in your inventory yet."
                 ) { candle ->
                     val statusSummary = remember(candle, attestations, currentYearPrefix) {
