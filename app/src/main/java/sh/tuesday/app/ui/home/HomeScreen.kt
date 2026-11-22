@@ -138,6 +138,32 @@ fun HomeScreen(
     val activeTab = remember(activeTabName) {
         runCatching { MainNavTab.valueOf(activeTabName) }.getOrDefault(MainNavTab.STATUS)
     }
+
+    // Value-Moment Notification Pre-Permission Primer (triggers once when fleet transitions 0 -> >=1)
+    var previousRackCount by remember { mutableIntStateOf(rackDevices.size) }
+    var showNotificationPrimer by remember { mutableStateOf(false) }
+    var primerDeviceName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(rackDevices.size) {
+        if (previousRackCount == 0 && rackDevices.isNotEmpty() && notificationManager?.hasNotificationPermission() != true) {
+            primerDeviceName = rackDevices.firstOrNull()?.name
+            showNotificationPrimer = true
+        }
+        previousRackCount = rackDevices.size
+    }
+
+    if (showNotificationPrimer) {
+        sh.tuesday.app.ui.components.NotificationPrimerDialog(
+            palette = TuesdayTheme.paletteFor(brandFlavor),
+            appName = if (brandFlavor == AppBrandFlavor.SURETHING_HOME) "SureThingNet" else "Tuesday.sh",
+            deviceName = primerDeviceName,
+            onEnableSelected = { _, patchTuesdayEnabled ->
+                showNotificationPrimer = false
+                onRequestNotificationPermission()
+                repository.setRemindersEnabled(patchTuesdayEnabled)
+            },
+            onDismiss = { showNotificationPrimer = false }
+        )
+    }
     val setActiveTab: (MainNavTab) -> Unit = { tab ->
         repository.setActiveTabName(tab.name)
     }
