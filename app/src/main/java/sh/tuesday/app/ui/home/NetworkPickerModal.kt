@@ -521,14 +521,14 @@ fun SetupNetworkModalDialog(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "🤝 Family & Team Delegation",
+                    text = "Import an Existing Network",
                     color = palette.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Joining existing networks via QR code invitation or pairing tokens is coming soon in M4 (Family Delegation Networks).",
+                    text = "To load a network inventory exported from another device, open Account → Backup & Restore and import a saved JSON backup file.",
                     color = palette.textMuted,
                     fontSize = 12.sp,
                     lineHeight = 16.5.sp,

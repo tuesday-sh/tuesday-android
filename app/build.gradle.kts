@@ -15,7 +15,7 @@ android {
         applicationId = "sh.tuesday.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 11
+        versionCode = 12
         versionName = "1.0.0"
         manifestPlaceholders["appLabel"] = "Tuesday.sh"
 
@@ -170,4 +170,10 @@ dependencies {
     // Debugging
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+if (file("src/release/google-services.json").exists() &&
+    gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+) {
+    apply(plugin = "com.google.gms.google-services")
 }

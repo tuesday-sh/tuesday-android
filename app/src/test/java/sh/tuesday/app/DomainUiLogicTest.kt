@@ -158,10 +158,10 @@ class DomainUiLogicTest {
         )
 
         assertTrue(proPosture.all { it.action != null && it.recommendation != null })
-        assertTrue(proPosture[0].title.contains("NEW HARDWARE INTAKE"))
-        assertTrue(homePosture[0].title.contains("New Devices & Recognition"))
-        assertTrue(proPosture[3].recommendation!!.contains("Guest VLAN"))
-        assertTrue(homePosture[3].recommendation!!.contains("unplugging"))
+        assertTrue(proPosture[0].title.contains("HARDWARE LIFECYCLE & ENROLLMENT"))
+        assertTrue(homePosture[0].title.contains("Hardware Lifecycle (Buy, Install, Retire)"))
+        assertTrue(proPosture[3].recommendation!!.contains("end-of-life"))
+        assertTrue(homePosture[3].recommendation!!.contains("end-of-life"))
 
         val shareReport = RhythmPostureEvaluator.formatShareReport(AppBrandFlavor.TUESDAY_PRO, proPosture)
         assertTrue(shareReport.contains("Tuesday.sh (STN-Pro) Fleet Check-Up"))

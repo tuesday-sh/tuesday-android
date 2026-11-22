@@ -178,13 +178,13 @@ fun HacsSettingsSheet(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "Home Assistant sync coming soon.",
+                        text = "Portable JSON Inventory",
                         color = palette.textPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Native integration for Home Assistant and HACS is currently in development.",
+                        text = "Your network inventory is stored locally on this device. Export or restore a standard JSON backup below at any time.",
                         color = palette.textMuted,
                         fontSize = 12.sp,
                         lineHeight = 17.sp,

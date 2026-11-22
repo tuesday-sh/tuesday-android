@@ -229,12 +229,12 @@ class TuesdayComposeSemanticUiTest {
             expectedText = "tuesday.sh"
         )
 
-        // 3. Click toggleBrandFlavor -> opens "Coming Soon" modal; dismiss it, then verify flavor switching via deep link never wraps!
+        // 3. Click toggleBrandFlavor -> opens "Tuesday.sh Pro" overview modal; dismiss it, then verify flavor switching via deep link never wraps!
         composeRule.onNodeWithTag("ui:action:toggleBrandFlavor", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         assertTrue(
-            "Expected Coming Soon modal after clicking toggleBrandFlavor pill",
-            composeRule.onAllNodesWithText("Coming Soon", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            "Expected Tuesday.sh Pro overview modal after clicking toggleBrandFlavor pill",
+            composeRule.onAllNodesWithText("Tuesday.sh Pro", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         )
         composeRule.onNodeWithContentDescription("Close", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()

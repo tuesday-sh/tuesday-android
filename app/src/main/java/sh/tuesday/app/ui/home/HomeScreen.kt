@@ -925,11 +925,11 @@ fun HomeScreen(
     if (showProComingSoonModal) {
         TuesdayModalCard(
             palette = palette,
-            title = "Coming Soon",
-            subtitle = "Tuesday.sh (PRO) and SureThingNet (HOME) pair deep homelab telemetry with a calm household view so technical operators and families can share one inventory without the jargon.",
+            title = "Tuesday.sh Pro",
+            subtitle = "Tuesday.sh tracks hardware lifecycles, firmware advisories, and seasonal check-ups across your home and homelab networks.",
             headerTrailing = {
                 MonospaceBadge(
-                    text = "PRO ↔ HOME",
+                    text = "PRO",
                     color = palette.accent
                 )
             },
@@ -941,13 +941,13 @@ fun HomeScreen(
             SurfaceListContainer(palette = palette) {
                 TuesdayListRow(
                     palette = palette,
-                    title = "SureThingNet (HOME) Companion View",
+                    title = "Plain-English Security & Recall Advisories",
                     trailingContent = {
-                        MonospaceBadge(text = "v1.2", color = palette.accent)
+                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
                     },
                     subtitleContent = {
                         Text(
-                            text = "Translates technical CVEs and PURLs into plain-English CPSC Safety Recalls, End-of-Life (EOL) replacement alerts, and guided Seasonal Home Check-Ups.",
+                            text = "Tracks manufacturer and security researcher notices from global feeds and filters only the CVEs, firmware updates, recalls, and End-of-Life alerts that match your inventory.",
                             color = palette.textMuted,
                             fontSize = 12.sp,
                             lineHeight = 16.5.sp
@@ -957,13 +957,13 @@ fun HomeScreen(
                 SurfaceListDivider(palette)
                 TuesdayListRow(
                     palette = palette,
-                    title = "Family Bridge & Household Sharing",
+                    title = "Seasonal Check-Ups & Printable Summaries",
                     trailingContent = {
-                        MonospaceBadge(text = "v1.1", color = palette.accent)
+                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
                     },
                     subtitleContent = {
                         Text(
-                            text = "Invite a partner or family member with a read-only household view so everyone knows when smart-home, kitchen, or nursery gear needs an update or recall check.",
+                            text = "Run guided seasonal check-ups and share a clean plain-text or printable network check-up report with a partner or household helper.",
                             color = palette.textMuted,
                             fontSize = 12.sp,
                             lineHeight = 16.5.sp
@@ -979,7 +979,7 @@ fun HomeScreen(
                         showNetworkPicker = true
                     },
                     trailingContent = {
-                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
+                        MonospaceBadge(text = "PRO", color = palette.accent)
                     },
                     subtitleContent = {
                         Text(
