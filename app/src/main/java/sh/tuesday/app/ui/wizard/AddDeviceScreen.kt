@@ -1405,19 +1405,28 @@ fun AddDeviceScreen(
                         containerColor = TuesdayTheme.HacsCyan,
                         contentColor = Color.Black
                     ),
+                    enabled = !isAnalyzing,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .weight(1f)
                         .uiAction("searchDeviceCandidates")
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    val totalSignals = capturedBitmaps.size + scannedBarcodesList.size + selectedClueItems.size
-                    Text(
-                        text = if (totalSignals > 0) "Search ($totalSignals)" else "Search",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
+                    if (isAnalyzing) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val totalSignals = capturedBitmaps.size + scannedBarcodesList.size + selectedClueItems.size
+                        Text(
+                            text = if (totalSignals > 0) "Search ($totalSignals)" else "Search",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
 
                 OutlinedButton(
@@ -1497,34 +1506,6 @@ fun AddDeviceScreen(
             if (isDeveloperMode) {
                 DevPresetsAndControlsRow(includePhotoSamples = mode == EnrollmentMode.PHOTO_WIZARD)
             }
-
-                if (isAnalyzing) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = palette.accent,
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Column {
-                            Text(
-                                "Analyzing device with ${hacsConfig.aiProvider.displayName}...",
-                                color = palette.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("Inspecting chassis profile, ports, OUI prefix, and printed labels", color = palette.textMuted, fontSize = 11.sp)
-                        }
-                    }
-                }
 
                 // Progressive Clues & Candidates Loop
                 discoveryResult?.let { result ->
