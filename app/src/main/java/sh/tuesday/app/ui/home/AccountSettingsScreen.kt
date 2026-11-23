@@ -406,9 +406,9 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                             ) {
                                 Text(
                                     text = if (isProTier1) {
-                                        "Your Tuesday.sh Pro Tier 1 subscription is active. You can create unlimited network locations with live cloud sync and cross-site security telemetry."
+                                        "Your Tuesday.sh Pro Tier 1 subscription is active. You can track up to 128 devices per site across unlimited network locations."
                                     } else {
-                                        "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play to track unlimited locations with live cloud sync."
+                                        "Free accounts include 1 primary network (up to 15 devices) and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play for up to 128 devices per site and unlimited network locations."
                                     },
                                     color = palette.textMuted,
                                     fontSize = 12.sp,

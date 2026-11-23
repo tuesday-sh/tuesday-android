@@ -193,6 +193,19 @@ class DomainUiLogicTest {
         assertTrue(EntitlementGatePolicy.canCreateAdditionalNetwork("pro_tier_1", oneRealPlusDemo))
         assertTrue(EntitlementGatePolicy.canCreateAdditionalNetwork("multisite_tier_1", oneRealPlusDemo))
         assertTrue(EntitlementGatePolicy.canCreateAdditionalNetwork("FLEET", oneRealPlusDemo))
+
+        // Device capacity policy: 15 free, 128 Pro Tier 1, demo sandbox exempt
+        assertEquals(15, EntitlementGatePolicy.maxDevicesForTier("free"))
+        assertEquals(128, EntitlementGatePolicy.maxDevicesForTier("pro_tier_1"))
+        assertTrue(EntitlementGatePolicy.canAddDevice("free", "net-home", 14))
+        assertFalse(EntitlementGatePolicy.canAddDevice("free", "net-home", 15))
+        assertTrue(EntitlementGatePolicy.requiresUpgradeForNewDevice("free", "net-home", 15))
+        assertTrue(EntitlementGatePolicy.canAddDevice("free", EntitlementGatePolicy.DEMO_NETWORK_ID, 25))
+        assertFalse(EntitlementGatePolicy.requiresUpgradeForNewDevice("free", EntitlementGatePolicy.DEMO_NETWORK_ID, 25))
+        assertTrue(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 15))
+        assertTrue(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 127))
+        assertFalse(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 128))
+        assertFalse(EntitlementGatePolicy.requiresUpgradeForNewDevice("pro_tier_1", "net-home", 128))
     }
 
     @Test

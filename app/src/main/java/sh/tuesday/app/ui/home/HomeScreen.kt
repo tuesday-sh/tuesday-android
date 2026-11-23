@@ -186,6 +186,21 @@ fun HomeScreen(
     var showProComingSoonModal by rememberSaveable { mutableStateOf(false) }
     var pendingTimelineModal by rememberSaveable { mutableStateOf<String?>(null) }
 
+    val triggerAddDevice: (mode: String?, synth: String?, query: String?, clues: String?, autoSearch: Boolean) -> Unit =
+        { mode, synth, query, clues, autoSearch ->
+            if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForNewDevice(
+                    tier = entitlementTier,
+                    activeNetworkId = activeNetworkId,
+                    currentDeviceCount = rackDevices.size
+                )
+            ) {
+                networkPickerInitialUpgradePrompt = true
+                showNetworkPicker = true
+            } else {
+                onNavigateToAddDevice(mode, synth, query, clues, autoSearch)
+            }
+        }
+
     LaunchedEffect(notificationManager) {
         if (notificationManager != null && repository.activeDeviceCount.value > 0) {
             repository.syncPendingNotifications(notificationManager, forceResend = false, includeAllSites = false)
@@ -631,15 +646,15 @@ fun HomeScreen(
                     onSelectPortState = { repository.setPortStateFilter(it) },
                     onToggleIncludeOk = { repository.toggleIncludeOkDevices() },
                     onOpenReferenceGuide = { showReferenceGuide = true },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
+                    onNavigateToAddDevice = { triggerAddDevice(null, null, null, null, false) },
                     onAddRouter = {
-                        onNavigateToAddDevice(null, null, null, "Router / Gateway", false)
+                        triggerAddDevice(null, null, null, "Router / Gateway", false)
                     },
                     onAddAnyDevice = {
-                        onNavigateToAddDevice(null, null, null, null, false)
+                        triggerAddDevice(null, null, null, null, false)
                     },
                     onAddCategoryDevice = { cat ->
-                        onNavigateToAddDevice(null, null, null, cat.defaultIntakeClue, false)
+                        triggerAddDevice(null, null, null, cat.defaultIntakeClue, false)
                     },
                     onNavigateToBulletins = { setActiveTab(MainNavTab.BULLETINS) },
                     onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
@@ -686,7 +701,7 @@ fun HomeScreen(
                         onInspectDevice = { devId ->
                             visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                         },
-                        onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
+                        onNavigateToAddDevice = { triggerAddDevice(null, null, null, null, false) },
                         onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
                         onNavigateToCheckUp = { setActiveTab(MainNavTab.CHECKUP) },
                         onEnableReminders = {
@@ -983,7 +998,7 @@ fun HomeScreen(
                     },
                     subtitleContent = {
                         Text(
-                            text = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations and manage your primary rack alongside a parent's home or cabin Wi-Fi.",
+                            text = "Free accounts include 1 primary network (up to 15 devices) and 1 demo sandbox. Upgrade to Pro Tier 1 to track up to 128 devices per site and unlock unlimited network locations.",
                             color = palette.textMuted,
                             fontSize = 12.sp,
                             lineHeight = 16.5.sp

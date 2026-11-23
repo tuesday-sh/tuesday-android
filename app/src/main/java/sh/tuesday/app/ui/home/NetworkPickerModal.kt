@@ -338,7 +338,7 @@ fun Tier1UpgradeModalDialog(
     TuesdayModalCard(
         palette = palette,
         title = "Tuesday.sh Pro Tier 1",
-        subtitle = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations, Family Site Management, and live cloud sync.",
+        subtitle = "Free accounts include 1 primary network (up to 15 devices) and 1 demo sandbox. Upgrade to Pro Tier 1 for up to 128 devices per site and unlimited network locations.",
         onDismissRequest = onDismiss,
         modifier = Modifier.uiComponent("Tier1UpgradeModal"),
         borderColor = palette.accent.copy(alpha = 0.6f),
@@ -348,7 +348,7 @@ fun Tier1UpgradeModalDialog(
         },
         headerTrailing = {
             MonospaceBadge(
-                text = "MULTI-SITE",
+                text = "PRO TIER 1",
                 color = palette.accentText
             )
         }
@@ -364,19 +364,19 @@ fun Tier1UpgradeModalDialog(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "✓ Unlimited physical sites & remote locations",
+                text = "✓ Up to 128 tracked devices per network site (15 on Free)",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "✓ Family & Team Site Delegation (QR & invite pairing)",
+                text = "✓ Unlimited physical network sites & remote locations",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "✓ Live cross-site security bulletins & cloud sync",
+                text = "✓ Separate inventory & advisories for home, cabin, or lab",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold

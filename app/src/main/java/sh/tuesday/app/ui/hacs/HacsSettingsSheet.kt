@@ -347,12 +347,12 @@ fun HacsSettingsSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Group,
-                            contentDescription = "Family Site Management",
+                            contentDescription = "Multi-Site & 128-Device Capacity",
                             tint = if (isProTier1) okGreen else palette.accent,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Family Site Management",
+                            text = "Multi-Site & 128-Device Capacity",
                             color = palette.textPrimary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -366,9 +366,9 @@ fun HacsSettingsSheet(
 
                 Text(
                     text = if (isProTier1) {
-                        "Included with your Pro Tier 1 entitlement. Manage multiple household or family locations, delegate co-admin access, and share pairing invites for '${activeNetworkName.ifBlank { "My Network" }}'."
+                        "Included with your Pro Tier 1 entitlement. Track up to 128 devices per site and manage unlimited household, cabin, or homelab locations alongside '${activeNetworkName.ifBlank { "My Network" }}'."
                     } else {
-                        "Part of Tuesday.sh Pro Tier 1. Remotely monitor parents' or family members' home networks, manage unlimited sites, and share delegated pairing invites."
+                        "Free accounts include 1 primary network and up to 15 devices. Upgrade to Pro Tier 1 to unlock up to 128 devices per site and unlimited network locations."
                     },
                     color = palette.textMuted,
                     fontSize = 12.sp,
@@ -376,54 +376,21 @@ fun HacsSettingsSheet(
                 )
 
                 if (isProTier1) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onOpenNetworkPicker()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = palette.accent,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("manageFamilySites")
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                val inviteToken = "tuesday://join-site?site=${Uri.encode(activeNetworkName.ifBlank { "My Network" })}&code=FAM-${(1000..9999).random()}"
-                                clipboardManager.setText(AnnotatedString(inviteToken))
-                                familyInviteFeedback = "✓ Copied Family Pairing Invite link to clipboard"
-                                Toast.makeText(context, "Copied family invite link", Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = palette.surface,
-                                contentColor = palette.textPrimary
-                            ),
-                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
-                            modifier = Modifier
-                                .weight(1f)
-                                .uiAction("copyFamilySiteInvite")
-                        ) {
-                            Text("Copy Family Invite", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                onDismiss()
-                                onOpenNetworkPicker()
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = palette.accent,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
-                            modifier = Modifier
-                                .weight(1f)
-                                .uiAction("manageFamilySites")
-                        ) {
-                            Text("Manage Sites", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    if (familyInviteFeedback != null) {
-                        Text(
-                            text = familyInviteFeedback!!,
-                            color = okGreen,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Text("Manage Sites", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Button(
