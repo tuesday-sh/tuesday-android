@@ -1469,7 +1469,7 @@ fun AddDeviceScreen(
                                 accumulatedIdentifiers = accumulatedIdentifiers
                             )
                             if (resolvedManual == null) {
-                                manualError = "Enter a Device Name or pick a SureThingNet Insights Model clue."
+                                manualError = "Enter a name or pick any device type, brand, or rough clue — you can refine details later."
                                 return@Button
                             }
 
@@ -1676,6 +1676,58 @@ fun AddDeviceScreen(
                                 }
                             }
                         }
+                    }
+
+                    // Progressive Discovery Escape Hatch: allow saving rough/guessed hardware even if exact model isn't listed
+                    OutlinedButton(
+                        onClick = {
+                            val topCandidate = result.candidates.firstOrNull()
+                            val fallbackManual = ManualEnrollmentResolver.resolve(
+                                manualHostname = manualHostname,
+                                selectedClues = selectedClueItems,
+                                accumulatedIdentifiers = accumulatedIdentifiers
+                            )
+                            val roughHostname = fallbackManual?.hostname
+                                ?: topCandidate?.let { "${it.manufacturer} ${it.deviceCategory ?: "Device"}".trim() }
+                                ?: "Unidentified Device"
+                            val roughMetadata = fallbackManual?.metadata ?: DiscoveredDeviceMetadata(
+                                manufacturer = topCandidate?.manufacturer ?: "Manual",
+                                modelNumber = topCandidate?.deviceCategory ?: roughHostname,
+                                deviceCategory = topCandidate?.deviceCategory,
+                                serialNumber = accumulatedIdentifiers.serialNumber,
+                                macAddress = accumulatedIdentifiers.macAddress,
+                                barcodeOrQr = accumulatedIdentifiers.barcode
+                            )
+                            val roughSummary = fallbackManual?.osSummary
+                                ?: "Rough Entry • Refine via Check-Up"
+
+                            scope.launch {
+                                isSaving = true
+                                repository.enrollDevice(
+                                    hostname = roughHostname,
+                                    osDetails = roughSummary,
+                                    packageManager = PackageManagerType.FIRMWARE,
+                                    agentToken = "rough_discovery_${System.currentTimeMillis()}",
+                                    inventoryState = InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
+                                    discoveredMetadata = roughMetadata
+                                )
+                                isSaving = false
+                                onNavigateBack()
+                            }
+                        },
+                        enabled = !isSaving,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.borderStrong),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("saveRoughGuessedDevice")
+                    ) {
+                        Text(
+                            text = "Not listed or not sure? Save as Rough Device",
+                            color = palette.textPrimary,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
 
                     inspectedCandidate?.let { candidate ->

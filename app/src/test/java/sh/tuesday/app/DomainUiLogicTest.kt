@@ -290,6 +290,43 @@ class DomainUiLogicTest {
         assertEquals("Synology", provisionalResolved.metadata.manufacturer)
         assertEquals("NAS Storage", provisionalResolved.metadata.modelNumber)
         assertEquals("084652009999", provisionalResolved.metadata.barcodeOrQr)
+
+        // Progressive discovery: Type-only, Brand+Type, and Custom Clue alone all resolve as INCOMPLETE_OR_GUESSED
+        val typeOnly = ManualEnrollmentResolver.resolve(
+            manualHostname = "",
+            selectedClues = listOf(typeClue),
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+        )
+        assertNotNull(typeOnly)
+        assertEquals("NAS Storage", typeOnly!!.hostname)
+        assertEquals(InventoryConfidenceState.INCOMPLETE_OR_GUESSED, typeOnly.inventoryState)
+
+        val brandAndType = ManualEnrollmentResolver.resolve(
+            manualHostname = "",
+            selectedClues = listOf(brandClue, typeClue),
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+        )
+        assertNotNull(brandAndType)
+        assertEquals("Synology NAS Storage", brandAndType!!.hostname)
+        assertEquals("Synology", brandAndType.metadata.manufacturer)
+        assertEquals("NAS Storage", brandAndType.metadata.deviceCategory)
+        assertEquals(InventoryConfidenceState.INCOMPLETE_OR_GUESSED, brandAndType.inventoryState)
+
+        val customOnly = ManualEnrollmentResolver.resolve(
+            manualHostname = "",
+            selectedClues = listOf(
+                GoldClueItem(
+                    id = "custom:vizio tv",
+                    kind = GoldClueKind.CUSTOM,
+                    title = "Vizio TV",
+                    subtitle = "Custom clue"
+                )
+            ),
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+        )
+        assertNotNull(customOnly)
+        assertEquals("Vizio TV", customOnly!!.hostname)
+        assertEquals(InventoryConfidenceState.INCOMPLETE_OR_GUESSED, customOnly.inventoryState)
     }
 
     @Test
