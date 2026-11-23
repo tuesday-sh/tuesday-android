@@ -398,4 +398,24 @@ class DomainUiLogicTest {
         assertEquals(0.92f, TimelineStatusEvaluator.clampPopoverArrowFraction(9999f, 300f), 0.0001f)
         assertEquals(0.5f, TimelineStatusEvaluator.clampPopoverArrowFraction(100f, 0f), 0.0001f)
     }
+
+    @Test
+    fun rackDossierExporterFormatsMarkdownAndCsvDeterministically() {
+        val devices = listOf(
+            makeDevice("d2", "Office Switch, Pro", PortLifecycleState.UPDATE, StnHardwareCategory.C2_SWITCH),
+            makeDevice("d1", "Core Gateway", PortLifecycleState.OK, StnHardwareCategory.C1_GATEWAY)
+        )
+        val md = sh.tuesday.app.domain.RackDossierExporter.formatMarkdown(
+            siteName = "Home Lab",
+            devices = devices,
+            generatedAtIso = "2026-11-22T00:00:00Z"
+        )
+        assertTrue(md.contains("# Home Lab — Hardware & Network Dossier"))
+        assertTrue(md.contains("**Tracked Devices**: 2"))
+        assertTrue(md.indexOf("Core Gateway") < md.indexOf("Office Switch, Pro"))
+
+        val csv = sh.tuesday.app.domain.RackDossierExporter.formatCsv("Home Lab", devices)
+        assertTrue(csv.startsWith("Site,CategoryCode,Category,Name,"))
+        assertTrue(csv.contains("\"Office Switch, Pro\""))
+    }
 }

@@ -874,6 +874,7 @@ fun HomeScreen(
         HacsSettingsSheet(
             entitlementTier = entitlementTier,
             activeNetworkName = activeNetwork.name,
+            devices = visibleDevices,
             onOpenUpgradeModal = {
                 networkPickerInitialUpgradePrompt = true
                 showNetworkPicker = true

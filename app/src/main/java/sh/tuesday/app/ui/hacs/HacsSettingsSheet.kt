@@ -32,7 +32,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.tuesday.app.domain.EntitlementGatePolicy
+import sh.tuesday.app.domain.RackDossierExporter
 import sh.tuesday.app.models.PortLifecycleState
+import sh.tuesday.app.models.RackPortDevice
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
@@ -49,6 +51,7 @@ import java.io.InputStreamReader
 fun HacsSettingsSheet(
     entitlementTier: String = "free",
     activeNetworkName: String = "My Network",
+    devices: List<RackPortDevice> = emptyList(),
     palette: BrandPalette = TuesdayTheme.colors,
     onOpenUpgradeModal: () -> Unit = {},
     onOpenNetworkPicker: () -> Unit = {},
@@ -79,6 +82,57 @@ fun HacsSettingsSheet(
                 Toast.makeText(context, "Backup saved", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 importStatusMessage = "Export failed: ${e.localizedMessage}"
+                isSuccessStatus = false
+            }
+        }
+    }
+
+    val exportPdfLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val pdfBytes = RackDossierExporter.renderPdfBytes(activeNetworkName, devices)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(pdfBytes) }
+                importStatusMessage = "PDF Dossier exported successfully!"
+                isSuccessStatus = true
+                Toast.makeText(context, "PDF Dossier saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                importStatusMessage = "PDF export failed: ${e.localizedMessage}"
+                isSuccessStatus = false
+            }
+        }
+    }
+
+    val exportCsvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val csv = RackDossierExporter.formatCsv(activeNetworkName, devices)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(csv.toByteArray(Charsets.UTF_8)) }
+                importStatusMessage = "CSV spreadsheet exported successfully!"
+                isSuccessStatus = true
+                Toast.makeText(context, "CSV saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                importStatusMessage = "CSV export failed: ${e.localizedMessage}"
+                isSuccessStatus = false
+            }
+        }
+    }
+
+    val exportMarkdownLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val md = RackDossierExporter.formatMarkdown(activeNetworkName, devices)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(md.toByteArray(Charsets.UTF_8)) }
+                importStatusMessage = "Markdown spec sheet exported successfully!"
+                isSuccessStatus = true
+                Toast.makeText(context, "Markdown dossier saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                importStatusMessage = "Markdown export failed: ${e.localizedMessage}"
                 isSuccessStatus = false
             }
         }
@@ -319,6 +373,90 @@ fun HacsSettingsSheet(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
+                }
+
+                HorizontalDivider(color = palette.border.copy(alpha = 0.6f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Home & Rack Dossier Exports",
+                        color = palette.textPrimary,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    MonospaceBadge(
+                        text = if (isProTier1) "PRO • UNLOCKED" else "PRO TIER 1",
+                        color = if (isProTier1) okGreen else palette.accentText
+                    )
+                }
+
+                Text(
+                    text = "Export a printable insurance/disaster-recovery PDF, spreadsheet CSV, or Markdown rack spec sheet.",
+                    color = palette.textMuted,
+                    fontSize = 11.5.sp,
+                    lineHeight = 15.sp
+                )
+
+                val safeSlug = activeNetworkName.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "network" }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (isProTier1) {
+                                exportPdfLauncher.launch("tuesday_dossier_${safeSlug}.pdf")
+                            } else {
+                                onDismiss()
+                                onOpenUpgradeModal()
+                            }
+                        },
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("exportDossierPdf")
+                    ) {
+                        Text(if (isProTier1) "PDF" else "⚡ PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (isProTier1) {
+                                exportCsvLauncher.launch("tuesday_dossier_${safeSlug}.csv")
+                            } else {
+                                onDismiss()
+                                onOpenUpgradeModal()
+                            }
+                        },
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("exportDossierCsv")
+                    ) {
+                        Text(if (isProTier1) "CSV" else "⚡ CSV", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (isProTier1) {
+                                exportMarkdownLauncher.launch("tuesday_dossier_${safeSlug}.md")
+                            } else {
+                                onDismiss()
+                                onOpenUpgradeModal()
+                            }
+                        },
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("exportDossierMarkdown")
+                    ) {
+                        Text(if (isProTier1) "Markdown" else "⚡ MD", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
