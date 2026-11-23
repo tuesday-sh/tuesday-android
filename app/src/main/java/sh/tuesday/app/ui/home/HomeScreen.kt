@@ -733,9 +733,14 @@ fun HomeScreen(
                         palette = palette,
                         devices = visibleDevices,
                         attestations = attestations,
+                        entitlementTier = entitlementTier,
                         initialModal = pendingTimelineModal,
                         onConsumeInitialModal = { pendingTimelineModal = null },
                         onOpenReferenceGuide = { showReferenceGuide = true },
+                        onOpenUpgradeModal = {
+                            networkPickerInitialUpgradePrompt = true
+                            showNetworkPicker = true
+                        },
                         onInspectDevice = { devId ->
                             visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                         },
@@ -752,7 +757,12 @@ fun HomeScreen(
                     palette = palette,
                     devices = visibleDevices,
                     bulletins = bulletinsPayload.inbox,
-                    onOpenReferenceGuide = { showReferenceGuide = true }
+                    entitlementTier = entitlementTier,
+                    onOpenReferenceGuide = { showReferenceGuide = true },
+                    onOpenUpgradeModal = {
+                        networkPickerInitialUpgradePrompt = true
+                        showNetworkPicker = true
+                    }
                 )
                 MainNavTab.ACCOUNT -> AccountSettingsScreen(
                     params = AccountSettingsParams(

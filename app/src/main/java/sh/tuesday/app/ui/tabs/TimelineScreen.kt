@@ -68,16 +68,19 @@ fun TimelineScreen(
     palette: BrandPalette,
     devices: List<RackPortDevice>,
     attestations: List<DeviceAttestation> = emptyList(),
+    entitlementTier: String = "free",
     initialModal: String? = null,
     onConsumeInitialModal: () -> Unit = {},
     onOpenReferenceGuide: () -> Unit = {},
+    onOpenUpgradeModal: () -> Unit = {},
     onInspectDevice: (String) -> Unit = {},
     onRecordAttestation: ((deviceId: String, type: AttestationType, auditDate: String, note: String?, sessionId: String?) -> DeviceAttestation)? = null,
     onRecordBatchAudit: ((deviceIds: List<String>, auditDate: String, sessionId: String, note: String?) -> List<DeviceAttestation>)? = null
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
+    val isProTier1 = sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(entitlementTier)
     var scrubberXNorm by remember { mutableFloatStateOf(0.72f) }
-    var zoomWidthDp by remember { mutableStateOf<Int?>(null) }
+    var zoomWidthDp by remember(isProTier1) { mutableStateOf<Int?>(if (isProTier1) null else 560) }
     val hScroll = rememberScrollState()
 
     LaunchedEffect(zoomWidthDp, hScroll.maxValue) {
@@ -222,10 +225,17 @@ fun TimelineScreen(
                                 "1yr" to 560,
                                 "6mo" to 840
                             ).forEach { (label, wDp) ->
+                                val isProLockedRange = (wDp == null && !isProTier1)
                                 SelectableFilterChip(
-                                    label = label,
+                                    label = if (isProLockedRange) "⚡ $label" else label,
                                     selected = zoomWidthDp == wDp,
-                                    onClick = { zoomWidthDp = wDp },
+                                    onClick = {
+                                        if (isProLockedRange) {
+                                            onOpenUpgradeModal()
+                                        } else {
+                                            zoomWidthDp = wDp
+                                        }
+                                    },
                                     palette = palette,
                                     modifier = Modifier.uiAction("setTimelineRange")
                                 )
@@ -258,6 +268,42 @@ fun TimelineScreen(
                                     contentDescriptionText = "Timeline Reference Guide"
                                 )
                             }
+                        }
+                    }
+
+                    // Multi-Year EOL Replacement Forecast & Full Attestation Audit Banner (Pro Tier 1)
+                    val eolForecastCount = currentCandles.count { it.vendorEolNorm <= 0.85f || it.deployEndNorm >= it.vendorEolNorm }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isProTier1) palette.surface else palette.accent.copy(alpha = 0.10f))
+                            .border(
+                                1.dp,
+                                if (isProTier1) palette.border else palette.accent.copy(alpha = 0.45f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { if (!isProTier1) onOpenUpgradeModal() }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isProTier1) {
+                                "EOL Forecast: $eolForecastCount device${if (eolForecastCount == 1) "" else "s"} nearing/past EOL • ${attestations.size} audit log${if (attestations.size == 1) "" else "s"}"
+                            } else {
+                                "⚡ Multi-Year EOL Forecast & Full Audit Log — Unlock with Pro Tier 1"
+                            },
+                            color = if (isProTier1) palette.textPrimary else palette.accentText,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isProTier1) {
+                            MonospaceBadge(
+                                text = "PRO",
+                                color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn)
+                            )
                         }
                     }
 
