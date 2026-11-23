@@ -337,8 +337,8 @@ fun Tier1UpgradeModalDialog(
 ) {
     TuesdayModalCard(
         palette = palette,
-        title = "Tuesday.sh Pro Tier 1",
-        subtitle = "Free accounts include 1 primary network (up to 15 devices) and 1 demo sandbox. Upgrade to Pro Tier 1 for up to 128 devices per site and unlimited network locations.",
+        title = "Tuesday.sh Pro — Founding Member",
+        subtitle = "Built at SURF Incubator in Seattle. Free includes 1 primary site, 15 devices, and 15 AI photo scans. Lock in Founding Member pricing for the full Pro suite:",
         onDismissRequest = onDismiss,
         modifier = Modifier.uiComponent("Tier1UpgradeModal"),
         borderColor = palette.accent.copy(alpha = 0.6f),
@@ -348,7 +348,7 @@ fun Tier1UpgradeModalDialog(
         },
         headerTrailing = {
             MonospaceBadge(
-                text = "PRO TIER 1",
+                text = "FOUNDING",
                 color = palette.accentText
             )
         }
@@ -364,19 +364,25 @@ fun Tier1UpgradeModalDialog(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "✓ Up to 128 tracked devices per network site (15 on Free)",
+                text = "✓ Up to 128 devices/site & unlimited network locations",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "✓ Unlimited physical network sites & remote locations",
+                text = "✓ Unlimited AI photo hardware identification (15 free)",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "✓ Separate inventory & advisories for home, cabin, or lab",
+                text = "✓ Printable PDF, CSV & Markdown rack dossier exports",
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "✓ Multi-year EOL forecast, audit log & Ask Claude briefs",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold

@@ -130,15 +130,15 @@ class TuesdayBillingManager(
                     val offer = details.subscriptionOfferDetails?.firstOrNull()
                     val pricingPhase = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()
                     val formattedPrice = pricingPhase?.formattedPrice
-                        ?: if (details.productId == SKU_PRO_TIER1_MONTHLY) "$4.99" else "$49.00"
+                        ?: if (details.productId == SKU_PRO_TIER1_MONTHLY) "$2.99" else "$29.00"
                     val isAnnual = details.productId == SKU_PRO_TIER1_ANNUAL
                     mappedOffers.add(
                         SubscriptionPlanOffer(
                             productId = details.productId,
-                            title = if (isAnnual) "Annual" else "Monthly",
+                            title = if (isAnnual) "Founding Annual" else "Founding Monthly",
                             formattedPrice = formattedPrice,
                             periodLabel = if (isAnnual) "/ year" else "/ month",
-                            badge = if (isAnnual) "SAVE 18%" else null
+                            badge = if (isAnnual) "SAVE 19%" else null
                         )
                     )
                 }
@@ -331,15 +331,15 @@ class TuesdayBillingManager(
         fun defaultPlanOffers(): List<SubscriptionPlanOffer> = listOf(
             SubscriptionPlanOffer(
                 productId = SKU_PRO_TIER1_ANNUAL,
-                title = "Annual",
-                formattedPrice = "$49.00",
+                title = "Founding Annual",
+                formattedPrice = "$29.00",
                 periodLabel = "/ year",
-                badge = "SAVE 18%"
+                badge = "SAVE 19%"
             ),
             SubscriptionPlanOffer(
                 productId = SKU_PRO_TIER1_MONTHLY,
-                title = "Monthly",
-                formattedPrice = "$4.99",
+                title = "Founding Monthly",
+                formattedPrice = "$2.99",
                 periodLabel = "/ month",
                 badge = null
             )
