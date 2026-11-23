@@ -686,6 +686,17 @@ class GeminiDiscoveryService(private val context: Context) {
                 )
             )
 
+            if (imageCount == 0 && !combined.contains("unifi") && !combined.contains("ubiquiti") && !combined.contains("udm") && !combined.contains("ucg") && !combined.contains("beryl") && !combined.contains("gl-mt")) {
+                return GeminiDiscoveryTurnResult(
+                    visualSummary = "No exact catalog match found for those clues yet. Try adding a brand, device type, model number, or snap a photo.",
+                    extractedIdentifiers = accumulatedIdentifiers,
+                    candidates = emptyList(),
+                    usedLiveGeminiApi = usedLiveApi,
+                    providerUsed = "Local Clues Matcher",
+                    debugLogText = buildClientFallbackDebugLog(emptyList(), imageCount, fallbackErrorReason)
+                )
+            }
+
             return GeminiDiscoveryTurnResult(
                 visualSummary = if (hasSpecificClue) {
                     "Verified compact polycarbonate desktop security gateway with front LCM status display and multi-gigabit RJ45 WAN/LAN ports."

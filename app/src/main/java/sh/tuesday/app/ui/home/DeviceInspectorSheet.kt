@@ -39,6 +39,7 @@ internal fun DeviceInspectorBottomSheet(
     onApplyPatch: () -> Unit,
     onEditDevice: () -> Unit = {},
     onNavigateToBulletins: (String?) -> Unit = {},
+    onOpenFeedsSettings: () -> Unit = {},
     onClose: () -> Unit
 ) {
     val stateColor = TuesdayTheme.ledColorFor(device.portState, isStn)
@@ -232,6 +233,55 @@ internal fun DeviceInspectorBottomSheet(
                     }
                 }
             }
+        }
+
+        val matchedDeviceFeeds = remember(device.id, device.purls, isStn) {
+            BulletinsAndInventoryEngine.assembleBulletins(
+                flavor = if (isStn) sh.tuesday.app.models.AppBrandFlavor.SURETHING_HOME else sh.tuesday.app.models.AppBrandFlavor.TUESDAY_PRO,
+                devices = listOf(device),
+                mutedFeedSlugs = emptySet()
+            ).matchedFeeds
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                .background(palette.surface)
+                .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                .clickable { onOpenFeedsSettings() }
+                .padding(horizontal = 10.dp, vertical = 9.dp)
+                .uiAction("openDeviceRelatedFeeds"),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "RELATED ADVISORY FEEDS",
+                    color = palette.textMuted,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = if (matchedDeviceFeeds.isNotEmpty()) {
+                        matchedDeviceFeeds.joinToString(" • ") { it.name }
+                    } else {
+                        "Manage manufacturer & security feeds"
+                    },
+                    color = palette.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            }
+            Text(
+                text = "Manage →",
+                color = palette.accentText,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp)
+            )
         }
 
         if (device.portState != PortLifecycleState.OK && device.portState != PortLifecycleState.UNASSIGNED && activeBulletins.isNotEmpty()) {

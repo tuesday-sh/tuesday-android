@@ -84,6 +84,7 @@ data class AccountSettingsParams(
     val initialExpandReminders: Boolean = false,
     val initialExpandPreferences: Boolean = false,
     val initialExpandFeeds: Boolean = false,
+    val onOpenReferenceGuide: () -> Unit = {},
     val showStateFilterStrip: Boolean = true,
     val onToggleShowStateFilterStrip: (Boolean) -> Unit = {},
     val showZoneFilterStrip: Boolean = true,
@@ -262,6 +263,29 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                 )
             }
 
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
+                    .padding(12.dp)
+                    .uiSlot("account-profile-summary"),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = networkLocationName.ifBlank { "My Network" },
+                    color = palette.textPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${params.activeDeviceCount} devices • ${if (sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(params.entitlementTier)) "Pro Tier 1" else "Free Tier"}",
+                    color = palette.textMuted,
+                    fontSize = 12.sp
+                )
+            }
+
             SurfaceListContainer(palette = palette) {
                 SettingsMenuRow(
                     palette = palette,
@@ -303,6 +327,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     title = SettingsSection.FEEDS.title,
                     subtitle = "$activeFeedsCount active • $mutedFeedsCount muted",
                     onClick = { activeSection = SettingsSection.FEEDS }
+                )
+                SurfaceListDivider(palette)
+                SettingsMenuRow(
+                    palette = palette,
+                    title = "Ordinal Spine & Reference Guide",
+                    subtitle = "Scale C1–C8, S0–S6, Z0–Z5, R1–R4 & OSI 7+1",
+                    onClick = params.onOpenReferenceGuide
                 )
             }
 

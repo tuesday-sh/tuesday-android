@@ -240,6 +240,11 @@ fun AddDeviceScreen(
     var scanStatusMessage by remember { mutableStateOf<String?>(null) }
 
     fun triggerIdentifierOnlyAnalysis(cluesOverride: List<GoldClueItem> = selectedClueItems) {
+        if (capturedBitmaps.isEmpty() && cluesOverride.isEmpty() && scannedBarcodesList.isEmpty() && manualHostname.isBlank()) {
+            manualError = "Snap a photo, scan a barcode, or add a hardware clue before searching."
+            return
+        }
+        manualError = null
         scope.launch {
             // 0-Turn Local Pinned Gold Cache Short-Circuit when no camera frames require vision inspection
             if (capturedBitmaps.isEmpty()) {

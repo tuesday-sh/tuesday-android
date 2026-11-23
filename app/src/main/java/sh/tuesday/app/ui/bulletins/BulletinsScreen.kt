@@ -164,6 +164,30 @@ fun BulletinsScreen(
                             }
                         )
                     }
+                    is ExpandedBulletinModal.Reminder -> {
+                        NotchBulletinCard(
+                            palette = palette,
+                            title = modal.item.title,
+                            description = modal.item.body,
+                            leftNotchLabel = "REMINDER",
+                            leftNotchDotColor = palette.accent,
+                            rightNotchLabel = "ACTION",
+                            onRightNotchClick = {},
+                            steps = emptyList(),
+                            allStepsDone = false,
+                            primaryActionLabel = "Snooze",
+                            completeActionLabel = "Snooze",
+                            secondaryActionLabel = "Complete",
+                            onPrimaryAction = {
+                                expandedModal = null
+                                onNotificationAction(modal.item.id, "snoozed")
+                            },
+                            onSecondaryAction = {
+                                expandedModal = null
+                                onNotificationAction(modal.item.id, "completed")
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -213,76 +237,22 @@ fun BulletinsScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionHeading(text = "Active Notifications & Reminders", palette = palette)
-                    activeServerNotifs.forEach { notif ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(palette.surface)
-                                .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                    SurfaceListContainer(palette = palette) {
+                        activeServerNotifs.forEachIndexed { idx, notif ->
+                            if (idx > 0) SurfaceListDivider(palette = palette)
+                            StatusListRow(
+                                palette = palette,
+                                dotColor = palette.accent,
+                                title = notif.title,
+                                onClick = { expandedModal = ExpandedBulletinModal.Reminder(notif) },
+                                contentDescription = "Open reminder ${notif.title}"
                             ) {
                                 Text(
-                                    text = notif.title,
-                                    color = palette.textPrimary,
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = notif.surfaces.joinToString(" · ").uppercase(),
-                                    color = palette.accent,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            Text(
-                                text = notif.body,
-                                color = palette.textMuted,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = "Snooze",
+                                    text = notif.body,
                                     color = palette.textMuted,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                                        .clickable { onNotificationAction(notif.id, "snoozed") }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                                Text(
-                                    text = "Complete",
-                                    color = palette.accent,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(1.dp, palette.accent, RoundedCornerShape(6.dp))
-                                        .clickable { onNotificationAction(notif.id, "completed") }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                                Text(
-                                    text = "Dismiss",
-                                    color = palette.textMuted,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .clickable { onNotificationAction(notif.id, "dismissed") }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -528,6 +498,7 @@ private sealed interface ExpandedBulletinModal {
     data class Inbox(val item: BulletinInboxView, val isCompleted: Boolean) : ExpandedBulletinModal
     data class Welcome(val isCompleted: Boolean) : ExpandedBulletinModal
     data class Feed(val feed: MatchedFeedView) : ExpandedBulletinModal
+    data class Reminder(val item: SiteNotificationItem) : ExpandedBulletinModal
 }
 
 @Composable

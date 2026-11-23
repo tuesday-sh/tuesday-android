@@ -820,6 +820,7 @@ fun HomeScreen(
                         initialExpandReminders = expandRemindersInSettings,
                         initialExpandFeeds = expandFeedsInSettings,
                         initialExpandPreferences = expandPreferencesInSettings,
+                        onOpenReferenceGuide = { showReferenceGuide = true },
                         showStateFilterStrip = showStateFilterStrip,
                         onToggleShowStateFilterStrip = { repository.setShowStateFilterStrip(it) },
                         showZoneFilterStrip = showZoneFilterStrip,
@@ -874,6 +875,11 @@ fun HomeScreen(
                 onEditDevice = {
                     setInspectedDevice(null)
                     onNavigateToEditDevice(device.id)
+                },
+                onOpenFeedsSettings = {
+                    setInspectedDevice(null)
+                    expandFeedsInSettings = true
+                    setActiveTab(MainNavTab.ACCOUNT)
                 },
                 onNavigateToBulletins = { bulletinId ->
                     pendingBulletinId = bulletinId
