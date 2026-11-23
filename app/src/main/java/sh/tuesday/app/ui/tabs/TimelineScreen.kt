@@ -227,7 +227,7 @@ fun TimelineScreen(
                             ).forEach { (label, wDp) ->
                                 val isProLockedRange = (wDp == null && !isProTier1)
                                 SelectableFilterChip(
-                                    label = if (isProLockedRange) "⚡ $label" else label,
+                                    label = label,
                                     selected = zoomWidthDp == wDp,
                                     onClick = {
                                         if (isProLockedRange) {
@@ -240,6 +240,13 @@ fun TimelineScreen(
                                     modifier = Modifier.uiAction("setTimelineRange")
                                 )
                             }
+                            SelectableFilterChip(
+                                label = "Today",
+                                selected = false,
+                                onClick = { scrubberXNorm = 1.0f },
+                                palette = palette,
+                                modifier = Modifier.uiAction("snapTimelineToday")
+                            )
                         }
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -271,43 +278,9 @@ fun TimelineScreen(
                         }
                     }
 
-                    // Multi-Year EOL Replacement Forecast & Full Attestation Audit Banner (Pro Tier 1)
+                    // Visual Grammar Legend (All 6 States) + Clickable Reports CTA
+                    var showReportsModal by remember { mutableStateOf(false) }
                     val eolForecastCount = currentCandles.count { it.vendorEolNorm <= 0.85f || it.deployEndNorm >= it.vendorEolNorm }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isProTier1) palette.surface else palette.accent.copy(alpha = 0.10f))
-                            .border(
-                                1.dp,
-                                if (isProTier1) palette.border else palette.accent.copy(alpha = 0.45f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { if (!isProTier1) onOpenUpgradeModal() }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isProTier1) {
-                                "EOL Forecast: $eolForecastCount device${if (eolForecastCount == 1) "" else "s"} nearing/past EOL • ${attestations.size} audit log${if (attestations.size == 1) "" else "s"}"
-                            } else {
-                                "⚡ Multi-Year EOL Forecast & Full Audit Log — Unlock with Pro Tier 1"
-                            },
-                            color = if (isProTier1) palette.textPrimary else palette.accentText,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (isProTier1) {
-                            MonospaceBadge(
-                                text = "PRO",
-                                color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn)
-                            )
-                        }
-                    }
-
-                    // Visual Grammar Legend (All 6 States)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -315,16 +288,30 @@ fun TimelineScreen(
                             .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                             .background(palette.elevated)
                             .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                            .clickable { showReportsModal = true }
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = "Legend:",
-                            color = palette.accentText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Legend:",
+                                color = palette.accentText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Reports →",
+                                color = palette.accentText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -359,6 +346,49 @@ fun TimelineScreen(
                             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Box(modifier = Modifier.size(width = 8.dp, height = 6.dp).background(overhangColor))
                                 Text("Hatched: Past EOL", color = cveColor, fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    if (showReportsModal) {
+                        sh.tuesday.app.ui.components.TuesdayModalCard(
+                            palette = palette,
+                            title = "Lifecycle Reports & Dossiers",
+                            subtitle = "Generate local, offline-ready reports directly on your device — zero inventory data leaves your phone.",
+                            onDismissRequest = { showReportsModal = false }
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
+                                    .background(palette.elevated)
+                                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("• Multi-Year EOL Forecast ($eolForecastCount device${if (eolForecastCount == 1) "" else "s"} nearing/past EOL)", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("• Full Attestation Audit Log (${attestations.size} recorded check-in${if (attestations.size == 1) "" else "s"})", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("• Printable PDF, CSV & Markdown Home/Rack Dossiers", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (!isProTier1) {
+                                androidx.compose.material3.Button(
+                                    onClick = {
+                                        showReportsModal = false
+                                        onOpenUpgradeModal()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = Color.White)
+                                ) {
+                                    Text("Unlock Reports with Tier 1", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text(
+                                    text = "Tier 1 Active — export PDF, CSV, or Markdown dossiers anytime from the Backup & Export menu (☰).",
+                                    color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }

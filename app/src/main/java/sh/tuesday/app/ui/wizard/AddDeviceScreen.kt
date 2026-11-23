@@ -1045,16 +1045,16 @@ fun AddDeviceScreen(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isExhausted) palette.accent.copy(alpha = 0.14f) else palette.elevated)
                                 .border(1.dp, if (isExhausted) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(8.dp))
-                                .clickable { if (isExhausted) onOpenUpgradeModal() }
+                                .clickable { onOpenUpgradeModal() }
                                 .padding(horizontal = 10.dp, vertical = 7.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = if (isExhausted) {
-                                    "⚡ 0 / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left — Upgrade to Pro"
+                                    "0 / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left — Upgrade to Tier 1"
                                 } else {
-                                    "⚡ $remaining / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left (Clues & Barcode always free)"
+                                    "$remaining / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left (Clues & Barcode always free)"
                                 },
                                 color = if (isExhausted) palette.accentText else palette.textMuted,
                                 fontSize = 11.sp,

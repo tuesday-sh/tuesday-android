@@ -170,6 +170,7 @@ fun HomeScreen(
     var expandNetworkInSettings by rememberSaveable { mutableStateOf(false) }
     var expandPlanInSettings by rememberSaveable { mutableStateOf(false) }
     var expandRemindersInSettings by rememberSaveable { mutableStateOf(false) }
+    var expandFeedsInSettings by rememberSaveable { mutableStateOf(false) }
     var expandPreferencesInSettings by rememberSaveable { mutableStateOf(false) }
     val inspectedDeviceId by repository.inspectedDeviceId.collectAsState()
     val inspectedDevice = remember(rackDevices, inspectedDeviceId) {
@@ -446,20 +447,26 @@ fun HomeScreen(
                                 modifier = Modifier.uiSlot("brand-title")
                             )
                         }
+                        val isTier1Badge = sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(entitlementTier)
+                        val tier1Gold = Color(0xFFF59E0B)
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .heightIn(min = 36.dp)
                                 .widthIn(min = 54.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(palette.elevated)
+                                .background(if (isTier1Badge) tier1Gold.copy(alpha = 0.16f) else palette.elevated)
+                                .then(
+                                    if (isTier1Badge) Modifier.border(1.dp, Color(0xFFD97706), RoundedCornerShape(8.dp))
+                                    else Modifier
+                                )
                                 .clickable { showProComingSoonModal = true }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                                 .uiAction("toggleBrandFlavor")
                         ) {
                             Text(
-                                text = brandFlavor.badge,
-                                color = palette.accent,
+                                text = if (isTier1Badge) "◆ ${brandFlavor.badge}" else brandFlavor.badge,
+                                color = if (isTier1Badge) tier1Gold else palette.accent,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
@@ -496,12 +503,6 @@ fun HomeScreen(
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                                     .uiSlot("network-switcher-pill")
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(palette.textMuted.copy(alpha = 0.7f))
-                                )
                                 Text(
                                     text = activeNetwork.name.ifBlank { "My Network" },
                                     color = palette.textPrimary,
@@ -697,7 +698,10 @@ fun HomeScreen(
                         onToggleMuteFeed = { repository.toggleMuteFeed(it) },
                         onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
                         onRejectModel = { repository.rejectProvisionalDeviceModel() },
-                        onOpenFeedsSettings = { setActiveTab(MainNavTab.ACCOUNT) },
+                        onOpenFeedsSettings = {
+                            expandFeedsInSettings = true
+                            setActiveTab(MainNavTab.ACCOUNT)
+                        },
                         onInspectDevice = { devId ->
                             visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                         },
@@ -814,6 +818,7 @@ fun HomeScreen(
                         initialExpandNetwork = expandNetworkInSettings,
                         initialExpandPlan = expandPlanInSettings,
                         initialExpandReminders = expandRemindersInSettings,
+                        initialExpandFeeds = expandFeedsInSettings,
                         initialExpandPreferences = expandPreferencesInSettings,
                         showStateFilterStrip = showStateFilterStrip,
                         onToggleShowStateFilterStrip = { repository.setShowStateFilterStrip(it) },

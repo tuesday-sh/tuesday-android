@@ -145,7 +145,7 @@ fun RhythmScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (isProTier1) "✦ Ask Claude" else "✦ Ask Claude • PRO",
+                                text = "✦ Ask Claude",
                                 color = amberColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold

@@ -104,9 +104,12 @@ fun NetworkPickerModalDialog(
             onConfirmUpgrade = { sku ->
                 onUpgradeMultiSite(sku)
                 showUpgradePrompt = false
-                showSetupModal = true
+                onDismiss()
             },
-            onDismiss = { showUpgradePrompt = false }
+            onDismiss = {
+                showUpgradePrompt = false
+                onDismiss()
+            }
         )
     } else {
         TuesdayModalCard(
@@ -333,25 +336,17 @@ fun Tier1UpgradeModalDialog(
     isPurchasing: Boolean = false,
     billingStatusMessage: String? = null,
     onConfirmUpgrade: (String) -> Unit,
+    onRestorePurchases: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     TuesdayModalCard(
         palette = palette,
         title = "Tuesday.sh Pro — Founding Member",
-        subtitle = "Built at SURF Incubator in Seattle. Free includes 1 primary site, 15 devices, and 15 AI photo scans. Lock in Founding Member pricing for the full Pro suite:",
+        subtitle = "Built at SURF Incubator in Seattle. Free includes 1 primary site, 15 devices, and 15 AI photo scans. Lock in Founding Member pricing for the full Tier 1 suite:",
         onDismissRequest = onDismiss,
         modifier = Modifier.uiComponent("Tier1UpgradeModal"),
         borderColor = palette.accent.copy(alpha = 0.6f),
-        closeActionModifier = Modifier.uiAction("closeTier1UpgradeModal"),
-        leadingContent = {
-            Text("⚡", fontSize = 18.sp)
-        },
-        headerTrailing = {
-            MonospaceBadge(
-                text = "FOUNDING",
-                color = palette.accentText
-            )
-        }
+        closeActionModifier = Modifier.uiAction("closeTier1UpgradeModal")
     ) {
         Column(
             modifier = Modifier
@@ -435,6 +430,18 @@ fun Tier1UpgradeModalDialog(
             ) {
                 Text("Not Now", color = palette.textMuted, fontSize = 12.5.sp)
             }
+        }
+
+        OutlinedButton(
+            onClick = onRestorePurchases,
+            enabled = !isPurchasing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .uiAction("restorePurchases"),
+            shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Text("Restore Purchases", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
 
         val upgradeContext = LocalContext.current

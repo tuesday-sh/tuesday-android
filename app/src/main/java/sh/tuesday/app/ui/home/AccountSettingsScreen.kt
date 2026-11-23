@@ -83,6 +83,7 @@ data class AccountSettingsParams(
     val initialExpandPlan: Boolean = false,
     val initialExpandReminders: Boolean = false,
     val initialExpandPreferences: Boolean = false,
+    val initialExpandFeeds: Boolean = false,
     val showStateFilterStrip: Boolean = true,
     val onToggleShowStateFilterStrip: (Boolean) -> Unit = {},
     val showZoneFilterStrip: Boolean = true,
@@ -212,10 +213,12 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
         params.initialExpandPreferences,
         params.initialExpandPlan,
         params.initialExpandReminders,
-        params.initialExpandNetwork
+        params.initialExpandNetwork,
+        params.initialExpandFeeds
     ) {
         mutableStateOf(
             when {
+                params.initialExpandFeeds -> SettingsSection.FEEDS
                 params.initialExpandPreferences -> SettingsSection.PREFERENCES
                 params.initialExpandPlan -> SettingsSection.PLAN
                 params.initialExpandReminders -> SettingsSection.REMINDERS
@@ -394,6 +397,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         }
                                     }
                                 }
+
                             }
                         }
 
@@ -608,12 +612,8 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 PreferenceToggleRow(
-                                    title = if (isStn) "Household Scale Tester" else "State Simulator",
-                                    description = if (isStn) {
-                                        "Test different household device scales and prototype states."
-                                    } else {
-                                        "Enables in-app state controls & diagnostic testing tools."
-                                    },
+                                    title = "Developer Mode",
+                                    description = "Enables in-app scale simulator, vision debug logs & API overrides.",
                                     checked = isDeveloperMode,
                                     onCheckedChange = onToggleDeveloperMode,
                                     palette = palette,
@@ -632,19 +632,6 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         accentTrackColor = okGreen,
                                         modifier = Modifier.uiSlot("vision-debug-toggle-row"),
                                         switchModifier = Modifier.uiAction("toggleVisionDebugMode")
-                                    )
-
-                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
-
-                                    PreferenceToggleRow(
-                                        title = "Diagnostics",
-                                        description = "Saves captured photos and debug logs locally to /sdcard/.../diagnostics/.",
-                                        checked = params.isDiagnosticsEnabled,
-                                        onCheckedChange = params.onToggleDiagnosticsMode,
-                                        palette = palette,
-                                        accentTrackColor = okGreen,
-                                        modifier = Modifier.uiSlot("diagnostics-toggle-row"),
-                                        switchModifier = Modifier.uiAction("toggleDiagnosticsMode")
                                     )
 
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
@@ -704,7 +691,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                                 value = draftApiUrl,
                                                 onValueChange = { draftApiUrl = it },
                                                 label = "Endpoint URL",
-                                                placeholder = "http://100.108.40.3:3000 or https://api.tuesday.sh",
+                                                placeholder = "https://api.tuesday.sh or http://127.0.0.1:3000",
                                                 palette = palette,
                                                 modifier = Modifier.weight(1f)
                                             )
@@ -892,6 +879,19 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         )
                                     }
                                 }
+
+                                HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+
+                                PreferenceToggleRow(
+                                    title = "Diagnostics",
+                                    description = "Enables diagnostic telemetry and local debug logs without changing your UI.",
+                                    checked = params.isDiagnosticsEnabled,
+                                    onCheckedChange = params.onToggleDiagnosticsMode,
+                                    palette = palette,
+                                    accentTrackColor = okGreen,
+                                    modifier = Modifier.uiSlot("diagnostics-toggle-row"),
+                                    switchModifier = Modifier.uiAction("toggleDiagnosticsMode")
+                                )
                             }
                         }
 
@@ -1043,6 +1043,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         }
                                     }
                                 }
+
                             }
                         }
                     }

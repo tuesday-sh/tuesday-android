@@ -234,7 +234,7 @@ internal fun DeviceInspectorBottomSheet(
             }
         }
 
-        if (device.portState != PortLifecycleState.OK && device.portState != PortLifecycleState.UNASSIGNED) {
+        if (device.portState != PortLifecycleState.OK && device.portState != PortLifecycleState.UNASSIGNED && activeBulletins.isNotEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -252,7 +252,7 @@ internal fun DeviceInspectorBottomSheet(
                         .padding(top = 4.dp, bottom = 14.dp)
                 ) {
                     Text(
-                        text = if (isStn) "✓ Mark Remediation Complete (Set Device OK)" else "✓ Mark Remediation Complete (Set Port OK)",
+                        text = "✓ Mark Remediation Complete",
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
                     )

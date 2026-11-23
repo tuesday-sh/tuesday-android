@@ -421,7 +421,7 @@ fun HacsSettingsSheet(
                             .weight(1f)
                             .uiAction("exportDossierPdf")
                     ) {
-                        Text(if (isProTier1) "PDF" else "⚡ PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Text("PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(
                         onClick = {
@@ -438,7 +438,7 @@ fun HacsSettingsSheet(
                             .weight(1f)
                             .uiAction("exportDossierCsv")
                     ) {
-                        Text(if (isProTier1) "CSV" else "⚡ CSV", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Text("CSV", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(
                         onClick = {
@@ -455,7 +455,7 @@ fun HacsSettingsSheet(
                             .weight(1f)
                             .uiAction("exportDossierMarkdown")
                     ) {
-                        Text(if (isProTier1) "Markdown" else "⚡ MD", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Text(if (isProTier1) "Markdown" else "MD", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -545,7 +545,7 @@ fun HacsSettingsSheet(
                             .fillMaxWidth()
                             .uiAction("openFamilyTier1Upgrade")
                     ) {
-                        Text("⚡ Unlock with Pro Tier 1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Unlock with Tier 1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
