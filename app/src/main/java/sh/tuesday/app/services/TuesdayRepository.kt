@@ -264,6 +264,15 @@ class TuesdayRepository(context: Context) {
         return tier == "pro_tier_1" || tier == "multisite_tier_1" || tier == "fleet"
     }
 
+    private val _aiPhotoScansUsed = MutableStateFlow(prefs.getInt("ai_photo_scans_used", 0))
+    val aiPhotoScansUsed: StateFlow<Int> = _aiPhotoScansUsed.asStateFlow()
+
+    fun recordAiPhotoScanUsed() {
+        val next = _aiPhotoScansUsed.value + 1
+        _aiPhotoScansUsed.value = next
+        prefs.edit().putInt("ai_photo_scans_used", next).apply()
+    }
+
     private val _remindersEnabled = MutableStateFlow(prefs.getBoolean("monthly_reminders_enabled", false))
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
 

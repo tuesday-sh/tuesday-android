@@ -6,6 +6,7 @@ object EntitlementGatePolicy {
     const val DEMO_NETWORK_ID = "net-demo"
     const val FREE_DEVICE_LIMIT = 15
     const val PRO_DEVICE_LIMIT = 128
+    const val FREE_AI_PHOTO_SCAN_LIMIT = 15
 
     fun isProTier1Entitled(tier: String?): Boolean {
         val normalized = tier?.trim()?.lowercase().orEmpty()
@@ -13,6 +14,15 @@ object EntitlementGatePolicy {
             normalized == "multisite_tier_1" ||
             normalized == "fleet"
     }
+
+    fun remainingFreeAiPhotoScans(tier: String?, scansUsed: Int): Int? =
+        if (isProTier1Entitled(tier)) null else (FREE_AI_PHOTO_SCAN_LIMIT - scansUsed).coerceAtLeast(0)
+
+    fun canRunAiPhotoScan(tier: String?, scansUsed: Int): Boolean =
+        isProTier1Entitled(tier) || scansUsed < FREE_AI_PHOTO_SCAN_LIMIT
+
+    fun requiresUpgradeForAiPhotoScan(tier: String?, scansUsed: Int): Boolean =
+        !canRunAiPhotoScan(tier, scansUsed)
 
     fun maxDevicesForTier(tier: String?): Int =
         if (isProTier1Entitled(tier)) PRO_DEVICE_LIMIT else FREE_DEVICE_LIMIT

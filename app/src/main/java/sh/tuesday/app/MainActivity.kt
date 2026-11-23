@@ -121,6 +121,8 @@ fun AppNavigation(
     onConsumePendingDestination: () -> Unit = {}
 ) {
     val navController = rememberNavController()
+    var internalPendingDestination by remember { mutableStateOf<DeepLinkDestination?>(null) }
+    val effectivePendingDestination = internalPendingDestination ?: pendingDestination
 
     NavHost(navController = navController, startDestination = "home") {
         composable("home") {
@@ -147,8 +149,14 @@ fun AppNavigation(
                     repository.setActiveNavRoute(route)
                     navController.navigate(route)
                 },
-                pendingDestination = if (pendingDestination is DeepLinkDestination.AddDevice) null else pendingDestination,
-                onConsumePendingDestination = onConsumePendingDestination
+                pendingDestination = if (effectivePendingDestination is DeepLinkDestination.AddDevice) null else effectivePendingDestination,
+                onConsumePendingDestination = {
+                    if (internalPendingDestination != null) {
+                        internalPendingDestination = null
+                    } else {
+                        onConsumePendingDestination()
+                    }
+                }
             )
         }
         composable(
@@ -202,6 +210,16 @@ fun AppNavigation(
                             launchSingleTop = true
                         }
                     }
+                },
+                onOpenUpgradeModal = {
+                    repository.setActiveNavRoute("home")
+                    if (!navController.popBackStack("home", inclusive = false)) {
+                        navController.navigate("home") {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    }
+                    internalPendingDestination = sh.tuesday.app.navigation.DeepLinkDestination.UpgradePrompt()
                 }
             )
         }

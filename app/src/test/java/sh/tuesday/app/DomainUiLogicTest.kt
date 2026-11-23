@@ -206,6 +206,17 @@ class DomainUiLogicTest {
         assertTrue(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 127))
         assertFalse(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 128))
         assertFalse(EntitlementGatePolicy.requiresUpgradeForNewDevice("pro_tier_1", "net-home", 128))
+
+        // AI Photo scan quota: 15 free scans -> unlimited on Pro Tier 1
+        assertEquals(15, EntitlementGatePolicy.remainingFreeAiPhotoScans("free", 0))
+        assertEquals(1, EntitlementGatePolicy.remainingFreeAiPhotoScans("free", 14))
+        assertEquals(0, EntitlementGatePolicy.remainingFreeAiPhotoScans("free", 15))
+        assertNull(EntitlementGatePolicy.remainingFreeAiPhotoScans("pro_tier_1", 25))
+        assertTrue(EntitlementGatePolicy.canRunAiPhotoScan("free", 14))
+        assertFalse(EntitlementGatePolicy.canRunAiPhotoScan("free", 15))
+        assertTrue(EntitlementGatePolicy.requiresUpgradeForAiPhotoScan("free", 15))
+        assertTrue(EntitlementGatePolicy.canRunAiPhotoScan("pro_tier_1", 99))
+        assertFalse(EntitlementGatePolicy.requiresUpgradeForAiPhotoScan("pro_tier_1", 99))
     }
 
     @Test

@@ -92,11 +92,15 @@ fun AddDeviceScreen(
     initialClueQuery: String? = null,
     initialCluesCsv: String? = null,
     initialAutoSearch: Boolean = false,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onOpenUpgradeModal: () -> Unit = {}
 ) {
     var mode by rememberSaveable(initialEnrollmentMode) { mutableStateOf(initialEnrollmentMode) }
     val hacsConfig by repository.hacsConfig.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
+    val entitlementTier by repository.entitlementTier.collectAsState()
+    val aiPhotoScansUsed by repository.aiPhotoScansUsed.collectAsState()
+    val remainingFreeAiScans = sh.tuesday.app.domain.EntitlementGatePolicy.remainingFreeAiPhotoScans(entitlementTier, aiPhotoScansUsed)
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
     val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
     val isDiagnosticsEnabled by repository.isDiagnosticsEnabled.collectAsState()
@@ -183,11 +187,17 @@ fun AddDeviceScreen(
     }
 
     fun triggerProgressiveAnalysis(newBmp: Bitmap, captureSource: String = "camera") {
+        if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForAiPhotoScan(entitlementTier, aiPhotoScansUsed)) {
+            manualError = "You've used all ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans. Upgrade to Pro Tier 1 for unlimited AI photo identification — or use Barcode / Manual Clues free."
+            onOpenUpgradeModal()
+            return
+        }
         currentCaptureSource = captureSource
         val updatedBitmaps = if (capturedBitmaps.contains(newBmp)) capturedBitmaps else capturedBitmaps + newBmp
         capturedBitmaps = updatedBitmaps
         scope.launch {
             isAnalyzing = true
+            repository.recordAiPhotoScanUsed()
             val rawRes = discoveryService.analyzeDeviceProgressive(
                 bitmaps = updatedBitmaps,
                 accumulatedIdentifiers = accumulatedIdentifiers,
@@ -252,6 +262,14 @@ fun AddDeviceScreen(
             }
 
             // Escalation to Server / AI only when photos are attached or local Gold cache returned 0 matches
+            if (capturedBitmaps.isNotEmpty()) {
+                if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForAiPhotoScan(entitlementTier, aiPhotoScansUsed)) {
+                    manualError = "You've used all ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans. Upgrade to Pro Tier 1 for unlimited AI photo identification — or use Barcode / Manual Clues free."
+                    onOpenUpgradeModal()
+                    return@launch
+                }
+                repository.recordAiPhotoScanUsed()
+            }
             isAnalyzing = true
             val effectiveNotes = cluesOverride.map { it.toServerClueString() }
             val rawRes = discoveryService.analyzeDeviceProgressive(
@@ -1019,6 +1037,32 @@ fun AddDeviceScreen(
             // Tab-Specific Input Mechanism (Photo Carousel / Buttons, Scan Scanner / Upload, or Manual Device Name)
             when (mode) {
                 EnrollmentMode.PHOTO_WIZARD -> {
+                    remainingFreeAiScans?.let { remaining ->
+                        val isExhausted = remaining == 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isExhausted) palette.accent.copy(alpha = 0.14f) else palette.elevated)
+                                .border(1.dp, if (isExhausted) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(8.dp))
+                                .clickable { if (isExhausted) onOpenUpgradeModal() }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (isExhausted) {
+                                    "⚡ 0 / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left — Upgrade to Pro"
+                                } else {
+                                    "⚡ $remaining / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left (Clues & Barcode always free)"
+                                },
+                                color = if (isExhausted) palette.accentText else palette.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
