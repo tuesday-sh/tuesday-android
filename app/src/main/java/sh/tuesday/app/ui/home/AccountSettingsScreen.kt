@@ -9,12 +9,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -137,10 +146,10 @@ val REMINDER_DEFINITIONS = listOf(
 private enum class SettingsSection(val title: String) {
     NETWORK("Network"),
     PLAN("Plan & Subscription"),
-    PREFERENCES("Preferences"),
-    DEV_MODE("Developer Mode"),
     REMINDERS("Reminders"),
-    FEEDS("Bulletin Feeds")
+    FEEDS("Advisory Bulletin Feeds"),
+    PREFERENCES("UI Filter Preferences"),
+    DEV_MODE("Developer Mode")
 }
 
 @Composable
@@ -148,6 +157,8 @@ private fun SettingsMenuRow(
     palette: BrandPalette,
     title: String,
     subtitle: String? = null,
+    icon: ImageVector? = null,
+    iconTint: Color = palette.accentText,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -156,6 +167,16 @@ private fun SettingsMenuRow(
         title = title,
         modifier = modifier,
         onClick = onClick,
+        leadingContent = if (icon != null) {
+            {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        } else null,
         subtitleContent = if (!subtitle.isNullOrBlank()) {
             {
                 Text(
@@ -290,35 +311,25 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                 SettingsMenuRow(
                     palette = palette,
                     title = SettingsSection.NETWORK.title,
-                    subtitle = networkLocationName.ifBlank { null },
+                    subtitle = "${networkLocationName.ifBlank { "My Network" }} • $activeDeviceCount devices",
+                    icon = Icons.Default.Home,
                     onClick = { activeSection = SettingsSection.NETWORK }
                 )
                 SurfaceListDivider(palette)
                 SettingsMenuRow(
                     palette = palette,
                     title = SettingsSection.PLAN.title,
-                    subtitle = params.entitlementTier,
+                    subtitle = if (isProTier1) "Pro Tier 1 Active (128 Devices • Unlimited Sites)" else "Free Tier • 1 Site • Up to 15 Devices",
+                    icon = Icons.Default.Star,
+                    iconTint = if (isProTier1) okGreen else palette.accentText,
                     onClick = { activeSection = SettingsSection.PLAN }
                 )
                 SurfaceListDivider(palette)
                 SettingsMenuRow(
                     palette = palette,
-                    title = SettingsSection.PREFERENCES.title,
-                    subtitle = null,
-                    onClick = { activeSection = SettingsSection.PREFERENCES }
-                )
-                SurfaceListDivider(palette)
-                SettingsMenuRow(
-                    palette = palette,
-                    title = SettingsSection.DEV_MODE.title,
-                    subtitle = if (params.isDeveloperMode) "Enabled" else "Disabled",
-                    onClick = { activeSection = SettingsSection.DEV_MODE }
-                )
-                SurfaceListDivider(palette)
-                SettingsMenuRow(
-                    palette = palette,
                     title = SettingsSection.REMINDERS.title,
-                    subtitle = "$activeRemindersCount active",
+                    subtitle = "$activeRemindersCount of 5 active",
+                    icon = Icons.Default.Notifications,
                     onClick = { activeSection = SettingsSection.REMINDERS }
                 )
                 SurfaceListDivider(palette)
@@ -326,14 +337,33 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     palette = palette,
                     title = SettingsSection.FEEDS.title,
                     subtitle = "$activeFeedsCount active • $mutedFeedsCount muted",
+                    icon = Icons.Default.Email,
                     onClick = { activeSection = SettingsSection.FEEDS }
                 )
                 SurfaceListDivider(palette)
                 SettingsMenuRow(
                     palette = palette,
-                    title = "Ordinal Spine & Reference Guide",
+                    title = SettingsSection.PREFERENCES.title,
+                    subtitle = "Customize state & zone strips on Home",
+                    icon = Icons.Default.Settings,
+                    onClick = { activeSection = SettingsSection.PREFERENCES }
+                )
+                SurfaceListDivider(palette)
+                SettingsMenuRow(
+                    palette = palette,
+                    title = "Standards & Reference Guide",
                     subtitle = "Scale C1–C8, S0–S6, Z0–Z5, R1–R4 & OSI 7+1",
+                    icon = Icons.Default.Info,
                     onClick = params.onOpenReferenceGuide
+                )
+                SurfaceListDivider(palette)
+                SettingsMenuRow(
+                    palette = palette,
+                    title = SettingsSection.DEV_MODE.title,
+                    subtitle = if (params.isDeveloperMode) "Enabled" else "Disabled",
+                    icon = Icons.Default.Build,
+                    iconTint = if (params.isDeveloperMode) palette.accent else palette.textMuted,
+                    onClick = { activeSection = SettingsSection.DEV_MODE }
                 )
             }
 
@@ -396,7 +426,6 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Box(modifier = Modifier.uiSlot("account-profile-summary"))
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()

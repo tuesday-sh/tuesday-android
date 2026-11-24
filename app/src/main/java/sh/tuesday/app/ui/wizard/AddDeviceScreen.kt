@@ -1047,6 +1047,7 @@ fun AddDeviceScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = 32.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isExhausted) palette.accent.copy(alpha = 0.14f) else palette.elevated)
                                 .border(1.dp, if (isExhausted) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(8.dp))
