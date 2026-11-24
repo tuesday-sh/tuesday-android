@@ -267,6 +267,11 @@ class TuesdayComposeSemanticUiTest {
         composeRule.onNodeWithTag("ui:action:openSetupNetworkModal", useUnmergedTree = true).performClick()
         assertAnyTagRendered("ui:component:Tier1UpgradeModal")
         composeRule.onNodeWithTag("ui:action:confirmTier1Upgrade", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        // Strict single-foreground modal lifecycle: confirming upgrade dismisses cleanly; reopen picker as Pro Tier 1
+        composeRule.onNodeWithTag("ui:action:openNetworkPicker", useUnmergedTree = true).performClick()
+        assertAnyTagRendered("ui:component:NetworkPickerModal")
+        composeRule.onNodeWithTag("ui:action:openSetupNetworkModal", useUnmergedTree = true).performClick()
         assertAnyTagRendered("ui:component:SetupNetworkModal")
 
         composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true).onFirst()
@@ -804,6 +809,10 @@ class TuesdayComposeSemanticUiTest {
         auditWcag("Modal • Tier1Upgrade")
 
         composeRule.onNodeWithTag("ui:action:confirmTier1Upgrade", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        navigateIntent("tuesday://network-picker")
+        assertAnyTagRendered("ui:component:NetworkPickerModal")
+        composeRule.onNodeWithTag("ui:action:openSetupNetworkModal", useUnmergedTree = true).performClick()
         assertAnyTagRendered("ui:component:SetupNetworkModal")
         auditWcag("Modal • SetupNetwork")
 
