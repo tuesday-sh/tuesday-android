@@ -285,7 +285,7 @@ class TuesdayComposeSemanticUiTest {
         assertTextSingleLine(
             composeRule.onNodeWithTag("ui:action:toggleBrandFlavor", useUnmergedTree = false).fetchSemanticsNode(),
             "HOME badge with 55-char network name",
-            expectedText = "HOME"
+            expectedText = "◆ HOME"
         )
         val hacsNode = composeRule.onNodeWithTag("ui:action:openHacsSettings", useUnmergedTree = false).fetchSemanticsNode()
         val rightEdgeDp = hacsNode.boundsInWindow.right / density
