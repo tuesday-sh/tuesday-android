@@ -10,8 +10,7 @@ enum class AiProviderType(val displayName: String, val badgeLabel: String) {
 
 enum class ApiEndpointPreset(val label: String, val shortBadge: String, val url: String) {
     PROD_GCP("Prod (api.tuesday.sh)", "☁️ PROD API", "https://api.tuesday.sh"),
-    LOCAL_TAILSCALE("Local Dev (Tailscale)", "💻 LOCAL TS", "http://100.108.40.3:3000"),
-    LOCAL_LAN("Local Dev (LAN)", "🏠 LOCAL LAN", "http://192.168.9.201:3000");
+    LOCAL_LAN("Local Dev", "💻 LOCAL", "http://127.0.0.1:3000");
 
     companion object {
         fun fromUrl(url: String): ApiEndpointPreset? {

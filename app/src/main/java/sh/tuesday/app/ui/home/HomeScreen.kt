@@ -568,23 +568,10 @@ fun HomeScreen(
                                     if (tab == MainNavTab.BULLETINS) {
                                         val hasIncompleteWelcomeBulletin = !bulletinDismissed && !bulletinMuted && !bulletinSnoozed &&
                                             (visibleDevices.isEmpty() || !remindersEnabled || !dispatchSubscribed)
-                                        if (bulletinsPayload.inbox.isNotEmpty()) {
+                                        if (bulletinsPayload.inbox.isNotEmpty() || hasIncompleteWelcomeBulletin) {
                                             Badge(
                                                 containerColor = TuesdayTheme.LedCveRed,
-                                                modifier = Modifier.uiSlot("bulletins-badge", "count=${bulletinsPayload.inbox.size}")
-                                            ) {
-                                                Text(
-                                                    text = bulletinsPayload.inbox.size.toString(),
-                                                    color = Color.White,
-                                                    fontSize = 8.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                        } else if (hasIncompleteWelcomeBulletin) {
-                                            Badge(
-                                                containerColor = TuesdayTheme.LedCveRed,
-                                                modifier = Modifier.uiSlot("bulletins-badge", "dot=welcome")
+                                                modifier = Modifier.uiSlot("bulletins-badge")
                                             )
                                         }
                                     }

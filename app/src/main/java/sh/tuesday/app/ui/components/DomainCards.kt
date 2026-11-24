@@ -63,24 +63,19 @@ fun PlanOfferSelector(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = offer.title,
                         color = if (isSelected) palette.accentText else palette.textPrimary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     if (offer.badge != null) {
-                        Text(
+                        MonospaceBadge(
                             text = offer.badge,
-                            color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, palette.isStn),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
+                            color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, palette.isStn)
                         )
                     }
                 }
