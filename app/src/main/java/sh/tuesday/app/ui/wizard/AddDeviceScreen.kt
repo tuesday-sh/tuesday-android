@@ -92,11 +92,15 @@ fun AddDeviceScreen(
     initialClueQuery: String? = null,
     initialCluesCsv: String? = null,
     initialAutoSearch: Boolean = false,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onOpenUpgradeModal: () -> Unit = {}
 ) {
     var mode by rememberSaveable(initialEnrollmentMode) { mutableStateOf(initialEnrollmentMode) }
     val hacsConfig by repository.hacsConfig.collectAsState()
     val brandFlavor by repository.brandFlavor.collectAsState()
+    val entitlementTier by repository.entitlementTier.collectAsState()
+    val aiPhotoScansUsed by repository.aiPhotoScansUsed.collectAsState()
+    val remainingFreeAiScans = sh.tuesday.app.domain.EntitlementGatePolicy.remainingFreeAiPhotoScans(entitlementTier, aiPhotoScansUsed)
     val isDeveloperMode by repository.isDeveloperMode.collectAsState()
     val isVisionDebugEnabled by repository.isVisionDebugEnabled.collectAsState()
     val isDiagnosticsEnabled by repository.isDiagnosticsEnabled.collectAsState()
@@ -183,11 +187,17 @@ fun AddDeviceScreen(
     }
 
     fun triggerProgressiveAnalysis(newBmp: Bitmap, captureSource: String = "camera") {
+        if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForAiPhotoScan(entitlementTier, aiPhotoScansUsed)) {
+            manualError = "You've used all ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans. Upgrade to Pro Tier 1 for unlimited AI photo identification — or use Barcode / Manual Clues free."
+            onOpenUpgradeModal()
+            return
+        }
         currentCaptureSource = captureSource
         val updatedBitmaps = if (capturedBitmaps.contains(newBmp)) capturedBitmaps else capturedBitmaps + newBmp
         capturedBitmaps = updatedBitmaps
         scope.launch {
             isAnalyzing = true
+            repository.recordAiPhotoScanUsed()
             val rawRes = discoveryService.analyzeDeviceProgressive(
                 bitmaps = updatedBitmaps,
                 accumulatedIdentifiers = accumulatedIdentifiers,
@@ -230,6 +240,11 @@ fun AddDeviceScreen(
     var scanStatusMessage by remember { mutableStateOf<String?>(null) }
 
     fun triggerIdentifierOnlyAnalysis(cluesOverride: List<GoldClueItem> = selectedClueItems) {
+        if (capturedBitmaps.isEmpty() && cluesOverride.isEmpty() && scannedBarcodesList.isEmpty() && manualHostname.isBlank()) {
+            manualError = "Snap a photo, scan a barcode, or add a hardware clue before searching."
+            return
+        }
+        manualError = null
         scope.launch {
             // 0-Turn Local Pinned Gold Cache Short-Circuit when no camera frames require vision inspection
             if (capturedBitmaps.isEmpty()) {
@@ -252,6 +267,14 @@ fun AddDeviceScreen(
             }
 
             // Escalation to Server / AI only when photos are attached or local Gold cache returned 0 matches
+            if (capturedBitmaps.isNotEmpty()) {
+                if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForAiPhotoScan(entitlementTier, aiPhotoScansUsed)) {
+                    manualError = "You've used all ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans. Upgrade to Pro Tier 1 for unlimited AI photo identification — or use Barcode / Manual Clues free."
+                    onOpenUpgradeModal()
+                    return@launch
+                }
+                repository.recordAiPhotoScanUsed()
+            }
             isAnalyzing = true
             val effectiveNotes = cluesOverride.map { it.toServerClueString() }
             val rawRes = discoveryService.analyzeDeviceProgressive(
@@ -1019,6 +1042,32 @@ fun AddDeviceScreen(
             // Tab-Specific Input Mechanism (Photo Carousel / Buttons, Scan Scanner / Upload, or Manual Device Name)
             when (mode) {
                 EnrollmentMode.PHOTO_WIZARD -> {
+                    remainingFreeAiScans?.let { remaining ->
+                        val isExhausted = remaining == 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isExhausted) palette.accent.copy(alpha = 0.14f) else palette.elevated)
+                                .border(1.dp, if (isExhausted) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(8.dp))
+                                .clickable { onOpenUpgradeModal() }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (isExhausted) {
+                                    "0 / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left — Upgrade to Tier 1"
+                                } else {
+                                    "$remaining / ${sh.tuesday.app.domain.EntitlementGatePolicy.FREE_AI_PHOTO_SCAN_LIMIT} free AI photo scans left (Clues & Barcode always free)"
+                                },
+                                color = if (isExhausted) palette.accentText else palette.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
@@ -1405,19 +1454,28 @@ fun AddDeviceScreen(
                         containerColor = TuesdayTheme.HacsCyan,
                         contentColor = Color.Black
                     ),
+                    enabled = !isAnalyzing,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .weight(1f)
                         .uiAction("searchDeviceCandidates")
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    val totalSignals = capturedBitmaps.size + scannedBarcodesList.size + selectedClueItems.size
-                    Text(
-                        text = if (totalSignals > 0) "Search ($totalSignals)" else "Search",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
+                    if (isAnalyzing) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val totalSignals = capturedBitmaps.size + scannedBarcodesList.size + selectedClueItems.size
+                        Text(
+                            text = if (totalSignals > 0) "Search ($totalSignals)" else "Search",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
 
                 OutlinedButton(
@@ -1460,7 +1518,7 @@ fun AddDeviceScreen(
                                 accumulatedIdentifiers = accumulatedIdentifiers
                             )
                             if (resolvedManual == null) {
-                                manualError = "Enter a Device Name or pick a SureThingNet Insights Model clue."
+                                manualError = "Enter a name or pick any device type, brand, or rough clue — you can refine details later."
                                 return@Button
                             }
 
@@ -1497,34 +1555,6 @@ fun AddDeviceScreen(
             if (isDeveloperMode) {
                 DevPresetsAndControlsRow(includePhotoSamples = mode == EnrollmentMode.PHOTO_WIZARD)
             }
-
-                if (isAnalyzing) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = palette.accent,
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Column {
-                            Text(
-                                "Analyzing device with ${hacsConfig.aiProvider.displayName}...",
-                                color = palette.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("Inspecting chassis profile, ports, OUI prefix, and printed labels", color = palette.textMuted, fontSize = 11.sp)
-                        }
-                    }
-                }
 
                 // Progressive Clues & Candidates Loop
                 discoveryResult?.let { result ->
@@ -1695,6 +1725,58 @@ fun AddDeviceScreen(
                                 }
                             }
                         }
+                    }
+
+                    // Progressive Discovery Escape Hatch: allow saving rough/guessed hardware even if exact model isn't listed
+                    OutlinedButton(
+                        onClick = {
+                            val topCandidate = result.candidates.firstOrNull()
+                            val fallbackManual = ManualEnrollmentResolver.resolve(
+                                manualHostname = manualHostname,
+                                selectedClues = selectedClueItems,
+                                accumulatedIdentifiers = accumulatedIdentifiers
+                            )
+                            val roughHostname = fallbackManual?.hostname
+                                ?: topCandidate?.let { "${it.manufacturer} ${it.deviceCategory ?: "Device"}".trim() }
+                                ?: "Unidentified Device"
+                            val roughMetadata = fallbackManual?.metadata ?: DiscoveredDeviceMetadata(
+                                manufacturer = topCandidate?.manufacturer ?: "Manual",
+                                modelNumber = topCandidate?.deviceCategory ?: roughHostname,
+                                deviceCategory = topCandidate?.deviceCategory,
+                                serialNumber = accumulatedIdentifiers.serialNumber,
+                                macAddress = accumulatedIdentifiers.macAddress,
+                                barcodeOrQr = accumulatedIdentifiers.barcode
+                            )
+                            val roughSummary = fallbackManual?.osSummary
+                                ?: "Rough Entry • Refine via Check-Up"
+
+                            scope.launch {
+                                isSaving = true
+                                repository.enrollDevice(
+                                    hostname = roughHostname,
+                                    osDetails = roughSummary,
+                                    packageManager = PackageManagerType.FIRMWARE,
+                                    agentToken = "rough_discovery_${System.currentTimeMillis()}",
+                                    inventoryState = InventoryConfidenceState.INCOMPLETE_OR_GUESSED,
+                                    discoveredMetadata = roughMetadata
+                                )
+                                isSaving = false
+                                onNavigateBack()
+                            }
+                        },
+                        enabled = !isSaving,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.borderStrong),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("saveRoughGuessedDevice")
+                    ) {
+                        Text(
+                            text = "Not listed or not sure? Save as Rough Device",
+                            color = palette.textPrimary,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
 
                     inspectedCandidate?.let { candidate ->

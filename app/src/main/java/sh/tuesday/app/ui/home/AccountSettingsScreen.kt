@@ -83,6 +83,8 @@ data class AccountSettingsParams(
     val initialExpandPlan: Boolean = false,
     val initialExpandReminders: Boolean = false,
     val initialExpandPreferences: Boolean = false,
+    val initialExpandFeeds: Boolean = false,
+    val onOpenReferenceGuide: () -> Unit = {},
     val showStateFilterStrip: Boolean = true,
     val onToggleShowStateFilterStrip: (Boolean) -> Unit = {},
     val showZoneFilterStrip: Boolean = true,
@@ -212,10 +214,12 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
         params.initialExpandPreferences,
         params.initialExpandPlan,
         params.initialExpandReminders,
-        params.initialExpandNetwork
+        params.initialExpandNetwork,
+        params.initialExpandFeeds
     ) {
         mutableStateOf(
             when {
+                params.initialExpandFeeds -> SettingsSection.FEEDS
                 params.initialExpandPreferences -> SettingsSection.PREFERENCES
                 params.initialExpandPlan -> SettingsSection.PLAN
                 params.initialExpandReminders -> SettingsSection.REMINDERS
@@ -256,6 +260,29 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     color = palette.textMuted,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
+                    .padding(12.dp)
+                    .uiSlot("account-profile-summary"),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = networkLocationName.ifBlank { "My Network" },
+                    color = palette.textPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${params.activeDeviceCount} devices • ${if (sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(params.entitlementTier)) "Pro Tier 1" else "Free Tier"}",
+                    color = palette.textMuted,
+                    fontSize = 12.sp
                 )
             }
 
@@ -300,6 +327,13 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                     title = SettingsSection.FEEDS.title,
                     subtitle = "$activeFeedsCount active • $mutedFeedsCount muted",
                     onClick = { activeSection = SettingsSection.FEEDS }
+                )
+                SurfaceListDivider(palette)
+                SettingsMenuRow(
+                    palette = palette,
+                    title = "Ordinal Spine & Reference Guide",
+                    subtitle = "Scale C1–C8, S0–S6, Z0–Z5, R1–R4 & OSI 7+1",
+                    onClick = params.onOpenReferenceGuide
                 )
             }
 
@@ -394,6 +428,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         }
                                     }
                                 }
+
                             }
                         }
 
@@ -406,9 +441,9 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                             ) {
                                 Text(
                                     text = if (isProTier1) {
-                                        "Your Tuesday.sh Pro Tier 1 subscription is active. You can create unlimited network locations with live cloud sync and cross-site security telemetry."
+                                        "Your Tuesday.sh Pro Tier 1 subscription is active. You can track up to 128 devices per site across unlimited network locations."
                                     } else {
-                                        "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play to track unlimited locations with live cloud sync."
+                                        "Free accounts include 1 primary network (up to 15 devices) and 1 demo sandbox. Upgrade to Tuesday.sh Pro Tier 1 via Google Play for up to 128 devices per site and unlimited network locations."
                                     },
                                     color = palette.textMuted,
                                     fontSize = 12.sp,
@@ -608,12 +643,8 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 PreferenceToggleRow(
-                                    title = if (isStn) "Household Scale Tester" else "State Simulator",
-                                    description = if (isStn) {
-                                        "Test different household device scales and prototype states."
-                                    } else {
-                                        "Enables in-app state controls & diagnostic testing tools."
-                                    },
+                                    title = "Developer Mode",
+                                    description = "Enables in-app scale simulator, vision debug logs & API overrides.",
                                     checked = isDeveloperMode,
                                     onCheckedChange = onToggleDeveloperMode,
                                     palette = palette,
@@ -632,19 +663,6 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         accentTrackColor = okGreen,
                                         modifier = Modifier.uiSlot("vision-debug-toggle-row"),
                                         switchModifier = Modifier.uiAction("toggleVisionDebugMode")
-                                    )
-
-                                    HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
-
-                                    PreferenceToggleRow(
-                                        title = "Diagnostics",
-                                        description = "Saves captured photos and debug logs locally to /sdcard/.../diagnostics/.",
-                                        checked = params.isDiagnosticsEnabled,
-                                        onCheckedChange = params.onToggleDiagnosticsMode,
-                                        palette = palette,
-                                        accentTrackColor = okGreen,
-                                        modifier = Modifier.uiSlot("diagnostics-toggle-row"),
-                                        switchModifier = Modifier.uiAction("toggleDiagnosticsMode")
                                     )
 
                                     HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
@@ -704,7 +722,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                                 value = draftApiUrl,
                                                 onValueChange = { draftApiUrl = it },
                                                 label = "Endpoint URL",
-                                                placeholder = "http://100.108.40.3:3000 or https://api.tuesday.sh",
+                                                placeholder = "https://api.tuesday.sh or http://127.0.0.1:3000",
                                                 palette = palette,
                                                 modifier = Modifier.weight(1f)
                                             )
@@ -892,6 +910,19 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         )
                                     }
                                 }
+
+                                HorizontalDivider(color = palette.accent.copy(alpha = 0.2f))
+
+                                PreferenceToggleRow(
+                                    title = "Diagnostics",
+                                    description = "Enables diagnostic telemetry and local debug logs without changing your UI.",
+                                    checked = params.isDiagnosticsEnabled,
+                                    onCheckedChange = params.onToggleDiagnosticsMode,
+                                    palette = palette,
+                                    accentTrackColor = okGreen,
+                                    modifier = Modifier.uiSlot("diagnostics-toggle-row"),
+                                    switchModifier = Modifier.uiAction("toggleDiagnosticsMode")
+                                )
                             }
                         }
 
@@ -1043,6 +1074,7 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                         }
                                     }
                                 }
+
                             }
                         }
                     }

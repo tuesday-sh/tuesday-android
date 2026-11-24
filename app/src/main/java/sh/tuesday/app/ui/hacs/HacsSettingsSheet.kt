@@ -32,7 +32,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.tuesday.app.domain.EntitlementGatePolicy
+import sh.tuesday.app.domain.RackDossierExporter
 import sh.tuesday.app.models.PortLifecycleState
+import sh.tuesday.app.models.RackPortDevice
 import sh.tuesday.app.theme.BrandPalette
 import sh.tuesday.app.theme.TuesdayDimens
 import sh.tuesday.app.theme.TuesdayTheme
@@ -49,6 +51,7 @@ import java.io.InputStreamReader
 fun HacsSettingsSheet(
     entitlementTier: String = "free",
     activeNetworkName: String = "My Network",
+    devices: List<RackPortDevice> = emptyList(),
     palette: BrandPalette = TuesdayTheme.colors,
     onOpenUpgradeModal: () -> Unit = {},
     onOpenNetworkPicker: () -> Unit = {},
@@ -79,6 +82,57 @@ fun HacsSettingsSheet(
                 Toast.makeText(context, "Backup saved", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 importStatusMessage = "Export failed: ${e.localizedMessage}"
+                isSuccessStatus = false
+            }
+        }
+    }
+
+    val exportPdfLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val pdfBytes = RackDossierExporter.renderPdfBytes(activeNetworkName, devices)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(pdfBytes) }
+                importStatusMessage = "PDF Dossier exported successfully!"
+                isSuccessStatus = true
+                Toast.makeText(context, "PDF Dossier saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                importStatusMessage = "PDF export failed: ${e.localizedMessage}"
+                isSuccessStatus = false
+            }
+        }
+    }
+
+    val exportCsvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val csv = RackDossierExporter.formatCsv(activeNetworkName, devices)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(csv.toByteArray(Charsets.UTF_8)) }
+                importStatusMessage = "CSV spreadsheet exported successfully!"
+                isSuccessStatus = true
+                Toast.makeText(context, "CSV saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                importStatusMessage = "CSV export failed: ${e.localizedMessage}"
+                isSuccessStatus = false
+            }
+        }
+    }
+
+    val exportMarkdownLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val md = RackDossierExporter.formatMarkdown(activeNetworkName, devices)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(md.toByteArray(Charsets.UTF_8)) }
+                importStatusMessage = "Markdown spec sheet exported successfully!"
+                isSuccessStatus = true
+                Toast.makeText(context, "Markdown dossier saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                importStatusMessage = "Markdown export failed: ${e.localizedMessage}"
                 isSuccessStatus = false
             }
         }
@@ -178,13 +232,13 @@ fun HacsSettingsSheet(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "Home Assistant sync coming soon.",
+                        text = "Portable JSON Inventory",
                         color = palette.textPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Native integration for Home Assistant and HACS is currently in development.",
+                        text = "Your network inventory is stored locally on this device. Export or restore a standard JSON backup below at any time.",
                         color = palette.textMuted,
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
@@ -320,6 +374,90 @@ fun HacsSettingsSheet(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+
+                HorizontalDivider(color = palette.border.copy(alpha = 0.6f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Home & Rack Dossier Exports",
+                        color = palette.textPrimary,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    MonospaceBadge(
+                        text = if (isProTier1) "PRO • UNLOCKED" else "PRO TIER 1",
+                        color = if (isProTier1) okGreen else palette.accentText
+                    )
+                }
+
+                Text(
+                    text = "Export a printable insurance/disaster-recovery PDF, spreadsheet CSV, or Markdown rack spec sheet.",
+                    color = palette.textMuted,
+                    fontSize = 11.5.sp,
+                    lineHeight = 15.sp
+                )
+
+                val safeSlug = activeNetworkName.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "network" }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (isProTier1) {
+                                exportPdfLauncher.launch("tuesday_dossier_${safeSlug}.pdf")
+                            } else {
+                                onDismiss()
+                                onOpenUpgradeModal()
+                            }
+                        },
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("exportDossierPdf")
+                    ) {
+                        Text("PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (isProTier1) {
+                                exportCsvLauncher.launch("tuesday_dossier_${safeSlug}.csv")
+                            } else {
+                                onDismiss()
+                                onOpenUpgradeModal()
+                            }
+                        },
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("exportDossierCsv")
+                    ) {
+                        Text("CSV", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (isProTier1) {
+                                exportMarkdownLauncher.launch("tuesday_dossier_${safeSlug}.md")
+                            } else {
+                                onDismiss()
+                                onOpenUpgradeModal()
+                            }
+                        },
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .uiAction("exportDossierMarkdown")
+                    ) {
+                        Text(if (isProTier1) "Markdown" else "MD", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             Column(
@@ -347,12 +485,12 @@ fun HacsSettingsSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Group,
-                            contentDescription = "Family Site Management",
+                            contentDescription = "Multi-Site & 128-Device Capacity",
                             tint = if (isProTier1) okGreen else palette.accent,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Family Site Management",
+                            text = "Multi-Site & 128-Device Capacity",
                             color = palette.textPrimary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -366,9 +504,9 @@ fun HacsSettingsSheet(
 
                 Text(
                     text = if (isProTier1) {
-                        "Included with your Pro Tier 1 entitlement. Manage multiple household or family locations, delegate co-admin access, and share pairing invites for '${activeNetworkName.ifBlank { "My Network" }}'."
+                        "Included with your Pro Tier 1 entitlement. Track up to 128 devices per site and manage unlimited household, cabin, or homelab locations alongside '${activeNetworkName.ifBlank { "My Network" }}'."
                     } else {
-                        "Part of Tuesday.sh Pro Tier 1. Remotely monitor parents' or family members' home networks, manage unlimited sites, and share delegated pairing invites."
+                        "Free accounts include 1 primary network and up to 15 devices. Upgrade to Pro Tier 1 to unlock up to 128 devices per site and unlimited network locations."
                     },
                     color = palette.textMuted,
                     fontSize = 12.sp,
@@ -376,54 +514,21 @@ fun HacsSettingsSheet(
                 )
 
                 if (isProTier1) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onOpenNetworkPicker()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = palette.accent,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("manageFamilySites")
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                val inviteToken = "tuesday://join-site?site=${Uri.encode(activeNetworkName.ifBlank { "My Network" })}&code=FAM-${(1000..9999).random()}"
-                                clipboardManager.setText(AnnotatedString(inviteToken))
-                                familyInviteFeedback = "✓ Copied Family Pairing Invite link to clipboard"
-                                Toast.makeText(context, "Copied family invite link", Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = palette.surface,
-                                contentColor = palette.textPrimary
-                            ),
-                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
-                            modifier = Modifier
-                                .weight(1f)
-                                .uiAction("copyFamilySiteInvite")
-                        ) {
-                            Text("Copy Family Invite", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                onDismiss()
-                                onOpenNetworkPicker()
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = palette.accent,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(TuesdayDimens.RadiusControl),
-                            modifier = Modifier
-                                .weight(1f)
-                                .uiAction("manageFamilySites")
-                        ) {
-                            Text("Manage Sites", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    if (familyInviteFeedback != null) {
-                        Text(
-                            text = familyInviteFeedback!!,
-                            color = okGreen,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Text("Manage Sites", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Button(
@@ -440,7 +545,7 @@ fun HacsSettingsSheet(
                             .fillMaxWidth()
                             .uiAction("openFamilyTier1Upgrade")
                     ) {
-                        Text("⚡ Unlock with Pro Tier 1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Unlock with Tier 1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

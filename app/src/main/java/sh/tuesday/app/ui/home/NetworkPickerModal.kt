@@ -104,9 +104,12 @@ fun NetworkPickerModalDialog(
             onConfirmUpgrade = { sku ->
                 onUpgradeMultiSite(sku)
                 showUpgradePrompt = false
-                showSetupModal = true
+                onDismiss()
             },
-            onDismiss = { showUpgradePrompt = false }
+            onDismiss = {
+                showUpgradePrompt = false
+                onDismiss()
+            }
         )
     } else {
         TuesdayModalCard(
@@ -333,25 +336,17 @@ fun Tier1UpgradeModalDialog(
     isPurchasing: Boolean = false,
     billingStatusMessage: String? = null,
     onConfirmUpgrade: (String) -> Unit,
+    onRestorePurchases: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     TuesdayModalCard(
         palette = palette,
-        title = "Tuesday.sh Pro Tier 1",
-        subtitle = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations, Family Site Management, and live cloud sync.",
+        title = "Tuesday.sh Pro — Founding Member",
+        subtitle = "Built at SURF Incubator in Seattle. Free includes 1 primary site, 15 devices, and 15 AI photo scans. Lock in Founding Member pricing for the full Tier 1 suite:",
         onDismissRequest = onDismiss,
         modifier = Modifier.uiComponent("Tier1UpgradeModal"),
         borderColor = palette.accent.copy(alpha = 0.6f),
-        closeActionModifier = Modifier.uiAction("closeTier1UpgradeModal"),
-        leadingContent = {
-            Text("⚡", fontSize = 18.sp)
-        },
-        headerTrailing = {
-            MonospaceBadge(
-                text = "MULTI-SITE",
-                color = palette.accentText
-            )
-        }
+        closeActionModifier = Modifier.uiAction("closeTier1UpgradeModal")
     ) {
         Column(
             modifier = Modifier
@@ -364,19 +359,25 @@ fun Tier1UpgradeModalDialog(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "✓ Unlimited physical sites & remote locations",
+                text = "✓ Up to 128 devices/site & unlimited network locations",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "✓ Family & Team Site Delegation (QR & invite pairing)",
+                text = "✓ Unlimited AI photo hardware identification (15 free)",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "✓ Live cross-site security bulletins & cloud sync",
+                text = "✓ Printable PDF, CSV & Markdown rack dossier exports",
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "✓ Multi-year EOL forecast, audit log & Ask Claude briefs",
                 color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
@@ -429,6 +430,18 @@ fun Tier1UpgradeModalDialog(
             ) {
                 Text("Not Now", color = palette.textMuted, fontSize = 12.5.sp)
             }
+        }
+
+        OutlinedButton(
+            onClick = onRestorePurchases,
+            enabled = !isPurchasing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .uiAction("restorePurchases"),
+            shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Text("Restore Purchases", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
 
         val upgradeContext = LocalContext.current
@@ -521,14 +534,14 @@ fun SetupNetworkModalDialog(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "🤝 Family & Team Delegation",
+                    text = "Import an Existing Network",
                     color = palette.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Joining existing networks via QR code invitation or pairing tokens is coming soon in M4 (Family Delegation Networks).",
+                    text = "To load a network inventory exported from another device, open Account → Backup & Restore and import a saved JSON backup file.",
                     color = palette.textMuted,
                     fontSize = 12.sp,
                     lineHeight = 16.5.sp,

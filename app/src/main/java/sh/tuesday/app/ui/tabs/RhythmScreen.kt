@@ -46,9 +46,12 @@ fun RhythmScreen(
     devices: List<RackPortDevice>,
     bulletins: List<BulletinInboxView> = emptyList(),
     welcomeComplete: Boolean = false,
-    onOpenReferenceGuide: () -> Unit = {}
+    entitlementTier: String = "free",
+    onOpenReferenceGuide: () -> Unit = {},
+    onOpenUpgradeModal: () -> Unit = {}
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
+    val isProTier1 = sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(entitlementTier)
     val context = LocalContext.current
 
     val rhythms = remember(flavor, devices, bulletins, welcomeComplete) {
@@ -123,8 +126,16 @@ fun RhythmScreen(
                                 .background(amberColor.copy(alpha = 0.14f))
                                 .border(1.dp, amberColor, RoundedCornerShape(TuesdayDimens.RadiusBadge))
                                 .clickable {
-                                    val prompt = "I am reviewing my network check-up:\n\n" +
-                                        RhythmPostureEvaluator.formatShareReport(flavor, rhythms)
+                                    if (!isProTier1) {
+                                        onOpenUpgradeModal()
+                                        return@clickable
+                                    }
+                                    val deviceSummary = devices.take(30).joinToString("\n") { d ->
+                                        "- ${d.name} (${d.category.code}, ${d.version}, ${d.portState.name})"
+                                    }
+                                    val prompt = "I am reviewing my Tuesday.sh Pro network check-up (${devices.size} devices):\n\n" +
+                                        RhythmPostureEvaluator.formatShareReport(flavor, rhythms) +
+                                        if (deviceSummary.isNotBlank()) "\n\nTracked Fleet:\n$deviceSummary" else ""
                                     val url = "https://claude.ai/new?q=" + Uri.encode(prompt)
                                     runCatching {
                                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))

@@ -1,5 +1,7 @@
 package sh.tuesday.app.ui.home
 
+import kotlinx.coroutines.launch
+
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Canvas
@@ -136,12 +138,39 @@ fun HomeScreen(
     val activeTab = remember(activeTabName) {
         runCatching { MainNavTab.valueOf(activeTabName) }.getOrDefault(MainNavTab.STATUS)
     }
+
+    // Value-Moment Notification Pre-Permission Primer (triggers once when fleet transitions 0 -> >=1)
+    var previousRackCount by remember { mutableIntStateOf(rackDevices.size) }
+    var showNotificationPrimer by remember { mutableStateOf(false) }
+    var primerDeviceName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(rackDevices.size) {
+        if (previousRackCount == 0 && rackDevices.isNotEmpty() && notificationManager?.hasNotificationPermission() != true) {
+            primerDeviceName = rackDevices.firstOrNull()?.name
+            showNotificationPrimer = true
+        }
+        previousRackCount = rackDevices.size
+    }
+
+    if (showNotificationPrimer) {
+        sh.tuesday.app.ui.components.NotificationPrimerDialog(
+            palette = TuesdayTheme.paletteFor(brandFlavor),
+            appName = if (brandFlavor == AppBrandFlavor.SURETHING_HOME) "SureThingNet" else "Tuesday.sh",
+            deviceName = primerDeviceName,
+            onEnableSelected = { _, patchTuesdayEnabled ->
+                showNotificationPrimer = false
+                onRequestNotificationPermission()
+                repository.setRemindersEnabled(patchTuesdayEnabled)
+            },
+            onDismiss = { showNotificationPrimer = false }
+        )
+    }
     val setActiveTab: (MainNavTab) -> Unit = { tab ->
         repository.setActiveTabName(tab.name)
     }
     var expandNetworkInSettings by rememberSaveable { mutableStateOf(false) }
     var expandPlanInSettings by rememberSaveable { mutableStateOf(false) }
     var expandRemindersInSettings by rememberSaveable { mutableStateOf(false) }
+    var expandFeedsInSettings by rememberSaveable { mutableStateOf(false) }
     var expandPreferencesInSettings by rememberSaveable { mutableStateOf(false) }
     val inspectedDeviceId by repository.inspectedDeviceId.collectAsState()
     val inspectedDevice = remember(rackDevices, inspectedDeviceId) {
@@ -157,6 +186,21 @@ fun HomeScreen(
     var showReferenceGuide by rememberSaveable { mutableStateOf(false) }
     var showProComingSoonModal by rememberSaveable { mutableStateOf(false) }
     var pendingTimelineModal by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val triggerAddDevice: (mode: String?, synth: String?, query: String?, clues: String?, autoSearch: Boolean) -> Unit =
+        { mode, synth, query, clues, autoSearch ->
+            if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForNewDevice(
+                    tier = entitlementTier,
+                    activeNetworkId = activeNetworkId,
+                    currentDeviceCount = rackDevices.size
+                )
+            ) {
+                networkPickerInitialUpgradePrompt = true
+                showNetworkPicker = true
+            } else {
+                onNavigateToAddDevice(mode, synth, query, clues, autoSearch)
+            }
+        }
 
     LaunchedEffect(notificationManager) {
         if (notificationManager != null && repository.activeDeviceCount.value > 0) {
@@ -403,20 +447,26 @@ fun HomeScreen(
                                 modifier = Modifier.uiSlot("brand-title")
                             )
                         }
+                        val isTier1Badge = sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(entitlementTier)
+                        val tier1Gold = Color(0xFFF59E0B)
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .heightIn(min = 36.dp)
                                 .widthIn(min = 54.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(palette.elevated)
+                                .background(if (isTier1Badge) tier1Gold.copy(alpha = 0.16f) else palette.elevated)
+                                .then(
+                                    if (isTier1Badge) Modifier.border(1.dp, Color(0xFFD97706), RoundedCornerShape(8.dp))
+                                    else Modifier
+                                )
                                 .clickable { showProComingSoonModal = true }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                                 .uiAction("toggleBrandFlavor")
                         ) {
                             Text(
-                                text = brandFlavor.badge,
-                                color = palette.accent,
+                                text = if (isTier1Badge) "◆ ${brandFlavor.badge}" else brandFlavor.badge,
+                                color = if (isTier1Badge) tier1Gold else palette.accent,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
@@ -453,12 +503,6 @@ fun HomeScreen(
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                                     .uiSlot("network-switcher-pill")
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(palette.textMuted.copy(alpha = 0.7f))
-                                )
                                 Text(
                                     text = activeNetwork.name.ifBlank { "My Network" },
                                     color = palette.textPrimary,
@@ -603,15 +647,15 @@ fun HomeScreen(
                     onSelectPortState = { repository.setPortStateFilter(it) },
                     onToggleIncludeOk = { repository.toggleIncludeOkDevices() },
                     onOpenReferenceGuide = { showReferenceGuide = true },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
+                    onNavigateToAddDevice = { triggerAddDevice(null, null, null, null, false) },
                     onAddRouter = {
-                        onNavigateToAddDevice(null, null, null, "Router / Gateway", false)
+                        triggerAddDevice(null, null, null, "Router / Gateway", false)
                     },
                     onAddAnyDevice = {
-                        onNavigateToAddDevice(null, null, null, null, false)
+                        triggerAddDevice(null, null, null, null, false)
                     },
                     onAddCategoryDevice = { cat ->
-                        onNavigateToAddDevice(null, null, null, cat.defaultIntakeClue, false)
+                        triggerAddDevice(null, null, null, cat.defaultIntakeClue, false)
                     },
                     onNavigateToBulletins = { setActiveTab(MainNavTab.BULLETINS) },
                     onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
@@ -639,38 +683,53 @@ fun HomeScreen(
                     activeNetworkId = activeNetwork.id,
                     onSelectNetwork = { repository.selectNetwork(it) }
                 )
-                MainNavTab.BULLETINS -> BulletinsScreen(
-                    initialBulletinId = pendingBulletinId,
-                    onConsumeInitialBulletin = { pendingBulletinId = null },
-                    flavor = brandFlavor,
-                    palette = palette,
-                    payload = bulletinsPayload,
-                    onToggleMuteFeed = { repository.toggleMuteFeed(it) },
-                    onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
-                    onRejectModel = { repository.rejectProvisionalDeviceModel() },
-                    onOpenFeedsSettings = { setActiveTab(MainNavTab.ACCOUNT) },
-                    onInspectDevice = { devId ->
-                        visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
-                    },
-                    onNavigateToAddDevice = { onNavigateToAddDevice(null, null, null, null, false) },
-                    onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
-                    onNavigateToCheckUp = { setActiveTab(MainNavTab.CHECKUP) },
-                    onEnableReminders = {
-                        onRequestNotificationPermission()
-                        expandRemindersInSettings = true
-                        setActiveTab(MainNavTab.ACCOUNT)
-                    },
-                    remindersEnabled = remindersEnabled,
-                    dispatchSubscribed = dispatchSubscribed,
-                    onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
-                    activeDeviceCount = visibleDevices.size,
-                    bulletinDismissed = bulletinDismissed,
-                    onSetBulletinDismissed = { repository.setBulletinDismissed(it) },
-                    bulletinSnoozed = bulletinSnoozed,
-                    onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
-                    bulletinMuted = bulletinMuted,
-                    onSetBulletinMuted = { repository.setBulletinMuted(it) }
-                )
+                MainNavTab.BULLETINS -> {
+                    var serverNotifications by remember { mutableStateOf<List<SiteNotificationItem>>(emptyList()) }
+                    val notifScope = rememberCoroutineScope()
+                    LaunchedEffect(Unit) {
+                        repository.fetchNotificationFeed()?.let { serverNotifications = it.notifications }
+                    }
+                    BulletinsScreen(
+                        initialBulletinId = pendingBulletinId,
+                        onConsumeInitialBulletin = { pendingBulletinId = null },
+                        flavor = brandFlavor,
+                        palette = palette,
+                        payload = bulletinsPayload,
+                        onToggleMuteFeed = { repository.toggleMuteFeed(it) },
+                        onConfirmModel = { repository.confirmProvisionalDeviceModel(it) },
+                        onRejectModel = { repository.rejectProvisionalDeviceModel() },
+                        onOpenFeedsSettings = {
+                            expandFeedsInSettings = true
+                            setActiveTab(MainNavTab.ACCOUNT)
+                        },
+                        onInspectDevice = { devId ->
+                            visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
+                        },
+                        onNavigateToAddDevice = { triggerAddDevice(null, null, null, null, false) },
+                        onNavigateToAccount = { setActiveTab(MainNavTab.ACCOUNT) },
+                        onNavigateToCheckUp = { setActiveTab(MainNavTab.CHECKUP) },
+                        onEnableReminders = {
+                            onRequestNotificationPermission()
+                            expandRemindersInSettings = true
+                            setActiveTab(MainNavTab.ACCOUNT)
+                        },
+                        remindersEnabled = remindersEnabled,
+                        dispatchSubscribed = dispatchSubscribed,
+                        onSetDispatchSubscribed = { repository.setDispatchSubscribed(it) },
+                        activeDeviceCount = visibleDevices.size,
+                        bulletinDismissed = bulletinDismissed,
+                        onSetBulletinDismissed = { repository.setBulletinDismissed(it) },
+                        bulletinSnoozed = bulletinSnoozed,
+                        onSetBulletinSnoozed = { repository.setBulletinSnoozed(it) },
+                        bulletinMuted = bulletinMuted,
+                        onSetBulletinMuted = { repository.setBulletinMuted(it) },
+                        serverNotifications = serverNotifications,
+                        onNotificationAction = { notifId, action ->
+                            serverNotifications = serverNotifications.filterNot { it.id == notifId }
+                            notifScope.launch { repository.updateNotificationState(notifId, action) }
+                        }
+                    )
+                }
                 MainNavTab.TIMELINE -> {
                     val attestations by repository.attestations.collectAsState()
                     TimelineScreen(
@@ -678,9 +737,14 @@ fun HomeScreen(
                         palette = palette,
                         devices = visibleDevices,
                         attestations = attestations,
+                        entitlementTier = entitlementTier,
                         initialModal = pendingTimelineModal,
                         onConsumeInitialModal = { pendingTimelineModal = null },
                         onOpenReferenceGuide = { showReferenceGuide = true },
+                        onOpenUpgradeModal = {
+                            networkPickerInitialUpgradePrompt = true
+                            showNetworkPicker = true
+                        },
                         onInspectDevice = { devId ->
                             visibleDevices.find { it.id == devId }?.let { setInspectedDevice(it) }
                         },
@@ -697,7 +761,12 @@ fun HomeScreen(
                     palette = palette,
                     devices = visibleDevices,
                     bulletins = bulletinsPayload.inbox,
-                    onOpenReferenceGuide = { showReferenceGuide = true }
+                    entitlementTier = entitlementTier,
+                    onOpenReferenceGuide = { showReferenceGuide = true },
+                    onOpenUpgradeModal = {
+                        networkPickerInitialUpgradePrompt = true
+                        showNetworkPicker = true
+                    }
                 )
                 MainNavTab.ACCOUNT -> AccountSettingsScreen(
                     params = AccountSettingsParams(
@@ -749,7 +818,9 @@ fun HomeScreen(
                         initialExpandNetwork = expandNetworkInSettings,
                         initialExpandPlan = expandPlanInSettings,
                         initialExpandReminders = expandRemindersInSettings,
+                        initialExpandFeeds = expandFeedsInSettings,
                         initialExpandPreferences = expandPreferencesInSettings,
+                        onOpenReferenceGuide = { showReferenceGuide = true },
                         showStateFilterStrip = showStateFilterStrip,
                         onToggleShowStateFilterStrip = { repository.setShowStateFilterStrip(it) },
                         showZoneFilterStrip = showZoneFilterStrip,
@@ -805,6 +876,11 @@ fun HomeScreen(
                     setInspectedDevice(null)
                     onNavigateToEditDevice(device.id)
                 },
+                onOpenFeedsSettings = {
+                    setInspectedDevice(null)
+                    expandFeedsInSettings = true
+                    setActiveTab(MainNavTab.ACCOUNT)
+                },
                 onNavigateToBulletins = { bulletinId ->
                     pendingBulletinId = bulletinId
                     setInspectedDevice(null)
@@ -819,6 +895,7 @@ fun HomeScreen(
         HacsSettingsSheet(
             entitlementTier = entitlementTier,
             activeNetworkName = activeNetwork.name,
+            devices = visibleDevices,
             onOpenUpgradeModal = {
                 networkPickerInitialUpgradePrompt = true
                 showNetworkPicker = true
@@ -885,11 +962,11 @@ fun HomeScreen(
     if (showProComingSoonModal) {
         TuesdayModalCard(
             palette = palette,
-            title = "Coming Soon",
-            subtitle = "Tuesday.sh (PRO) and SureThingNet (HOME) pair deep homelab telemetry with a calm household view so technical operators and families can share one inventory without the jargon.",
+            title = "Tuesday.sh Pro",
+            subtitle = "Tuesday.sh tracks hardware lifecycles, firmware advisories, and seasonal check-ups across your home and homelab networks.",
             headerTrailing = {
                 MonospaceBadge(
-                    text = "PRO ↔ HOME",
+                    text = "PRO",
                     color = palette.accent
                 )
             },
@@ -901,13 +978,13 @@ fun HomeScreen(
             SurfaceListContainer(palette = palette) {
                 TuesdayListRow(
                     palette = palette,
-                    title = "SureThingNet (HOME) Companion View",
+                    title = "Plain-English Security & Recall Advisories",
                     trailingContent = {
-                        MonospaceBadge(text = "v1.2", color = palette.accent)
+                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
                     },
                     subtitleContent = {
                         Text(
-                            text = "Translates technical CVEs and PURLs into plain-English CPSC Safety Recalls, End-of-Life (EOL) replacement alerts, and guided Seasonal Home Check-Ups.",
+                            text = "Tracks manufacturer and security researcher notices from global feeds and filters only the CVEs, firmware updates, recalls, and End-of-Life alerts that match your inventory.",
                             color = palette.textMuted,
                             fontSize = 12.sp,
                             lineHeight = 16.5.sp
@@ -917,13 +994,13 @@ fun HomeScreen(
                 SurfaceListDivider(palette)
                 TuesdayListRow(
                     palette = palette,
-                    title = "Family Bridge & Household Sharing",
+                    title = "Seasonal Check-Ups & Printable Summaries",
                     trailingContent = {
-                        MonospaceBadge(text = "v1.1", color = palette.accent)
+                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
                     },
                     subtitleContent = {
                         Text(
-                            text = "Invite a partner or family member with a read-only household view so everyone knows when smart-home, kitchen, or nursery gear needs an update or recall check.",
+                            text = "Run guided seasonal check-ups and share a clean plain-text or printable network check-up report with a partner or household helper.",
                             color = palette.textMuted,
                             fontSize = 12.sp,
                             lineHeight = 16.5.sp
@@ -939,11 +1016,11 @@ fun HomeScreen(
                         showNetworkPicker = true
                     },
                     trailingContent = {
-                        MonospaceBadge(text = "LIVE", color = TuesdayTheme.LedOkGreen)
+                        MonospaceBadge(text = "PRO", color = palette.accent)
                     },
                     subtitleContent = {
                         Text(
-                            text = "Free accounts include 1 primary network and 1 demo sandbox. Upgrade to Pro Tier 1 to unlock unlimited network locations and manage your primary rack alongside a parent's home or cabin Wi-Fi.",
+                            text = "Free accounts include 1 primary network (up to 15 devices) and 1 demo sandbox. Upgrade to Pro Tier 1 to track up to 128 devices per site and unlock unlimited network locations.",
                             color = palette.textMuted,
                             fontSize = 12.sp,
                             lineHeight = 16.5.sp

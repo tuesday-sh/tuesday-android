@@ -68,16 +68,19 @@ fun TimelineScreen(
     palette: BrandPalette,
     devices: List<RackPortDevice>,
     attestations: List<DeviceAttestation> = emptyList(),
+    entitlementTier: String = "free",
     initialModal: String? = null,
     onConsumeInitialModal: () -> Unit = {},
     onOpenReferenceGuide: () -> Unit = {},
+    onOpenUpgradeModal: () -> Unit = {},
     onInspectDevice: (String) -> Unit = {},
     onRecordAttestation: ((deviceId: String, type: AttestationType, auditDate: String, note: String?, sessionId: String?) -> DeviceAttestation)? = null,
     onRecordBatchAudit: ((deviceIds: List<String>, auditDate: String, sessionId: String, note: String?) -> List<DeviceAttestation>)? = null
 ) {
     val isStn = flavor == AppBrandFlavor.SURETHING_HOME
+    val isProTier1 = sh.tuesday.app.domain.EntitlementGatePolicy.isProTier1Entitled(entitlementTier)
     var scrubberXNorm by remember { mutableFloatStateOf(0.72f) }
-    var zoomWidthDp by remember { mutableStateOf<Int?>(null) }
+    var zoomWidthDp by remember(isProTier1) { mutableStateOf<Int?>(if (isProTier1) null else 560) }
     val hScroll = rememberScrollState()
 
     LaunchedEffect(zoomWidthDp, hScroll.maxValue) {
@@ -222,14 +225,28 @@ fun TimelineScreen(
                                 "1yr" to 560,
                                 "6mo" to 840
                             ).forEach { (label, wDp) ->
+                                val isProLockedRange = (wDp == null && !isProTier1)
                                 SelectableFilterChip(
                                     label = label,
                                     selected = zoomWidthDp == wDp,
-                                    onClick = { zoomWidthDp = wDp },
+                                    onClick = {
+                                        if (isProLockedRange) {
+                                            onOpenUpgradeModal()
+                                        } else {
+                                            zoomWidthDp = wDp
+                                        }
+                                    },
                                     palette = palette,
                                     modifier = Modifier.uiAction("setTimelineRange")
                                 )
                             }
+                            SelectableFilterChip(
+                                label = "Today",
+                                selected = false,
+                                onClick = { scrubberXNorm = 1.0f },
+                                palette = palette,
+                                modifier = Modifier.uiAction("snapTimelineToday")
+                            )
                         }
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -261,7 +278,9 @@ fun TimelineScreen(
                         }
                     }
 
-                    // Visual Grammar Legend (All 6 States)
+                    // Visual Grammar Legend (All 6 States) + Clickable Reports CTA
+                    var showReportsModal by remember { mutableStateOf(false) }
+                    val eolForecastCount = currentCandles.count { it.vendorEolNorm <= 0.85f || it.deployEndNorm >= it.vendorEolNorm }
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -269,16 +288,30 @@ fun TimelineScreen(
                             .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
                             .background(palette.elevated)
                             .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
+                            .clickable { showReportsModal = true }
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = "Legend:",
-                            color = palette.accentText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Legend:",
+                                color = palette.accentText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Reports →",
+                                color = palette.accentText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -316,6 +349,49 @@ fun TimelineScreen(
                             }
                         }
                     }
+
+                    if (showReportsModal) {
+                        sh.tuesday.app.ui.components.TuesdayModalCard(
+                            palette = palette,
+                            title = "Lifecycle Reports & Dossiers",
+                            subtitle = "Generate local, offline-ready reports directly on your device — zero inventory data leaves your phone.",
+                            onDismissRequest = { showReportsModal = false }
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusCard))
+                                    .background(palette.elevated)
+                                    .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusCard))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("• Multi-Year EOL Forecast ($eolForecastCount device${if (eolForecastCount == 1) "" else "s"} nearing/past EOL)", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("• Full Attestation Audit Log (${attestations.size} recorded check-in${if (attestations.size == 1) "" else "s"})", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("• Printable PDF, CSV & Markdown Home/Rack Dossiers", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (!isProTier1) {
+                                androidx.compose.material3.Button(
+                                    onClick = {
+                                        showReportsModal = false
+                                        onOpenUpgradeModal()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(TuesdayDimens.RadiusCard),
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = Color.White)
+                                ) {
+                                    Text("Unlock Reports with Tier 1", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text(
+                                    text = "Tier 1 Active — export PDF, CSV, or Markdown dossiers anytime from the Backup & Export menu (☰).",
+                                    color = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -330,31 +406,7 @@ fun TimelineScreen(
                     itemSpacing = 12.dp,
                     sectionSpacing = 10.dp,
                     title = if (isStn) "Device Lifespan & Supported Versions" else "Hardware Lifecycles",
-                    headerTrailing = if (currentCandles.isNotEmpty()) {
-                        {
-                            Box(
-                                modifier = Modifier
-                                    .heightIn(min = 28.dp)
-                                    .uiAction("openBatchAuditModal")
-                                    .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                                    .background(palette.accent.copy(alpha = 0.14f))
-                                    .border(1.dp, palette.accent, RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                                    .clickable { showBatchAuditModal = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Batch Check-In",
-                                    color = palette.accentText,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    } else {
-                        null
-                    },
+                    headerTrailing = null,
                     emptyMessage = "No hardware devices tracked in your inventory yet."
                 ) { candle ->
                     val statusSummary = remember(candle, attestations, currentYearPrefix) {

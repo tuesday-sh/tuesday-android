@@ -69,7 +69,9 @@ fun BulletinsScreen(
     bulletinMuted: Boolean = false,
     onSetBulletinMuted: (Boolean) -> Unit = {},
     initialBulletinId: String? = null,
-    onConsumeInitialBulletin: () -> Unit = {}
+    onConsumeInitialBulletin: () -> Unit = {},
+    serverNotifications: List<SiteNotificationItem> = emptyList(),
+    onNotificationAction: (Int, String) -> Unit = { _, _ -> }
 ) {
     var showIgnoreDialog by remember { mutableStateOf(false) }
     var expandedModal by remember { mutableStateOf<ExpandedBulletinModal?>(null) }
@@ -162,6 +164,30 @@ fun BulletinsScreen(
                             }
                         )
                     }
+                    is ExpandedBulletinModal.Reminder -> {
+                        NotchBulletinCard(
+                            palette = palette,
+                            title = modal.item.title,
+                            description = modal.item.body,
+                            leftNotchLabel = "REMINDER",
+                            leftNotchDotColor = palette.accent,
+                            rightNotchLabel = "ACTION",
+                            onRightNotchClick = {},
+                            steps = emptyList(),
+                            allStepsDone = false,
+                            primaryActionLabel = "Snooze",
+                            completeActionLabel = "Snooze",
+                            secondaryActionLabel = "Complete",
+                            onPrimaryAction = {
+                                expandedModal = null
+                                onNotificationAction(modal.item.id, "snoozed")
+                            },
+                            onSecondaryAction = {
+                                expandedModal = null
+                                onNotificationAction(modal.item.id, "completed")
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -203,6 +229,35 @@ fun BulletinsScreen(
                         .size(0.dp)
                         .uiSlot("ai-summary-card")
                 )
+            }
+        }
+
+        val activeServerNotifs = serverNotifications.filter { it.isUnresolved }
+        if (activeServerNotifs.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionHeading(text = "Active Notifications & Reminders", palette = palette)
+                    SurfaceListContainer(palette = palette) {
+                        activeServerNotifs.forEachIndexed { idx, notif ->
+                            if (idx > 0) SurfaceListDivider(palette = palette)
+                            StatusListRow(
+                                palette = palette,
+                                dotColor = palette.accent,
+                                title = notif.title,
+                                onClick = { expandedModal = ExpandedBulletinModal.Reminder(notif) },
+                                contentDescription = "Open reminder ${notif.title}"
+                            ) {
+                                Text(
+                                    text = notif.body,
+                                    color = palette.textMuted,
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -270,43 +325,65 @@ fun BulletinsScreen(
         }
 
         item(key = "matched-feeds-section") {
-            TuesdayListSection(
-                palette = palette,
-                items = payload.matchedFeeds,
-                itemKey = { it.slug },
+            val activeFeedsCount = payload.matchedFeeds.count { !it.isMuted }
+            val mutedFeedsCount = payload.matchedFeeds.count { it.isMuted }
+            Box(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .padding(top = 12.dp)
-                    .uiComponent("MatchedFeedsSection"),
-                layoutStyle = ListSectionLayoutStyle.SURFACE_GROUPED,
-                sectionSpacing = 8.dp,
-                title = "Matched Feeds",
-                headerTrailing = {
+                    .uiComponent("MatchedFeedsSection")
+            ) {
+                if (payload.matchedFeeds.isEmpty()) {
                     Box(
                         modifier = Modifier
-                            .size(TuesdayDimens.HitTargetCompact)
-                            .uiAction("openFeedsSettings")
-                            .clip(RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                            .background(palette.elevated)
-                            .border(1.dp, palette.border, RoundedCornerShape(TuesdayDimens.RadiusBadge))
-                            .clickable { onOpenFeedsSettings() },
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .uiSlot("matched-feeds-empty-banner")
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                            .padding(14.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Feeds settings",
-                            tint = palette.textPrimary,
-                            modifier = Modifier.size(16.dp)
+                        Text(
+                            text = "Add devices to your inventory to get feeds",
+                            color = palette.textMuted,
+                            fontSize = 12.sp
                         )
                     }
-                },
-                emptyMessage = "Add devices to your inventory to get feeds",
-                emptyModifier = Modifier.uiSlot("matched-feeds-empty-banner")
-            ) { feed ->
-                MatchedFeedListRow(
-                    palette = palette,
-                    feed = feed,
-                    onClick = { expandedModal = ExpandedBulletinModal.Feed(feed) }
-                )
+                } else {
+                    val mutedSuffix = if (mutedFeedsCount > 0) " ($mutedFeedsCount muted)" else ""
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .uiAction("openFeedsSettings")
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                            .clickable { onOpenFeedsSettings() }
+                            .padding(horizontal = 13.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "📡 $activeFeedsCount Active Global Feeds$mutedSuffix",
+                                color = palette.textPrimary,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Filtering manufacturer & security notices to your inventory",
+                                color = palette.textMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Text(
+                            text = "Manage →",
+                            color = palette.accent,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         }
 
@@ -421,6 +498,7 @@ private sealed interface ExpandedBulletinModal {
     data class Inbox(val item: BulletinInboxView, val isCompleted: Boolean) : ExpandedBulletinModal
     data class Welcome(val isCompleted: Boolean) : ExpandedBulletinModal
     data class Feed(val feed: MatchedFeedView) : ExpandedBulletinModal
+    data class Reminder(val item: SiteNotificationItem) : ExpandedBulletinModal
 }
 
 @Composable

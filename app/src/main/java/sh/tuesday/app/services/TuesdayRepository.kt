@@ -264,6 +264,15 @@ class TuesdayRepository(context: Context) {
         return tier == "pro_tier_1" || tier == "multisite_tier_1" || tier == "fleet"
     }
 
+    private val _aiPhotoScansUsed = MutableStateFlow(prefs.getInt("ai_photo_scans_used", 0))
+    val aiPhotoScansUsed: StateFlow<Int> = _aiPhotoScansUsed.asStateFlow()
+
+    fun recordAiPhotoScanUsed() {
+        val next = _aiPhotoScansUsed.value + 1
+        _aiPhotoScansUsed.value = next
+        prefs.edit().putInt("ai_photo_scans_used", next).apply()
+    }
+
     private val _remindersEnabled = MutableStateFlow(prefs.getBoolean("monthly_reminders_enabled", false))
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
 
@@ -1337,6 +1346,105 @@ class TuesdayRepository(context: Context) {
             } else {
                 false
             }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Fetches the canonical server-side Notification Engine feed (`GET /api/v1/notifications/feed`).
+     * Supports optional `surface` (`push`, `bulletin`, `reminder`) and `since` ISO8601 delta cursor.
+     */
+    suspend fun fetchNotificationFeed(
+        surface: String? = null,
+        since: String? = null,
+        status: String = "unresolved"
+    ): SiteNotificationFeedResponse? = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+            val params = mutableListOf("status=$status")
+            if (!surface.isNullOrBlank()) params.add("surface=$surface")
+            if (!since.isNullOrBlank()) params.add("since=$since")
+            val url = "$baseUrl/api/v1/notifications/feed?${params.joinToString("&")}"
+
+            val req = Request.Builder()
+                .url(url)
+                .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .get()
+                .build()
+
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val root = JSONObject(resp.body?.string().orEmpty())
+                val arr = root.optJSONArray("notifications") ?: JSONArray()
+                val items = mutableListOf<SiteNotificationItem>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val surfacesArr = obj.optJSONArray("surfaces") ?: JSONArray()
+                    val surfaces = (0 until surfacesArr.length()).map { idx -> surfacesArr.optString(idx) }
+                    items.add(
+                        SiteNotificationItem(
+                            id = obj.optInt("id"),
+                            networkSiteId = obj.optInt("networkSiteId"),
+                            ruleId = obj.optString("ruleId"),
+                            triggerType = obj.optString("triggerType"),
+                            dedupKey = obj.optString("dedupKey"),
+                            surfaces = surfaces,
+                            priority = obj.optString("priority", "normal"),
+                            status = obj.optString("status", "active"),
+                            pushStatus = obj.optString("pushStatus", "none"),
+                            title = obj.optString("title"),
+                            body = obj.optString("body"),
+                            ctaLabel = obj.optString("ctaLabel").takeIf { it.isNotBlank() },
+                            deepLinkUri = obj.optString("deepLinkUri").takeIf { it.isNotBlank() },
+                            monitoredDeviceId = obj.optString("monitoredDeviceId").takeIf { it.isNotBlank() },
+                            monitoredDeviceLabel = obj.optString("monitoredDeviceLabel").takeIf { it.isNotBlank() },
+                            snoozedUntil = obj.optString("snoozedUntil").takeIf { it.isNotBlank() },
+                            expiresAt = obj.optString("expiresAt").takeIf { it.isNotBlank() },
+                            seenAt = obj.optString("seenAt").takeIf { it.isNotBlank() },
+                            resolvedAt = obj.optString("resolvedAt").takeIf { it.isNotBlank() },
+                            createdAt = obj.optString("createdAt").takeIf { it.isNotBlank() },
+                            updatedAt = obj.optString("updatedAt").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+                SiteNotificationFeedResponse(
+                    status = root.optString("status", "ok"),
+                    networkSiteId = root.optInt("networkSiteId"),
+                    syncedAt = root.optString("syncedAt"),
+                    count = root.optInt("count", items.size),
+                    notifications = items
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Transitions a canonical notification (`seen`, `snoozed`, `completed`, `dismissed`, `push_seen`, `reopen`)
+     * via `PATCH /api/v1/notifications/:id`.
+     */
+    suspend fun updateNotificationState(
+        notificationId: Int,
+        actionType: String,
+        snoozeMinutes: Int? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = _hacsConfig.value.tuesdayApiBaseUrl.ifBlank { GeminiDiscoveryService.DEFAULT_SERVER_BASE_URL }.trimEnd('/')
+            val payload = JSONObject().apply {
+                put("action_type", actionType)
+                if (snoozeMinutes != null) put("snooze_minutes", snoozeMinutes)
+            }
+            val req = Request.Builder()
+                .url("$baseUrl/api/v1/notifications/$notificationId")
+                .addHeader("X-Tuesday-Device-ID", clientDeviceId)
+                .addHeader("X-Tuesday-Client-Platform", "android")
+                .patch(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            httpClient.newCall(req).execute().use { it.isSuccessful }
         } catch (_: Exception) {
             false
         }

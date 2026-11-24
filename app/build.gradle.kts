@@ -15,7 +15,7 @@ android {
         applicationId = "sh.tuesday.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 11
+        versionCode = 12
         versionName = "1.0.0"
         manifestPlaceholders["appLabel"] = "Tuesday.sh"
 
@@ -137,6 +137,9 @@ dependencies {
     // Google Play Billing v8 (In-App Subscriptions & Entitlement Verification)
     implementation("com.android.billingclient:billing:8.0.0")
 
+    // Firebase Cloud Messaging (FCM HTTP v1 push reception)
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
+
     // Networking & Serialization
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
@@ -167,4 +170,10 @@ dependencies {
     // Debugging
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+if (file("src/release/google-services.json").exists() &&
+    gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+) {
+    apply(plugin = "com.google.gms.google-services")
 }

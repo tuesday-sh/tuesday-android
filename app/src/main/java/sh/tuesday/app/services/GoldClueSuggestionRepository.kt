@@ -140,6 +140,7 @@ class GoldClueIndexData(
             return fallbackBrandModels
                 .map { it.toClueItem() }
                 .filter { it.id !in selectedIds }
+                .sortedBy { it.title.lowercase() }
                 .take(limit)
         }
 
@@ -160,13 +161,15 @@ class GoldClueIndexData(
             return candidateBrands
                 .map { it.toClueItem() }
                 .filter { it.id !in selectedIds }
+                .sortedBy { it.title.lowercase() }
                 .take(limit)
         }
 
-        // 3. Default (0 clues yet) -> common human-spoken Device Types
+        // 3. Default (0 clues yet) -> common human-spoken Device Types (alphabetical, deterministic across platforms)
         return types
             .map { it.toClueItem() }
             .filter { it.id !in selectedIds }
+            .sortedBy { it.title.lowercase() }
             .take(limit)
     }
 

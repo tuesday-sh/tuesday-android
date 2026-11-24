@@ -158,10 +158,10 @@ class DomainUiLogicTest {
         )
 
         assertTrue(proPosture.all { it.action != null && it.recommendation != null })
-        assertTrue(proPosture[0].title.contains("NEW HARDWARE INTAKE"))
-        assertTrue(homePosture[0].title.contains("New Devices & Recognition"))
-        assertTrue(proPosture[3].recommendation!!.contains("Guest VLAN"))
-        assertTrue(homePosture[3].recommendation!!.contains("unplugging"))
+        assertTrue(proPosture[0].title.contains("HARDWARE LIFECYCLE & ENROLLMENT"))
+        assertTrue(homePosture[0].title.contains("Hardware Lifecycle (Buy, Install, Retire)"))
+        assertTrue(proPosture[3].recommendation!!.contains("end-of-life"))
+        assertTrue(homePosture[3].recommendation!!.contains("end-of-life"))
 
         val shareReport = RhythmPostureEvaluator.formatShareReport(AppBrandFlavor.TUESDAY_PRO, proPosture)
         assertTrue(shareReport.contains("Tuesday.sh (STN-Pro) Fleet Check-Up"))
@@ -193,6 +193,30 @@ class DomainUiLogicTest {
         assertTrue(EntitlementGatePolicy.canCreateAdditionalNetwork("pro_tier_1", oneRealPlusDemo))
         assertTrue(EntitlementGatePolicy.canCreateAdditionalNetwork("multisite_tier_1", oneRealPlusDemo))
         assertTrue(EntitlementGatePolicy.canCreateAdditionalNetwork("FLEET", oneRealPlusDemo))
+
+        // Device capacity policy: 15 free, 128 Pro Tier 1, demo sandbox exempt
+        assertEquals(15, EntitlementGatePolicy.maxDevicesForTier("free"))
+        assertEquals(128, EntitlementGatePolicy.maxDevicesForTier("pro_tier_1"))
+        assertTrue(EntitlementGatePolicy.canAddDevice("free", "net-home", 14))
+        assertFalse(EntitlementGatePolicy.canAddDevice("free", "net-home", 15))
+        assertTrue(EntitlementGatePolicy.requiresUpgradeForNewDevice("free", "net-home", 15))
+        assertTrue(EntitlementGatePolicy.canAddDevice("free", EntitlementGatePolicy.DEMO_NETWORK_ID, 25))
+        assertFalse(EntitlementGatePolicy.requiresUpgradeForNewDevice("free", EntitlementGatePolicy.DEMO_NETWORK_ID, 25))
+        assertTrue(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 15))
+        assertTrue(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 127))
+        assertFalse(EntitlementGatePolicy.canAddDevice("pro_tier_1", "net-home", 128))
+        assertFalse(EntitlementGatePolicy.requiresUpgradeForNewDevice("pro_tier_1", "net-home", 128))
+
+        // AI Photo scan quota: 15 free scans -> unlimited on Pro Tier 1
+        assertEquals(15, EntitlementGatePolicy.remainingFreeAiPhotoScans("free", 0))
+        assertEquals(1, EntitlementGatePolicy.remainingFreeAiPhotoScans("free", 14))
+        assertEquals(0, EntitlementGatePolicy.remainingFreeAiPhotoScans("free", 15))
+        assertNull(EntitlementGatePolicy.remainingFreeAiPhotoScans("pro_tier_1", 25))
+        assertTrue(EntitlementGatePolicy.canRunAiPhotoScan("free", 14))
+        assertFalse(EntitlementGatePolicy.canRunAiPhotoScan("free", 15))
+        assertTrue(EntitlementGatePolicy.requiresUpgradeForAiPhotoScan("free", 15))
+        assertTrue(EntitlementGatePolicy.canRunAiPhotoScan("pro_tier_1", 99))
+        assertFalse(EntitlementGatePolicy.requiresUpgradeForAiPhotoScan("pro_tier_1", 99))
     }
 
     @Test
@@ -277,6 +301,43 @@ class DomainUiLogicTest {
         assertEquals("Synology", provisionalResolved.metadata.manufacturer)
         assertEquals("NAS Storage", provisionalResolved.metadata.modelNumber)
         assertEquals("084652009999", provisionalResolved.metadata.barcodeOrQr)
+
+        // Progressive discovery: Type-only, Brand+Type, and Custom Clue alone all resolve as INCOMPLETE_OR_GUESSED
+        val typeOnly = ManualEnrollmentResolver.resolve(
+            manualHostname = "",
+            selectedClues = listOf(typeClue),
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+        )
+        assertNotNull(typeOnly)
+        assertEquals("NAS Storage", typeOnly!!.hostname)
+        assertEquals(InventoryConfidenceState.INCOMPLETE_OR_GUESSED, typeOnly.inventoryState)
+
+        val brandAndType = ManualEnrollmentResolver.resolve(
+            manualHostname = "",
+            selectedClues = listOf(brandClue, typeClue),
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+        )
+        assertNotNull(brandAndType)
+        assertEquals("Synology NAS Storage", brandAndType!!.hostname)
+        assertEquals("Synology", brandAndType.metadata.manufacturer)
+        assertEquals("NAS Storage", brandAndType.metadata.deviceCategory)
+        assertEquals(InventoryConfidenceState.INCOMPLETE_OR_GUESSED, brandAndType.inventoryState)
+
+        val customOnly = ManualEnrollmentResolver.resolve(
+            manualHostname = "",
+            selectedClues = listOf(
+                GoldClueItem(
+                    id = "custom:vizio tv",
+                    kind = GoldClueKind.CUSTOM,
+                    title = "Vizio TV",
+                    subtitle = "Custom clue"
+                )
+            ),
+            accumulatedIdentifiers = ExtractedDeviceIdentifiers()
+        )
+        assertNotNull(customOnly)
+        assertEquals("Vizio TV", customOnly!!.hostname)
+        assertEquals(InventoryConfidenceState.INCOMPLETE_OR_GUESSED, customOnly.inventoryState)
     }
 
     @Test
@@ -336,5 +397,25 @@ class DomainUiLogicTest {
         assertEquals(0.08f, TimelineStatusEvaluator.clampPopoverArrowFraction(0f, 300f), 0.0001f)
         assertEquals(0.92f, TimelineStatusEvaluator.clampPopoverArrowFraction(9999f, 300f), 0.0001f)
         assertEquals(0.5f, TimelineStatusEvaluator.clampPopoverArrowFraction(100f, 0f), 0.0001f)
+    }
+
+    @Test
+    fun rackDossierExporterFormatsMarkdownAndCsvDeterministically() {
+        val devices = listOf(
+            makeDevice("d2", "Office Switch, Pro", PortLifecycleState.UPDATE, StnHardwareCategory.C2_SWITCH),
+            makeDevice("d1", "Core Gateway", PortLifecycleState.OK, StnHardwareCategory.C1_GATEWAY)
+        )
+        val md = sh.tuesday.app.domain.RackDossierExporter.formatMarkdown(
+            siteName = "Home Lab",
+            devices = devices,
+            generatedAtIso = "2026-11-22T00:00:00Z"
+        )
+        assertTrue(md.contains("# Home Lab — Hardware & Network Dossier"))
+        assertTrue(md.contains("**Tracked Devices**: 2"))
+        assertTrue(md.indexOf("Core Gateway") < md.indexOf("Office Switch, Pro"))
+
+        val csv = sh.tuesday.app.domain.RackDossierExporter.formatCsv("Home Lab", devices)
+        assertTrue(csv.startsWith("Site,CategoryCode,Category,Name,"))
+        assertTrue(csv.contains("\"Office Switch, Pro\""))
     }
 }

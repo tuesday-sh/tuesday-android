@@ -574,8 +574,8 @@ class MonitoredDeviceTest {
         val monthly = offers.find { it.productId == sh.tuesday.app.services.TuesdayBillingManager.SKU_PRO_TIER1_MONTHLY }
         assertNotNull(annual)
         assertNotNull(monthly)
-        assertEquals("$49.00", annual!!.formattedPrice)
-        assertEquals("$4.99", monthly!!.formattedPrice)
+        assertEquals("$29.00", annual!!.formattedPrice)
+        assertEquals("$2.99", monthly!!.formattedPrice)
 
         // 2. Verify NetworkInventoryBackup JSON round-trip serialization
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
