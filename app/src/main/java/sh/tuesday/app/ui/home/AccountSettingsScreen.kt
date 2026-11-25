@@ -73,6 +73,8 @@ data class AccountSettingsParams(
     val billingStatusMessage: String? = null,
     val matchedFeeds: List<MatchedFeedView> = emptyList(),
     val remindersEnabled: Boolean = false,
+    val enabledReminderCategories: Set<String> = emptySet(),
+    val onToggleReminderCategory: ((String, Boolean) -> Unit)? = null,
     val onToggleReminders: ((Boolean) -> Unit)? = null,
     val onToggleMuteFeed: (String) -> Unit = {},
     val onUpgradeProTier1: (String) -> Unit = {},
@@ -219,16 +221,20 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
     val okGreen = TuesdayTheme.ledColorFor(PortLifecycleState.OK, isStn)
     val cveRed = TuesdayTheme.ledColorFor(PortLifecycleState.CVE_KEV, isStn)
 
-    val reminderStates = remember(params.remindersEnabled) {
+    val localReminderStates = remember {
         mutableStateMapOf(
-            "high_severity_alerts" to params.remindersEnabled,
+            "high_severity_alerts" to false,
             "monthly_rhythm" to params.remindersEnabled,
-            "quarterly_checkup" to params.remindersEnabled,
-            "routine_firmware" to params.remindersEnabled,
-            "lifecycle_eol" to params.remindersEnabled
+            "quarterly_checkup" to false,
+            "routine_firmware" to false,
+            "lifecycle_eol" to false
         )
     }
-    val activeRemindersCount = reminderStates.values.count { it }
+    val activeRemindersCount = if (params.onToggleReminderCategory != null) {
+        params.enabledReminderCategories.size
+    } else {
+        localReminderStates.values.count { it }
+    }
     val activeFeedsCount = matchedFeeds.count { !it.isMuted }
     val mutedFeedsCount = matchedFeeds.count { it.isMuted }
     var activeSection by remember(
@@ -972,15 +978,21 @@ fun AccountSettingsScreen(params: AccountSettingsParams) {
                                 )
 
                                 REMINDER_DEFINITIONS.forEach { def ->
-                                    val isChecked = reminderStates[def.key] ?: false
+                                    val isChecked = if (params.onToggleReminderCategory != null) {
+                                        params.enabledReminderCategories.contains(def.key)
+                                    } else {
+                                        localReminderStates[def.key] ?: false
+                                    }
                                     PreferenceToggleRow(
                                         title = def.title,
                                         description = def.desc,
                                         checked = isChecked,
                                         onCheckedChange = { checked ->
-                                            reminderStates[def.key] = checked
-                                            if (def.key == "monthly_rhythm") {
-                                                params.onToggleReminders?.invoke(checked)
+                                            if (params.onToggleReminderCategory != null) {
+                                                params.onToggleReminderCategory.invoke(def.key, checked)
+                                            } else {
+                                                localReminderStates[def.key] = checked
+                                                params.onToggleReminders?.invoke(localReminderStates.values.any { it })
                                             }
                                         },
                                         palette = palette,

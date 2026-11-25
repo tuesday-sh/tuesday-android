@@ -84,9 +84,8 @@ fun TimelineScreen(
     val hScroll = rememberScrollState()
 
     LaunchedEffect(zoomWidthDp, hScroll.maxValue) {
-        scrubberXNorm = 0.72f
         if (zoomWidthDp != null && hScroll.maxValue > 0) {
-            val targetScroll = (0.72f * hScroll.maxValue).toInt().coerceIn(0, hScroll.maxValue)
+            val targetScroll = (scrubberXNorm * hScroll.maxValue).toInt().coerceIn(0, hScroll.maxValue)
             hScroll.animateScrollTo(targetScroll)
         }
     }
@@ -246,7 +245,7 @@ fun TimelineScreen(
                             SelectableFilterChip(
                                 label = "Today",
                                 selected = false,
-                                onClick = { scrubberXNorm = 1.0f },
+                                onClick = { scrubberXNorm = 0.72f },
                                 palette = palette,
                                 modifier = Modifier.uiAction("snapTimelineToday")
                             )
