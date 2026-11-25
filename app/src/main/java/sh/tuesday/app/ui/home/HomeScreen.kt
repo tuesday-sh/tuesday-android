@@ -192,7 +192,7 @@ fun HomeScreen(
             if (sh.tuesday.app.domain.EntitlementGatePolicy.requiresUpgradeForNewDevice(
                     tier = entitlementTier,
                     activeNetworkId = activeNetworkId,
-                    currentDeviceCount = rackDevices.size
+                    currentDeviceCount = activeDeviceCount
                 )
             ) {
                 networkPickerInitialUpgradePrompt = true
