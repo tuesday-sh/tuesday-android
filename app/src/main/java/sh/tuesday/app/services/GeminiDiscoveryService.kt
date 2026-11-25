@@ -43,7 +43,9 @@ class GeminiDiscoveryService(private val context: Context) {
         }
         .build()
 
-    private val persistentDeviceId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
+    private val persistentDeviceId: String by lazy {
+        ClientDeviceIdProvider.getOrCreate(context)
+    }
     private var sessionStickinessId = "tuesday-android-" + UUID.randomUUID().toString().take(8)
     private var turnCounter = 0
 
@@ -373,7 +375,7 @@ class GeminiDiscoveryService(private val context: Context) {
             .url("$baseUrl/api/v1/discovery/analyze")
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", "application/json")
-            .addHeader("X-Tuesday-Device-ID", sessionStickinessId)
+            .addHeader("X-Tuesday-Device-ID", persistentDeviceId)
             .addHeader("X-Tuesday-Client-Platform", "android")
             .addHeader("X-Tuesday-Pilot-Token", PILOT_CLIENT_TOKEN)
             .addHeader("X-Tuesday-Debug", debugEnabled.toString())

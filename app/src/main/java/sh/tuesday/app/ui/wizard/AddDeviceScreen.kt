@@ -325,10 +325,10 @@ fun AddDeviceScreen(
 
     fun applyDecodedBarcode(rawValue: String, format: Int, sourceBitmap: Bitmap? = null) {
         val parsed = BarcodeIdentifierParser.parse(rawValue, format) ?: return
-        if (parsed.is2DMatrix) {
-            accumulatedIdentifiers.qrCode = parsed.normalizedValue
-        } else {
-            accumulatedIdentifiers.barcode = parsed.normalizedValue
+        when {
+            parsed.isMacAddress -> accumulatedIdentifiers.macAddress = parsed.normalizedValue
+            parsed.is2DMatrix -> accumulatedIdentifiers.qrCode = parsed.normalizedValue
+            else -> accumulatedIdentifiers.barcode = parsed.normalizedValue
         }
         if (!scannedBarcodesList.contains(parsed.normalizedValue)) {
             scannedBarcodesList = scannedBarcodesList + parsed.normalizedValue
@@ -378,7 +378,6 @@ fun AddDeviceScreen(
                 Barcode.FORMAT_AZTEC,
                 Barcode.FORMAT_PDF417
             )
-            .enableAutoZoom()
             .build()
         val scanner = GmsBarcodeScanning.getClient(context, options)
         scanner.startScan()

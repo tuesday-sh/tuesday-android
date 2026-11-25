@@ -24,7 +24,7 @@ class TuesdayFirebaseMessagingService : FirebaseMessagingService() {
         val prefs = applicationContext.getSharedPreferences("tuesday_prefs", MODE_PRIVATE)
         prefs.edit().putString("fcm_token", token).apply()
 
-        val deviceId = prefs.getString("client_device_id", null) ?: "android-${android.os.Build.MODEL}"
+        val deviceId = ClientDeviceIdProvider.getOrCreate(applicationContext)
         val payload = JSONObject().apply {
             put("fcm_token", token)
             put("platform", "android")

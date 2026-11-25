@@ -235,6 +235,26 @@ class DomainUiLogicTest {
         assertNotNull(qrLeadingZero)
         assertEquals("0123456789012", qrLeadingZero!!.normalizedValue)
         assertTrue(qrLeadingZero.is2DMatrix)
+        assertFalse(qrLeadingZero.isMacAddress)
+
+        // Bare 12-hex MAC sticker (Code 128) -> normalized colon-separated MAC
+        val bareMac = BarcodeIdentifierParser.parse("00107F617AB0", Barcode.FORMAT_CODE_128)
+        assertNotNull(bareMac)
+        assertEquals("00:10:7F:61:7A:B0", bareMac!!.normalizedValue)
+        assertTrue(bareMac.isMacAddress)
+        assertFalse(bareMac.is2DMatrix)
+
+        // Hyphen-delimited MAC sticker -> normalized colon-separated MAC
+        val hyphenMac = BarcodeIdentifierParser.parse("74-83-c2-9e-11-04", Barcode.FORMAT_CODE_39)
+        assertNotNull(hyphenMac)
+        assertEquals("74:83:C2:9E:11:04", hyphenMac!!.normalizedValue)
+        assertTrue(hyphenMac.isMacAddress)
+
+        // 12-digit all-numeric retail UPC-A must NOT be misclassified as a MAC address
+        val numericUpc = BarcodeIdentifierParser.parse("810010078142", Barcode.FORMAT_UPC_A)
+        assertNotNull(numericUpc)
+        assertEquals("810010078142", numericUpc!!.normalizedValue)
+        assertFalse(numericUpc.isMacAddress)
 
         assertNull(BarcodeIdentifierParser.parse("   ", Barcode.FORMAT_CODE_128))
     }

@@ -15,7 +15,7 @@ android {
         applicationId = "sh.tuesday.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
+        versionCode = 16
         versionName = "1.0.1"
         manifestPlaceholders["appLabel"] = "Tuesday.sh"
 
