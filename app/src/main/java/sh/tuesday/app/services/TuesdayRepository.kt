@@ -42,14 +42,7 @@ class TuesdayRepository(context: Context) {
         .build()
 
     private val clientDeviceId: String by lazy {
-        val existing = prefs.getString("client_device_id", null)
-        if (!existing.isNullOrBlank()) {
-            existing
-        } else {
-            val generated = "android-" + UUID.randomUUID().toString().take(8)
-            prefs.edit().putString("client_device_id", generated).apply()
-            generated
-        }
+        ClientDeviceIdProvider.getOrCreate(context)
     }
 
     private val _rackDevices = MutableStateFlow<List<RackPortDevice>>(BulletinsAndInventoryEngine.defaultRackPortDevices())
