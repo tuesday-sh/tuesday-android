@@ -45,7 +45,13 @@ class TuesdayRepository(context: Context) {
         ClientDeviceIdProvider.getOrCreate(context)
     }
 
-    private val _rackDevices = MutableStateFlow<List<RackPortDevice>>(BulletinsAndInventoryEngine.defaultRackPortDevices())
+    private val devicesByNetwork = mutableMapOf<String, List<RackPortDevice>>()
+    private val attestationsByNetwork = mutableMapOf<String, List<DeviceAttestation>>()
+
+    private fun isDemoNetwork(netId: String = _activeNetworkId.value): Boolean =
+        netId == sh.tuesday.app.domain.EntitlementGatePolicy.DEMO_NETWORK_ID
+
+    private val _rackDevices = MutableStateFlow<List<RackPortDevice>>(emptyList())
     val rackDevices: StateFlow<List<RackPortDevice>> = _rackDevices.asStateFlow()
 
     private val _brandFlavor = MutableStateFlow(AppBrandFlavor.TUESDAY_PRO)
@@ -266,7 +272,13 @@ class TuesdayRepository(context: Context) {
         prefs.edit().putInt("ai_photo_scans_used", next).apply()
     }
 
-    private val _remindersEnabled = MutableStateFlow(prefs.getBoolean("monthly_reminders_enabled", false))
+    private val _enabledReminderCategories = MutableStateFlow<Set<String>>(
+        prefs.getStringSet("enabled_reminder_categories", null)?.toSet()
+            ?: if (prefs.getBoolean("monthly_reminders_enabled", false)) setOf("monthly_rhythm") else emptySet()
+    )
+    val enabledReminderCategories: StateFlow<Set<String>> = _enabledReminderCategories.asStateFlow()
+
+    private val _remindersEnabled = MutableStateFlow(_enabledReminderCategories.value.isNotEmpty())
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
 
     private val _dispatchSubscribed = MutableStateFlow(prefs.getBoolean("dispatch_subscribed", false))
@@ -391,8 +403,30 @@ class TuesdayRepository(context: Context) {
 
     fun selectNetwork(netId: String) {
         val target = _userNetworks.value.find { it.id == netId } ?: return
+        // Snapshot current network's inventory before switching
+        devicesByNetwork[_activeNetworkId.value] = _rackDevices.value
+        attestationsByNetwork[_activeNetworkId.value] = _attestations.value
+
         _activeNetworkId.value = target.id
-        _activeDeviceCount.value = target.devicesCount
+        val loadedDevices = devicesByNetwork[target.id] ?: if (isDemoNetwork(target.id)) {
+            BulletinsAndInventoryEngine.defaultRackPortDevices()
+        } else {
+            emptyList()
+        }
+        val loadedAttestations = attestationsByNetwork[target.id] ?: if (isDemoNetwork(target.id)) {
+            initialDefaultAttestations()
+        } else {
+            emptyList()
+        }
+        devicesByNetwork[target.id] = loadedDevices
+        attestationsByNetwork[target.id] = loadedAttestations
+        _rackDevices.value = loadedDevices
+        _attestations.value = loadedAttestations
+        _activeDeviceCount.value = if (isDemoNetwork(target.id)) {
+            target.devicesCount.coerceIn(0, loadedDevices.size)
+        } else {
+            loadedDevices.size.coerceAtMost(128)
+        }
         _selectedZoneFilter.value = null
         _selectedPortStateFilter.value = null
         prefs.edit()
@@ -400,6 +434,7 @@ class TuesdayRepository(context: Context) {
             .remove("selected_port_state_filter")
             .apply()
         persistNetworks()
+        persistInventoryState()
     }
 
     fun renameActiveNetwork(newName: String) {
@@ -417,9 +452,11 @@ class TuesdayRepository(context: Context) {
         val newNet = NetworkSite(
             id = "net-${System.currentTimeMillis()}",
             name = trimmed,
-            devicesCount = 1,
+            devicesCount = 0,
             role = "Site"
         )
+        devicesByNetwork[newNet.id] = emptyList()
+        attestationsByNetwork[newNet.id] = emptyList()
         _userNetworks.value = _userNetworks.value + newNet
         selectNetwork(newNet.id)
     }
@@ -443,9 +480,35 @@ class TuesdayRepository(context: Context) {
         )
     }
 
+    fun setReminderCategoryEnabled(categoryKey: String, enabled: Boolean) {
+        val updated = _enabledReminderCategories.value.toMutableSet()
+        if (enabled) updated.add(categoryKey) else updated.remove(categoryKey)
+        val finalSet = updated.toSet()
+        _enabledReminderCategories.value = finalSet
+        val anyEnabled = finalSet.isNotEmpty()
+        _remindersEnabled.value = anyEnabled
+        prefs.edit()
+            .putStringSet("enabled_reminder_categories", finalSet)
+            .putBoolean("monthly_reminders_enabled", anyEnabled)
+            .apply()
+        emitTelemetryEventAsync(
+            eventName = "checkup.reminders_toggled",
+            properties = mapOf("category" to categoryKey, "enabled" to enabled, "anyEnabled" to anyEnabled)
+        )
+    }
+
     fun setRemindersEnabled(enabled: Boolean) {
+        val nextSet = if (enabled) {
+            _enabledReminderCategories.value.ifEmpty { setOf("monthly_rhythm") }
+        } else {
+            emptySet()
+        }
+        _enabledReminderCategories.value = nextSet
         _remindersEnabled.value = enabled
-        prefs.edit().putBoolean("monthly_reminders_enabled", enabled).apply()
+        prefs.edit()
+            .putStringSet("enabled_reminder_categories", nextSet)
+            .putBoolean("monthly_reminders_enabled", enabled)
+            .apply()
         emitTelemetryEventAsync(
             eventName = "checkup.reminders_toggled",
             properties = mapOf("enabled" to enabled)
@@ -563,28 +626,6 @@ class TuesdayRepository(context: Context) {
         prefs.getStringSet("muted_feed_slugs", null)?.let { savedMuted ->
             _mutedFeedSlugs.value = savedMuted.toSet()
         }
-        val rawRack = prefs.getString("rack_devices_json", null)
-        if (!rawRack.isNullOrBlank()) {
-            try {
-                val decoded = json.decodeFromString<List<RackPortDevice>>(rawRack)
-                if (decoded.isNotEmpty()) {
-                    _rackDevices.value = decoded
-                }
-            } catch (_: Exception) {
-                _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
-            }
-        }
-        val rawAtts = prefs.getString("attestations_json", null)
-        if (!rawAtts.isNullOrBlank()) {
-            try {
-                val decoded = json.decodeFromString<List<DeviceAttestation>>(rawAtts)
-                if (decoded.isNotEmpty()) {
-                    _attestations.value = decoded
-                }
-            } catch (_: Exception) {
-                _attestations.value = initialDefaultAttestations()
-            }
-        }
         val raw = prefs.getString("hacs_config", null)
         if (raw != null) {
             try {
@@ -612,10 +653,79 @@ class TuesdayRepository(context: Context) {
                 _activeDeviceCount.value = found.devicesCount
             }
         }
+
+        // Load per-network device & attestation maps (migrating legacy flat JSON if present)
+        val rawByNet = prefs.getString("rack_devices_by_network_json", null)
+        if (!rawByNet.isNullOrBlank()) {
+            runCatching {
+                json.decodeFromString<Map<String, List<RackPortDevice>>>(rawByNet)
+            }.getOrNull()?.let { decodedMap ->
+                devicesByNetwork.clear()
+                devicesByNetwork.putAll(decodedMap)
+            }
+        } else {
+            val rawRack = prefs.getString("rack_devices_json", null)
+            if (!rawRack.isNullOrBlank()) {
+                runCatching {
+                    json.decodeFromString<List<RackPortDevice>>(rawRack)
+                }.getOrNull()?.let { decoded ->
+                    val migrated = if (!isDemoNetwork() && _activeDeviceCount.value < decoded.size) {
+                        decoded.take(_activeDeviceCount.value)
+                    } else {
+                        decoded
+                    }
+                    devicesByNetwork[_activeNetworkId.value] = migrated
+                }
+            }
+        }
+
+        val rawAttsByNet = prefs.getString("attestations_by_network_json", null)
+        if (!rawAttsByNet.isNullOrBlank()) {
+            runCatching {
+                json.decodeFromString<Map<String, List<DeviceAttestation>>>(rawAttsByNet)
+            }.getOrNull()?.let { decodedMap ->
+                attestationsByNetwork.clear()
+                attestationsByNetwork.putAll(decodedMap)
+            }
+        } else {
+            val rawAtts = prefs.getString("attestations_json", null)
+            if (!rawAtts.isNullOrBlank()) {
+                runCatching {
+                    json.decodeFromString<List<DeviceAttestation>>(rawAtts)
+                }.getOrNull()?.let { decoded ->
+                    attestationsByNetwork[_activeNetworkId.value] = decoded
+                }
+            }
+        }
+
+        val activeId = _activeNetworkId.value
+        val activeDevices = devicesByNetwork[activeId] ?: if (isDemoNetwork(activeId)) {
+            BulletinsAndInventoryEngine.defaultRackPortDevices()
+        } else {
+            emptyList()
+        }
+        val activeAtts = attestationsByNetwork[activeId] ?: if (isDemoNetwork(activeId)) {
+            initialDefaultAttestations()
+        } else {
+            emptyList()
+        }
+        devicesByNetwork[activeId] = activeDevices
+        attestationsByNetwork[activeId] = activeAtts
+        _rackDevices.value = activeDevices
+        _attestations.value = activeAtts
+        _activeDeviceCount.value = if (isDemoNetwork(activeId)) {
+            _activeDeviceCount.value.coerceIn(0, activeDevices.size)
+        } else {
+            activeDevices.size.coerceAtMost(128)
+        }
     }
 
     private fun persistInventoryState() {
+        devicesByNetwork[_activeNetworkId.value] = _rackDevices.value
+        attestationsByNetwork[_activeNetworkId.value] = _attestations.value
         prefs.edit()
+            .putString("rack_devices_by_network_json", json.encodeToString(devicesByNetwork.toMap()))
+            .putString("attestations_by_network_json", json.encodeToString(attestationsByNetwork.toMap()))
             .putString("rack_devices_json", json.encodeToString(_rackDevices.value))
             .putString("attestations_json", json.encodeToString(_attestations.value))
             .apply()
@@ -732,8 +842,13 @@ class TuesdayRepository(context: Context) {
             latestAttestation = initialAttestation,
             attestationCount = 1
         )
-        _rackDevices.value = listOf(finalRackDev) + _rackDevices.value
-        val nextCount = (_activeDeviceCount.value + 1).coerceAtMost(128)
+        val baseList = if (!isDemoNetwork() && _activeDeviceCount.value == 0) emptyList() else _rackDevices.value
+        _rackDevices.value = listOf(finalRackDev) + baseList
+        val nextCount = if (isDemoNetwork()) {
+            (_activeDeviceCount.value + 1).coerceAtMost(128)
+        } else {
+            _rackDevices.value.size.coerceAtMost(128)
+        }
         _activeDeviceCount.value = nextCount
         _userNetworks.value = _userNetworks.value.map {
             if (it.id == _activeNetworkId.value) it.copy(devicesCount = nextCount) else it
@@ -784,9 +899,15 @@ class TuesdayRepository(context: Context) {
 
     fun deleteDevice(deviceId: String): Boolean {
         if (_rackDevices.value.none { it.id == deviceId }) return false
+        val wasVisible = _rackDevices.value.take(_activeDeviceCount.value).any { it.id == deviceId }
         _rackDevices.value = _rackDevices.value.filterNot { it.id == deviceId }
         _attestations.value = _attestations.value.filterNot { it.deviceId == deviceId }
-        val nextCount = _rackDevices.value.size.coerceAtMost(128)
+        val nextCount = if (isDemoNetwork()) {
+            if (wasVisible) (_activeDeviceCount.value - 1).coerceIn(0, _rackDevices.value.size)
+            else _activeDeviceCount.value.coerceAtMost(_rackDevices.value.size)
+        } else {
+            _rackDevices.value.size.coerceAtMost(128)
+        }
         _activeDeviceCount.value = nextCount
         _userNetworks.value = _userNetworks.value.map {
             if (it.id == _activeNetworkId.value) it.copy(devicesCount = nextCount) else it
@@ -1246,8 +1367,10 @@ class TuesdayRepository(context: Context) {
     }
 
     fun resetDemoData() {
-        _rackDevices.value = BulletinsAndInventoryEngine.defaultRackPortDevices()
-        _attestations.value = initialDefaultAttestations()
+        devicesByNetwork.clear()
+        attestationsByNetwork.clear()
+        _rackDevices.value = emptyList()
+        _attestations.value = emptyList()
         _mutedFeedSlugs.value = setOf("lg-esphome-iot")
         _includeOkDevices.value = false
         _selectedZoneFilter.value = null
@@ -1259,6 +1382,7 @@ class TuesdayRepository(context: Context) {
         _bulletinDismissed.value = false
         _bulletinSnoozed.value = false
         _bulletinMuted.value = false
+        _enabledReminderCategories.value = emptySet()
         _remindersEnabled.value = false
         _dispatchSubscribed.value = false
         _showStateFilterStrip.value = false
@@ -1275,6 +1399,7 @@ class TuesdayRepository(context: Context) {
             .putBoolean("bulletin_snoozed", false)
             .putBoolean("bulletin_muted", false)
             .putBoolean("monthly_reminders_enabled", false)
+            .remove("enabled_reminder_categories")
             .putBoolean("dispatch_subscribed", false)
             .putBoolean("pref_show_state_filter_strip", false)
             .putBoolean("pref_show_zone_filter_strip", false)
@@ -1282,6 +1407,8 @@ class TuesdayRepository(context: Context) {
             .putBoolean("is_vision_debug_enabled", false)
             .putBoolean("is_diagnostics_enabled", false)
             .putString("entitlement_tier", "free")
+            .remove("rack_devices_by_network_json")
+            .remove("attestations_by_network_json")
             .remove("rack_devices_json")
             .remove("attestations_json")
             .remove("muted_feed_slugs")

@@ -125,6 +125,7 @@ fun HomeScreen(
         BillingUiState()
     }
     val remindersEnabled by repository.remindersEnabled.collectAsState()
+    val enabledReminderCategories by repository.enabledReminderCategories.collectAsState()
     val dispatchSubscribed by repository.dispatchSubscribed.collectAsState()
     val bulletinDismissed by repository.bulletinDismissed.collectAsState()
     val bulletinSnoozed by repository.bulletinSnoozed.collectAsState()
@@ -164,14 +165,21 @@ fun HomeScreen(
             onDismiss = { showNotificationPrimer = false }
         )
     }
-    val setActiveTab: (MainNavTab) -> Unit = { tab ->
-        repository.setActiveTabName(tab.name)
-    }
     var expandNetworkInSettings by rememberSaveable { mutableStateOf(false) }
     var expandPlanInSettings by rememberSaveable { mutableStateOf(false) }
     var expandRemindersInSettings by rememberSaveable { mutableStateOf(false) }
     var expandFeedsInSettings by rememberSaveable { mutableStateOf(false) }
     var expandPreferencesInSettings by rememberSaveable { mutableStateOf(false) }
+    val setActiveTab: (MainNavTab) -> Unit = { tab ->
+        if (tab != MainNavTab.ACCOUNT) {
+            expandNetworkInSettings = false
+            expandPlanInSettings = false
+            expandRemindersInSettings = false
+            expandFeedsInSettings = false
+            expandPreferencesInSettings = false
+        }
+        repository.setActiveTabName(tab.name)
+    }
     val inspectedDeviceId by repository.inspectedDeviceId.collectAsState()
     val inspectedDevice = remember(rackDevices, inspectedDeviceId) {
         inspectedDeviceId?.let { id -> rackDevices.find { it.id.equals(id, ignoreCase = true) } }
@@ -772,6 +780,8 @@ fun HomeScreen(
                         billingStatusMessage = billingUiState.statusMessage,
                         matchedFeeds = bulletinsPayload.matchedFeeds,
                         remindersEnabled = remindersEnabled,
+                        enabledReminderCategories = enabledReminderCategories,
+                        onToggleReminderCategory = { key, enabled -> repository.setReminderCategoryEnabled(key, enabled) },
                         onToggleReminders = { repository.setRemindersEnabled(it) },
                         onToggleMuteFeed = { repository.toggleMuteFeed(it) },
                         onUpgradeProTier1 = { sku ->
