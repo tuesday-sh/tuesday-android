@@ -15,8 +15,8 @@ android {
         applicationId = "sh.tuesday.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.0.0"
+        versionCode = 15
+        versionName = "1.0.1"
         manifestPlaceholders["appLabel"] = "Tuesday.sh"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
